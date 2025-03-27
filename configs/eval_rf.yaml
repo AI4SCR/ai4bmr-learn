@@ -1,0 +1,31 @@
+project:
+  project_name: eval_rf
+  entity: null
+  run_name: null
+  tags: null
+  notes: ''
+  mode: online
+  wandb_dir: /users/amarti51/.wandb_logs
+model:
+  class_path: sklearn.ensemble.RandomForestClassifier
+  init_args:
+    n_estimators: 23
+    criterion: 'entropy'
+    min_samples_split: 4
+    max_leaf_nodes: 3
+    random_state: 4
+    max_depth: 1
+    class_weight: balanced
+datamodule:
+  class_path: ai4bmr_learn.datamodules.Tabular.TabularDataModule
+  init_args:
+    data_path: ''
+    metadata_path: ''
+sweep:
+  method: grid
+  parameters:
+    n_estimators: [100]
+    max_depth: [2]
+    min_samples_split: [2]
+    max_features: [sqrt]
+    criterion: [gini]

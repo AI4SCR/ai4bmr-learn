@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "ai4bmr-learn"
+version = "0.1.0"
+description = "Collection of learning methods"
+authors = ["Adriano Martinelli <adrianom@student.ethz.ch>"]
+packages = [{ include = "ai4bmr_learn", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+scikit-learn = "*"
+zarr = "*"
+loguru = "*"
+omegaconf = { version = "*", extras = ["all"] }
+wandb = "*"
+umap-learn = { version = "*", extras = ["plot"] }
+scikit-image = "*"
+torch = "*"
+pyarrow = "*"
+torchvision = "*"
+lightning = "*"
+matplotlib = "*"
+seaborn = "*"
+pandas = "*"
+einops = "*"
+torchinfo = "*"
+timm = "*"
+flatdict = "*"
+jsonargparse = "^4.24.1"
+pydantic = "^2.6.1"
+
+[tool.poetry.group.dev.dependencies]
+black = "*"
+pytest = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 120
