@@ -1,7 +1,7 @@
 # %%
 from pathlib import Path
 from torch import get_num_threads
-from ai4bmr_learn.data.splits import Split, generate_splits
+from ..data.splits import Split, generate_splits
 import lightning as L
 import numpy as np
 import pandas as pd
@@ -9,50 +9,12 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 
-class TabularDataset(Dataset):
-
-    def __init__(self, data: pd.DataFrame, metadata: pd.DataFrame, target_name: str = "target"):
-        super().__init__()
-
-        assert data.index.equals(metadata.index)
-        assert metadata.index.duplicated().any() == False
-        assert data.isna().any().any() == False
-
-        self.data = data
-        self.metadata = metadata
-        self.targets = metadata[target_name]
-
-        assert self.targets.isna().any().any() == False
-
-        self.num_samples = data.shape[0]
-        self.num_features = data.shape[1]
-
-        if self.targets.dtype == "category":
-            self.is_categorical = True
-            self.classes = self.targets.cat.categories
-            self.num_classes = len(self.classes)
-            self.class_name_to_index = {k: v for k, v in zip(self.targets.cat.categories, self.targets.cat.codes)}
-        else:
-            self.is_categorical = False
-            self.classes = self.num_classes = self.class_name_to_index = None
-
-    def __len__(self):
-        return self.num_samples
-
-    def __getitem__(self, idx):
-        x = torch.from_numpy(self.data.iloc[idx]).float()
-        target = torch.tensor(self.targets[idx])
-        target = target.long() if self.is_categorical else target.float()
-        metadata = self.metadata.iloc[idx].to_dict()
-        return dict(x=x, target=target, metadata=metadata)
-
-
-class TabularDataModule(L.LightningDataModule):
+class DummyDataModule(L.LightningDataModule):
 
     def __init__(
         self,
-        data_path: Path,
-        metadata_path: Path,
+        data_path: Path = Path('~/data/ai4bmr-learn/DummyTabular/data.parquet').expanduser().resolve(),
+        metadata_path: Path = Path('~/data/ai4bmr-learn/DummyTabular/metadata.parquet').expanduser().resolve(),
         splits_path: Path = None,
         test_size: float = 0.2,
         val_size: float = 0.0,
@@ -88,6 +50,7 @@ class TabularDataModule(L.LightningDataModule):
 
     def setup(self, stage=None):
         from torch.utils.data import Subset
+        from ..datasets.Tabular import TabularDataset
 
         data = pd.read_parquet(self.data_path)
         metadata = pd.read_parquet(self.metadata_path)
@@ -113,7 +76,19 @@ class TabularDataModule(L.LightningDataModule):
             splits.to_parquet(self.splits_path)
 
     def _prepare_data(self) -> None:
-        raise NotImplementedError()
+        # NOTE: here we load one of our datasets and bring it into the right format for the training that we want to do.
+        from ai4bmr_datasets.datasets.DummyTabular import DummyTabular
+
+        ds = DummyTabular(num_samples=1000, num_classes=2, num_features=10)
+        data = ds.load()
+
+        if not self.data_path.exists():
+            self.data_path.parent.mkdir(parents=True, exist_ok=True)
+            data['data'].to_parquet(self.data_path)
+
+        if not self.metadata_path.exists():
+            self.metadata_path.parent.mkdir(parents=True, exist_ok=True)
+            data['metadata'].to_parquet(self.metadata_path)
 
     def prepare_data(self) -> None:
         self._prepare_data()
