@@ -1,7 +1,6 @@
 # %%
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
-
+from typing import Any
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -12,22 +11,13 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from torchmetrics import Accuracy, MetricCollection, Precision, Recall
 
-
-@dataclass
-class WandbInitConfig:
-    project: str = "eval_rf"
-    entity: str = 'chuv'
-    name: str = None
-    tags: list[str] = None
-    notes: str = ""
-    mode: str = "online"
-    dir: Path = Path("/work/FAC/FBM/DBC/mrapsoma/prometex/logs/wandb").expanduser().resolve()
+from ai4bmr_learn.data_models.WandInitConfig import WandbInitConfig
 
 
 @dataclass
 class Parameters:
     n_estimators: list[int] = field(default_factory=lambda: [50, 100])
-    max_depth: list[int] = field(default_factory=lambda: [None])
+    max_depth: list[int | None] = field(default_factory=lambda: [None])
     min_samples_split: list[int] = field(default_factory=lambda: [2])
     max_features: list[str] = field(default_factory=lambda: ["sqrt"])
     criterion: list[str] = field(default_factory=lambda: ["gini"])
@@ -41,17 +31,13 @@ class SweepConfig:
     parameters: Parameters = field(default_factory=lambda: Parameters())
 
 
+# from ai4bmr_learn.datamodules.DummyTabular import DummyDataModule
+# dm = datamodule = DummyDataModule()
+
 # %%
-def main():
 
-    wandb_init = WandbInitConfig()
-    model = RandomForestClassifier(random_state=42)
-    sweep = SweepConfig()
-    from ai4bmr_learn.datamodules.DummyTabular import DummyDataModule
-    dm = datamodule = DummyDataModule()
 
-    # RUN CONFIGURATION
-    wandb.init(**asdict(wandb_init), config=asdict(sweep))
+def main(sweep: SweepConfig, datamodule: Any, model: Any = None, wandb_init: WandbInitConfig = WandbInitConfig()):
 
     # DATA
     dm = datamodule
@@ -72,25 +58,30 @@ def main():
     num_classes = len(set(y))
 
     # METRICS
-    task = 'multiclass' if num_classes > 2 else 'binary'
-    metrics_train = MetricCollection([
-        Accuracy(task=task, num_classes=num_classes),
-        Precision(task=task, num_classes=num_classes),
-        Recall(task=task, num_classes=num_classes),
-    ], prefix='train/')
-    metrics_test = metrics_train.clone(prefix='test/')
+    task = "multiclass" if num_classes > 2 else "binary"
+    metrics_train = MetricCollection(
+        [
+            Accuracy(task=task, num_classes=num_classes),
+            Precision(task=task, num_classes=num_classes),
+            Recall(task=task, num_classes=num_classes),
+        ],
+        prefix="train/",
+    )
+    metrics_test = metrics_train.clone(prefix="test/")
 
     overall_train = []
     overall_test = []
 
     # MODEL
-    model = RandomForestClassifier(random_state=42)
+    model = RandomForestClassifier(random_state=42) if model is None else model
 
     # SWEEP
-    sweep = SweepConfig()
     param_grid = asdict(sweep.parameters)
-    outer_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    outer_cv = StratifiedKFold(n_splits=sweep.num_outer_cv, shuffle=True, random_state=42)
+    inner_cv = StratifiedKFold(n_splits=sweep.num_inner_cv, shuffle=True, random_state=42)
+
+    # RUN CONFIGURATION
+    wandb.init(**asdict(wandb_init), config=asdict(sweep))
 
     for outer_fold, (train_idx, test_idx) in enumerate(outer_cv.split(x, y)):
         x_train, x_test = x[train_idx], x[test_idx]
@@ -115,7 +106,7 @@ def main():
         y_test_pred = torch.from_numpy(y_test_pred).long()
         y_test = torch.from_numpy(y_test).long()
         scores_test = metrics_test(y_test_pred, y_test)
-        scores_test['outer_fold'] = outer_fold
+        scores_test["outer_fold"] = outer_fold
         wandb.log(scores_test)
         overall_test.append(scores_test)
 
@@ -123,7 +114,7 @@ def main():
         y_train_pred = torch.from_numpy(y_train_pred).long()
         y_train = torch.from_numpy(y_train).long()
         scores_train = metrics_train(y_train_pred, y_train)
-        scores_train['outer_fold'] = outer_fold
+        scores_train["outer_fold"] = outer_fold
         wandb.log(scores_train)
         overall_train.append(scores_train)
 
@@ -133,25 +124,24 @@ def main():
 
         # VISUALIZATIONS
         # 1. Class distribution
-        for panel, data in [('train', y_train), ('test', y_test)]:
+        for panel, data in [("train", y_train), ("test", y_test)]:
             fig, ax = plt.subplots()
             pdat = pd.DataFrame(dict(value=data))
-            sns.countplot(data=pdat, x='value', ax=ax)
-            ax.set_title('Class distribution')
-            wandb.log({f'class_distribution/{panel}': wandb.Image(fig),
-                       'outer_fold': outer_fold})
-            plt.close(fig)dd
+            sns.countplot(data=pdat, x="value", ax=ax)
+            ax.set_title("Class distribution")
+            wandb.log({f"class_distribution/{panel}": wandb.Image(fig), "outer_fold": outer_fold})
+            plt.close(fig)
 
         # 2. Confusion matrix
         from sklearn.metrics import ConfusionMatrixDisplay
-        for panel, y_true, y_pred in [('train', y_train, y_train_pred), ('test', y_test, y_test_pred)]:
+
+        for panel, y_true, y_pred in [("train", y_train, y_train_pred), ("test", y_test, y_test_pred)]:
             fig, ax = plt.subplots()
             ax.set_title(panel)
-            display = ConfusionMatrixDisplay.from_predictions(y_true, y_pred,
-                                                              normalize='true', display_labels=labels,
-                                                              ax=ax, cmap='Blues')
-            wandb.log({f'confusion_matrix/{panel}': wandb.Image(fig),
-                       'outer_fold': outer_fold})
+            display = ConfusionMatrixDisplay.from_predictions(
+                y_true, y_pred, normalize="true", display_labels=labels, ax=ax, cmap="Blues"
+            )
+            wandb.log({f"confusion_matrix/{panel}": wandb.Image(fig), "outer_fold": outer_fold})
             plt.close(fig)
 
         # NOTE: experiment with native plotting functions, keep for now as doc
@@ -172,23 +162,24 @@ def main():
         # plot_feature_importances(model)
 
     # VISUALIZATIONS
-    for panel, data in [('train', overall_train), ('test', overall_test)]:
+    for panel, data in [("train", overall_train), ("test", overall_test)]:
         fig, ax = plt.subplots()
         pdat = pd.DataFrame.from_records(data)
-        pdat = pdat.melt(id_vars='outer_fold')
-        pdat['value'] = pdat.value.astype(float)
-        sns.boxplot(data=pdat, x='variable', y='value', ax=ax)
-        sns.stripplot(data=pdat, x='variable', y='value', hue='outer_fold', ax=ax)
+        pdat = pdat.melt(id_vars="outer_fold")
+        pdat["value"] = pdat.value.astype(float)
+        sns.boxplot(data=pdat, x="variable", y="value", ax=ax)
+        sns.stripplot(data=pdat, x="variable", y="value", hue="outer_fold", ax=ax)
         ax.set_title(panel)
 
-        wandb.log({f'scores/{panel}': wandb.Image(fig)})
+        wandb.log({f"scores/{panel}": wandb.Image(fig)})
         plt.close(fig)
 
     wandb.finish()
 
-main()
 
-# if __name__ == "__main__":
-#     from jsonargparse import auto_cli
-#
-#     auto_cli(main, as_positional=False)
+# main()
+
+if __name__ == "__main__":
+    from jsonargparse import auto_cli
+
+    auto_cli(main, as_positional=False)

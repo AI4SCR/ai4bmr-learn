@@ -14,11 +14,13 @@ class DummyDataModule(TabularDataModule):
         splits_path: Path = None,
         **kwargs
     ):
-        super().__init__(data_path=data_path,
-                         metadata_path=metadata_path,
-                         splits_path=splits_path,
-                         target_column_name=target_column_name,
-                         **kwargs)
+        super().__init__(
+            data_path=data_path,
+            metadata_path=metadata_path,
+            splits_path=splits_path,
+            target_column_name=target_column_name,
+            **kwargs
+        )
 
     def _prepare_data(self) -> None:
         # NOTE: here we load one of our datasets and bring it into the right format for the training that we want to do.

@@ -15,7 +15,7 @@ class TabularDataModule(L.LightningDataModule):
         self,
         data_path: Path,
         metadata_path: Path,
-        target_column_name: str = 'target',
+        target_column_name: str = "target",
         splits_path: Path = None,
         test_size: float = 0.2,
         val_size: float = 0.0,
@@ -77,7 +77,7 @@ class TabularDataModule(L.LightningDataModule):
                 target_column_name=self.target_column_name,
                 test_size=self.test_size,
                 val_size=self.val_size,
-                random_state=self.random_state
+                random_state=self.random_state,
             )
             splits.to_parquet(self.splits_path)
 
