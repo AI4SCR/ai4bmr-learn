@@ -9,12 +9,13 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 
-class DummyDataModule(L.LightningDataModule):
+class TabularDataModule(L.LightningDataModule):
 
     def __init__(
         self,
-        data_path: Path = Path('~/data/ai4bmr-learn/DummyTabular/data.parquet').expanduser().resolve(),
-        metadata_path: Path = Path('~/data/ai4bmr-learn/DummyTabular/metadata.parquet').expanduser().resolve(),
+        data_path: Path,
+        metadata_path: Path,
+        target_column_name: str = 'target',
         splits_path: Path = None,
         test_size: float = 0.2,
         val_size: float = 0.0,
@@ -30,6 +31,7 @@ class DummyDataModule(L.LightningDataModule):
         # CONFIGURE PATHS
         self.data_path = data_path
         self.metadata_path = metadata_path
+        self.target_column_name = target_column_name
         self.splits_path = splits_path or self.metadata_path.parent / "splits.parquet"
 
         # SPLITTING
@@ -56,7 +58,7 @@ class DummyDataModule(L.LightningDataModule):
         metadata = pd.read_parquet(self.metadata_path)
         splits = pd.read_parquet(self.splits_path)
 
-        dataset = TabularDataset(data=data, metadata=metadata)
+        dataset = TabularDataset(data=data, metadata=metadata, target_column_name=self.target_column_name)
 
         self.train_idx = np.flatnonzero(splits[Split.COLUMN_NAME] == Split.TRAIN)
         self.val_idx = np.flatnonzero(splits[Split.COLUMN_NAME] == Split.VAL)
@@ -71,24 +73,16 @@ class DummyDataModule(L.LightningDataModule):
             self.splits_path.parent.mkdir(parents=True, exist_ok=True)
             metadata = pd.read_parquet(self.metadata_path)
             splits = generate_splits(
-                metadata, test_size=self.test_size, val_size=self.val_size, random_state=self.random_state
+                metadata,
+                target_column_name=self.target_column_name,
+                test_size=self.test_size,
+                val_size=self.val_size,
+                random_state=self.random_state
             )
             splits.to_parquet(self.splits_path)
 
     def _prepare_data(self) -> None:
-        # NOTE: here we load one of our datasets and bring it into the right format for the training that we want to do.
-        from ai4bmr_datasets.datasets.DummyTabular import DummyTabular
-
-        ds = DummyTabular(num_samples=1000, num_classes=2, num_features=10)
-        data = ds.load()
-
-        if not self.data_path.exists():
-            self.data_path.parent.mkdir(parents=True, exist_ok=True)
-            data['data'].to_parquet(self.data_path)
-
-        if not self.metadata_path.exists():
-            self.metadata_path.parent.mkdir(parents=True, exist_ok=True)
-            data['metadata'].to_parquet(self.metadata_path)
+        raise NotImplementedError()
 
     def prepare_data(self) -> None:
         self._prepare_data()

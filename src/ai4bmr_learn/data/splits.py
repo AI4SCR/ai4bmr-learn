@@ -78,10 +78,10 @@ def generate_splits(
         f"  num_val: {len(val_indices)}"
     )
 
-    metadata.loc[test_indices, Split.TEST] = "test"
-    metadata.loc[train_indices, Split.TRAIN] = "train"
-    metadata.loc[val_indices, Split.VAL] = "val"
-    assert metadata.split.isna().any() == False
+    metadata.loc[test_indices, Split.COLUMN_NAME] = Split.TEST
+    metadata.loc[train_indices, Split.COLUMN_NAME] = Split.TRAIN
+    metadata.loc[val_indices, Split.COLUMN_NAME] = Split.VAL
+    assert metadata[Split.COLUMN_NAME].isna().any() == False
 
     return metadata
 
