@@ -12,6 +12,8 @@ class TabularDataset(Dataset):
         assert data.index.equals(metadata.index)
         assert metadata.index.duplicated().any() == False
         assert data.isna().any().any() == False
+        assert target_column_name not in data.columns
+        assert target_column_name in metadata.columns
 
         self.data = data
         self.metadata = metadata

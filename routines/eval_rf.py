@@ -128,6 +128,7 @@ def main(sweep: SweepConfig, datamodule: Any, model: Any = None, wandb_init: Wan
             fig, ax = plt.subplots()
             pdat = pd.DataFrame(dict(value=data))
             sns.countplot(data=pdat, x="value", ax=ax)
+            ax.set_xticks(ax.get_xticks(), labels)
             ax.set_title("Class distribution")
             wandb.log({f"class_distribution/{panel}": wandb.Image(fig), "outer_fold": outer_fold})
             plt.close(fig)
