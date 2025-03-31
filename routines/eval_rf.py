@@ -9,7 +9,7 @@ import wandb
 from matplotlib import pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
-from torchmetrics import Accuracy, MetricCollection, Precision, Recall
+from torchmetrics import Accuracy, F1Score, MetricCollection, Precision, Recall
 
 from ai4bmr_learn.data_models.WandInitConfig import WandbInitConfig
 
@@ -37,7 +37,13 @@ class SweepConfig:
 # %%
 
 
-def main(sweep: SweepConfig, datamodule: Any, model: Any = None, wandb_init: WandbInitConfig = WandbInitConfig()):
+# def main(sweep: SweepConfig, datamodule: Any, model: Any = None, wandb_init: WandbInitConfig = WandbInitConfig()):
+def main(
+    sweep: SweepConfig,
+    datamodule: Any,
+    model: Any = None,
+    wandb_init: WandbInitConfig = WandbInitConfig(),
+):
 
     # DATA
     dm = datamodule
@@ -60,11 +66,12 @@ def main(sweep: SweepConfig, datamodule: Any, model: Any = None, wandb_init: Wan
     # METRICS
     task = "multiclass" if num_classes > 2 else "binary"
     metrics_train = MetricCollection(
-        [
-            Accuracy(task=task, num_classes=num_classes),
-            Precision(task=task, num_classes=num_classes),
-            Recall(task=task, num_classes=num_classes),
-        ],
+        {
+            "accuracy": Accuracy(task=task, num_classes=num_classes),
+            "recall": Recall(task=task, num_classes=num_classes),
+            "precision": Precision(task=task, num_classes=num_classes),
+            "f1": F1Score(task=task, num_classes=num_classes),
+        },
         prefix="train/",
     )
     metrics_test = metrics_train.clone(prefix="test/")
@@ -183,4 +190,4 @@ def main(sweep: SweepConfig, datamodule: Any, model: Any = None, wandb_init: Wan
 if __name__ == "__main__":
     from jsonargparse import auto_cli
 
-    auto_cli(main, as_positional=False)
+    auto_cli(main, as_positional=False, fail_untyped=False)
