@@ -36,8 +36,6 @@ class SweepConfig:
 
 # %%
 
-
-# def main(sweep: SweepConfig, datamodule: Any, model: Any = None, wandb_init: WandbInitConfig = WandbInitConfig()):
 def main(
     sweep: SweepConfig,
     datamodule: Any,
