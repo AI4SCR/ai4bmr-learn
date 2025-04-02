@@ -4,7 +4,7 @@ from pathlib import Path
 
 @dataclass
 class WandbInitConfig:
-    project: str = "eval_rf"
+    project: str = "default"
     entity: str = "chuv"
     name: str = None
     tags: list[str] = None

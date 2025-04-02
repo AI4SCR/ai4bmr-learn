@@ -1,25 +1,44 @@
 # %%
+from dataclasses import dataclass
 from pathlib import Path
-from torch import get_num_threads
-from ..data.splits import Split, generate_splits
+
 import lightning as L
 import numpy as np
 import pandas as pd
-import torch
-from torch.utils.data import Dataset, DataLoader
+from loguru import logger
+from torch import get_num_threads
+from torch.utils.data import DataLoader
+
+from ..data.splits import Split, generate_splits
+from ..datasets.MIL import MILDataset
 
 
-class TabularDataModule(L.LightningDataModule):
+@dataclass
+class MILDataModuleConfig:
+    data_dir: Path
+    metadata_path: Path
+    target_column_name: str = "target"
+    splits_path: Path = None
+    test_size: float = 0.2
+    val_size: float = 0.0
+    num_workers: int = None
+    persistent_workers: bool = True
+    shuffle: bool = True
+    pin_memory: bool = True
+    random_state: int = 42
+
+
+class MILDataModule(L.LightningDataModule):
 
     def __init__(
         self,
-        data_path: Path,
+        data_dir: Path,
         metadata_path: Path,
         target_column_name: str = "target",
         splits_path: Path = None,
         test_size: float = 0.2,
         val_size: float = 0.0,
-        batch_size: int = 64,
+        # batch_size: int = 1,  # note: not supported for MIL
         num_workers: int = None,
         persistent_workers: bool = True,
         shuffle: bool = True,
@@ -29,7 +48,7 @@ class TabularDataModule(L.LightningDataModule):
         super().__init__()
 
         # CONFIGURE PATHS
-        self.data_path = data_path
+        self.data_dir = data_dir
         self.metadata_path = metadata_path
         self.target_column_name = target_column_name
         self.splits_path = splits_path or self.metadata_path.parent / "splits.parquet"
@@ -40,7 +59,7 @@ class TabularDataModule(L.LightningDataModule):
         self.random_state = random_state
 
         # DATALOADERS
-        self.batch_size = batch_size
+        self.batch_size = 1
         self.num_workers = num_workers if num_workers is not None else max(0, get_num_threads() - 1)
         self.persistent_workers = persistent_workers if self.num_workers > 0 else False
         self.shuffle = shuffle
@@ -52,20 +71,18 @@ class TabularDataModule(L.LightningDataModule):
 
     def setup(self, stage=None):
         from torch.utils.data import Subset
-        from ..datasets.Tabular import TabularDataset
 
-        data = pd.read_parquet(self.data_path, engine="fastparquet")
-        data = data.convert_dtypes()
+        data = {k.stem: pd.read_parquet(k, engine="fastparquet").values for k in self.data_dir.glob("*.parquet")}
 
+        # NOTE: we use fastparquet because it can preserve cateogrical dtypes for int in contrast to pyarrow
+        #   in addition there is an issue with the dtype of the categories after re-loading, WIP
         metadata = pd.read_parquet(self.metadata_path, engine="fastparquet")
         metadata = metadata.convert_dtypes()
 
         splits = pd.read_parquet(self.splits_path, engine="fastparquet")
         splits = splits.convert_dtypes()
 
-        self.dataset = dataset = TabularDataset(
-            data=data, metadata=metadata, target_column_name=self.target_column_name
-        )
+        self.dataset = dataset = MILDataset(data=data, metadata=metadata, target_column_name=self.target_column_name)
 
         self.train_idx = np.flatnonzero(splits[Split.COLUMN_NAME] == Split.TRAIN)
         self.val_idx = np.flatnonzero(splits[Split.COLUMN_NAME] == Split.VAL)
@@ -76,19 +93,18 @@ class TabularDataModule(L.LightningDataModule):
         self.test_set = Subset(dataset, self.test_idx)
 
     def generate_splits(self, force: bool = False) -> None:
-        if self.splits_path.exists() and not force:
-            return
-
-        self.splits_path.parent.mkdir(parents=True, exist_ok=True)
-        metadata = pd.read_parquet(self.metadata_path)
-        splits = generate_splits(
-            metadata,
-            target_column_name=self.target_column_name,
-            test_size=self.test_size,
-            val_size=self.val_size,
-            random_state=self.random_state,
-        )
-        splits.to_parquet(self.splits_path)
+        if not self.splits_path.exists() or force:
+            logger.info("Generating splits")
+            self.splits_path.parent.mkdir(parents=True, exist_ok=True)
+            metadata = pd.read_parquet(self.metadata_path, engine="fastparquet")
+            splits = generate_splits(
+                metadata,
+                target_column_name=self.target_column_name,
+                test_size=self.test_size,
+                val_size=self.val_size,
+                random_state=self.random_state,
+            )
+            splits.to_parquet(self.splits_path, engine="fastparquet")
 
     def _prepare_data(self) -> None:
         raise NotImplementedError()

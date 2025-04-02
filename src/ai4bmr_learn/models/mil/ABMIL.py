@@ -166,7 +166,7 @@ class ABMILClassifier(nn.Module):
         )
 
     def forward(self, batch, return_raw_attention=False):
-        x = batch["features"]
+        x = batch["x"]
         x = self.pre_attention(x)
         x, attn = self.abmil(
             x
@@ -183,20 +183,23 @@ class ABMILClassifier(nn.Module):
 
 
 # %%
-from torchmetrics.classification import Accuracy, Recall, Precision, F1Score
+from torchmetrics.classification import Accuracy, Recall, Precision, F1Score, ConfusionMatrix
 
 
 class ABMILModule(L.LightningModule):
 
-    def __init__(self, num_classes: int, num_features: int):
+    def __init__(self, num_classes: int, num_features: int, class_weight: torch.tensor = None):
         super().__init__()
+        self.save_hyperparameters()
 
         self.model = ABMILClassifier(num_classes=num_classes, input_feature_dim=num_features)
 
-        self.criterion = nn.CrossEntropyLoss()
+        self.class_weight = class_weight
+        self.criterion = nn.CrossEntropyLoss(weight=class_weight)
 
         # METRICS
-        task = "multiclass" if num_classes > 2 else "binary"
+        # task = "multiclass" if num_classes > 2 else "binary"
+        task = "multiclass"  # NOTE we always use multiclass to be able to pass logits directly
         self.train_metrics = MetricCollection(
             {
                 "accuracy": Accuracy(task=task, num_classes=num_classes),
@@ -247,6 +250,12 @@ class ABMILModule(L.LightningModule):
 
         # loss
         self.log("test_loss", loss.item())
+
+    def predict_step(self, batch, batch_idx):
+        logits = self.model(batch)
+        preds = logits.argmax(dim=1)
+        batch["prediction"] = preds
+        return batch
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=4e-4)

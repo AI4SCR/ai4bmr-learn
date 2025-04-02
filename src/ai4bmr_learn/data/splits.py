@@ -78,16 +78,18 @@ def generate_splits(
         f"  num_val: {len(val_indices)}"
     )
 
-    metadata.loc[test_indices, Split.COLUMN_NAME] = Split.TEST
-    metadata.loc[train_indices, Split.COLUMN_NAME] = Split.TRAIN
-    metadata.loc[val_indices, Split.COLUMN_NAME] = Split.VAL
-    assert metadata[Split.COLUMN_NAME].isna().any() == False
+    # NOTE: we need to use the `.value` otherwise the column names is `Split.COLUM_NAME` after re-load
+    metadata.loc[test_indices, Split.COLUMN_NAME.value] = Split.TEST.value
+    metadata.loc[train_indices, Split.COLUMN_NAME.value] = Split.TRAIN.value
+    metadata.loc[val_indices, Split.COLUMN_NAME.value] = Split.VAL.value
+    assert metadata[Split.COLUMN_NAME.value].isna().any() == False
+    metadata[Split.COLUMN_NAME.value] = metadata[Split.COLUMN_NAME.value].astype("category")
 
     return metadata
 
 
 def has_splits(metadata: pd.DataFrame):
-    return Split.COLUMN_NAME in metadata.columns
+    return Split.COLUMN_NAME.value in metadata.columns
 
 
 def generate_subset(dataset: Dataset, metadata: pd.DataFrame | None, num_samples: int | None = None):
