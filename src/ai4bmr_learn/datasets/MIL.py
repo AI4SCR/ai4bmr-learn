@@ -19,7 +19,7 @@ class MILDataset(Dataset):
 
         assert self.targets.isna().any().any() == False
 
-        self.sample_ids = sorted(self.metadata.index)
+        self.sample_ids = self.metadata.index
         assert set(self.sample_ids) <= set(self.data.keys())
 
         self.num_samples = len(data)
@@ -41,10 +41,10 @@ class MILDataset(Dataset):
         return self.num_samples
 
     def __getitem__(self, idx):
-        sample_id = self.sample_ids[idx]
+        sample_id = self.metadata.index[idx]
         # note: cloned to avoid RuntimeError: Trying to resize storage that is not resizable
         x = torch.tensor(self.data[sample_id]).float()
         target = torch.tensor(self.targets.loc[sample_id])
         target = target.long() if self.is_categorical else target.float()
         metadata = self.metadata.loc[sample_id].to_dict()
-        return dict(x=x, target=target, metadata=metadata)
+        return dict(x=x, target=target, metadata=metadata, sample_id=sample_id)

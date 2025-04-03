@@ -25,7 +25,7 @@ class Parameters:
 @dataclass
 class SweepConfig:
     # method: str = "grid"
-    num_outer_cv: int = 3
+    num_outer_cv: int = 2
     # parameters: Parameters = field(default_factory=lambda: Parameters())
 
 
@@ -33,7 +33,7 @@ class SweepConfig:
 
 
 def main(
-    datamodule: MILDataModuleConfig,
+    datamodule: MILDataModule,
     trainer: TrainerConfig = TrainerConfig(),
     wandb_init: WandbInitConfig = WandbInitConfig(),
 ):
@@ -44,7 +44,7 @@ def main(
     splits_path.parent.mkdir(parents=True, exist_ok=True)
     datamodule.splits_path = splits_path
 
-    dm = MILDataModule(**asdict(datamodule))
+    dm = datamodule
     dm.prepare_data()
     dm.setup()
 

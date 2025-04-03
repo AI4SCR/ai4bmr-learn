@@ -8,8 +8,10 @@ import torch.optim as optim
 from einops import rearrange
 from torchmetrics import MetricCollection
 
-
 # %%
+from dataclasses import dataclass
+
+
 class ABMIL(nn.Module):
     """
     Multi-headed attention network with optional gating. Uses tanh-attention and sigmoid-gating as in ABMIL (https://arxiv.org/abs/1802.04712).
@@ -129,38 +131,37 @@ class ABMIL(nn.Module):
 
 
 # %%
-
-
 class ABMILClassifier(nn.Module):
     def __init__(
         self,
         num_classes: int,
-        input_feature_dim,
-        n_heads=1,
-        head_dim=512,
+        feature_dim=1024,
+        head_dim=256,
+        n_heads=8,
         dropout=0.0,
-        gated=True,
+        n_branches=1,
+        gated=False,
         hidden_dim=256,
     ):
         super().__init__()
 
         self.num_classes = num_classes
 
-        self.pre_attention = nn.Sequential(nn.Linear(input_feature_dim, input_feature_dim), nn.GELU(), nn.Dropout(0.1))
+        self.pre_attention = nn.Sequential(nn.Linear(feature_dim, feature_dim), nn.GELU(), nn.Dropout(0.1))
 
         self.abmil = ABMIL(
             n_heads=n_heads,
-            feature_dim=input_feature_dim,
+            feature_dim=feature_dim,
             head_dim=head_dim,
             dropout=dropout,
             n_branches=1,  # no branching
             gated=gated,
         )
 
-        self.post_attention = nn.Sequential(nn.Linear(input_feature_dim, input_feature_dim), nn.GELU(), nn.Dropout(0.1))
+        self.post_attention = nn.Sequential(nn.Linear(feature_dim, feature_dim), nn.GELU(), nn.Dropout(0.1))
 
         self.classifier = nn.Sequential(
-            nn.Linear(input_feature_dim, hidden_dim),
+            nn.Linear(feature_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, num_classes),
         )
@@ -184,33 +185,45 @@ class ABMILClassifier(nn.Module):
 
 # %%
 from torchmetrics.classification import Accuracy, Recall, Precision, F1Score, ConfusionMatrix
+from ai4bmr_learn.metrics.classification import get_metric_collection
 
 
 class ABMILModule(L.LightningModule):
 
-    def __init__(self, num_classes: int, num_features: int, class_weight: torch.tensor = None):
+    def __init__(
+        self,
+        num_classes: int,
+        feature_dim=1024,
+        head_dim=256,
+        n_heads=8,
+        dropout=0.0,
+        n_branches=1,
+        gated=False,
+        hidden_dim=256,
+        class_weight: torch.tensor = None,
+    ):
         super().__init__()
         self.save_hyperparameters()
 
-        self.model = ABMILClassifier(num_classes=num_classes, input_feature_dim=num_features)
+        self.model = ABMILClassifier(
+            num_classes=num_classes,
+            feature_dim=feature_dim,
+            n_heads=n_heads,
+            head_dim=head_dim,
+            dropout=dropout,
+            gated=gated,
+            hidden_dim=hidden_dim,
+        )
 
         self.class_weight = class_weight
         self.criterion = nn.CrossEntropyLoss(weight=class_weight)
 
         # METRICS
         # task = "multiclass" if num_classes > 2 else "binary"
-        task = "multiclass"  # NOTE we always use multiclass to be able to pass logits directly
-        self.train_metrics = MetricCollection(
-            {
-                "accuracy": Accuracy(task=task, num_classes=num_classes),
-                "recall": Recall(task=task, num_classes=num_classes),
-                "precision": Precision(task=task, num_classes=num_classes),
-                "f1": F1Score(task=task, num_classes=num_classes),
-            },
-            prefix="train/",
-        )
-        self.valid_metrics = self.train_metrics.clone(prefix="val/")
-        self.test_metrics = self.train_metrics.clone(prefix="test/")
+        metrics = get_metric_collection(num_classes=num_classes)
+        self.train_metrics = metrics.clone(prefix="train/")
+        self.valid_metrics = metrics.clone(prefix="val/")
+        self.test_metrics = metrics.clone(prefix="test/")
 
     def _shared_step(self, batch, batch_idx):
         logits = self.model(batch)
@@ -225,7 +238,7 @@ class ABMILModule(L.LightningModule):
 
         # metrics
         self.train_metrics(logits, targets)
-        self.log_dict(self.train_metrics, on_epoch=True)
+        self.log_dict(self.train_metrics, on_epoch=True, on_step=False)
 
         # loss
         self.log("train_loss", loss.item(), on_epoch=True)
@@ -236,7 +249,7 @@ class ABMILModule(L.LightningModule):
 
         # metrics
         self.valid_metrics(logits, targets)
-        self.log_dict(self.valid_metrics, on_epoch=True)
+        self.log_dict(self.valid_metrics, on_epoch=True, on_step=False)
 
         # loss
         self.log("val_loss_epoch", loss.item(), on_epoch=True)
@@ -246,7 +259,7 @@ class ABMILModule(L.LightningModule):
 
         # metrics
         self.test_metrics(logits, targets)
-        self.log_dict(self.test_metrics, on_epoch=True)
+        self.log_dict(self.test_metrics, on_epoch=True, on_step=False)
 
         # loss
         self.log("test_loss", loss.item())

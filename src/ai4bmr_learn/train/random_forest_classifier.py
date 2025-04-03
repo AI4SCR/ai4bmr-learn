@@ -108,15 +108,16 @@ def random_forest_classifier(
         # VISUALIZATIONS
         # 1. Class distribution
         from ..logging.class_distribution import log_class_distribution
-
-        records = [("train", y_train), ("test", y_test)]
-        log_class_distribution(records=records, labels=labels, outer_fold=outer_fold)
-
-        # 2. Confusion matrix
-        records = [("train", y_train, y_train_pred), ("test", y_test, y_test_pred)]
         from ..logging.confusion_matrix import log_confusion_matrix
 
-        log_confusion_matrix(records=records, labels=labels, outer_fold=outer_fold)
+        records = [
+            dict(split="train", y_true=y_train, y_pred=y_train_pred, labels=labels, outer_fold=outer_fold),
+            dict(split="test", y_true=y_test, y_pred=y_test_pred, labels=labels, outer_fold=outer_fold),
+        ]
+        log_class_distribution(records=records)
+
+        # 2. Confusion matrix
+        log_confusion_matrix(records=records)
 
     # VISUALIZATIONS
     from ..logging.log_scores_boxplot import log_scores_boxplot

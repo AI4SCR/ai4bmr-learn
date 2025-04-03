@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 
 from ..data.splits import Split, generate_splits
 from ..datasets.MIL import MILDataset
+from ai4bmr_learn.datasets.MIL import MILDataset
 
 
 @dataclass
@@ -34,8 +35,8 @@ class MILDataModule(L.LightningDataModule):
         self,
         data_dir: Path,
         metadata_path: Path,
-        target_column_name: str = "target",
         splits_path: Path = None,
+        target_column_name: str = "target",
         test_size: float = 0.2,
         val_size: float = 0.0,
         # batch_size: int = 1,  # note: not supported for MIL
@@ -50,8 +51,8 @@ class MILDataModule(L.LightningDataModule):
         # CONFIGURE PATHS
         self.data_dir = data_dir
         self.metadata_path = metadata_path
-        self.target_column_name = target_column_name
         self.splits_path = splits_path or self.metadata_path.parent / "splits.parquet"
+        self.target_column_name = target_column_name
 
         # SPLITTING
         self.test_size = test_size
@@ -72,17 +73,22 @@ class MILDataModule(L.LightningDataModule):
     def setup(self, stage=None):
         from torch.utils.data import Subset
 
-        data = {k.stem: pd.read_parquet(k, engine="fastparquet").values for k in self.data_dir.glob("*.parquet")}
-
         # NOTE: we use fastparquet because it can preserve cateogrical dtypes for int in contrast to pyarrow
         #   in addition there is an issue with the dtype of the categories after re-loading, WIP
-        metadata = pd.read_parquet(self.metadata_path, engine="fastparquet")
-        metadata = metadata.convert_dtypes()
+        # metadata = pd.read_parquet(self.metadata_path, engine="fastparquet")
+        # metadata = metadata.convert_dtypes()
 
         splits = pd.read_parquet(self.splits_path, engine="fastparquet")
         splits = splits.convert_dtypes()
 
-        self.dataset = dataset = MILDataset(data=data, metadata=metadata, target_column_name=self.target_column_name)
+        # ATTENTION: IT IS OF HIGHEST IMPORTANCE THAT THE SPLITS AND METADATA ARE ALIGNED
+        #   OTHERWISE THE CREATED SUBSET INDICES WILL RETRIVE THE WRONG SAMPLE
+        # metadata, splits = metadata.align(splits, axis=0, join="inner")
+        # assert metadata.index.equals(splits.index)
+
+        data = {i: pd.read_parquet(self.data_dir / f"{i}.parquet", engine="fastparquet").values for i in splits.index}
+
+        self.dataset = dataset = MILDataset(data=data, metadata=splits, target_column_name=self.target_column_name)
 
         self.train_idx = np.flatnonzero(splits[Split.COLUMN_NAME] == Split.TRAIN)
         self.val_idx = np.flatnonzero(splits[Split.COLUMN_NAME] == Split.VAL)

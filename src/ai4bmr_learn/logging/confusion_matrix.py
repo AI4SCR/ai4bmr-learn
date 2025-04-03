@@ -3,10 +3,15 @@ from matplotlib import pyplot as plt
 import wandb
 
 
-def log_confusion_matrix(records: list, labels: list, outer_fold: int = 0):
-    for panel, y_true, y_pred in records:
+def log_confusion_matrix(records: list, metadata: dict = None):
+    metadata = metadata or {}
+    for item in records:
+        split = item["split"]
+        labels = item["labels"]
+        y_true, y_pred = item["y_true"], item["y_pred"]
+
         fig, axs = plt.subplots(1, 2, figsize=(10, 5))
-        fig.suptitle(panel)
+        fig.suptitle(split)
 
         axs[0].set_title(f"count")
         display = ConfusionMatrixDisplay.from_predictions(
@@ -18,6 +23,7 @@ def log_confusion_matrix(records: list, labels: list, outer_fold: int = 0):
             y_true, y_pred, normalize="true", display_labels=labels, ax=axs[1], cmap="Blues"
         )
         fig.tight_layout()
-        wandb.log({f"confusion_matrix/{panel}": wandb.Image(fig), "outer_fold": outer_fold})
+
+        wandb.log({f"confusion_matrix/{split}": wandb.Image(fig), **metadata})
 
         plt.close(fig)

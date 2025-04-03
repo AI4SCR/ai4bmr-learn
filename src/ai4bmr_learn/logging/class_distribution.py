@@ -4,15 +4,20 @@ import seaborn as sns
 import wandb
 
 
-def log_class_distribution(records: list, labels: list, outer_fold: int = 0):
-    for panel, true, pred in records:
+def log_class_distribution(records: list, metadata: dict = None):
+    for item in records:
         fig, ax = plt.subplots()
 
-        pdat = pd.DataFrame(dict(value=true))
+        split = item["split"]
+        labels = item["labels"]
+        y_true = item["y_true"]
+
+        pdat = pd.DataFrame(dict(value=y_true))
         sns.countplot(data=pdat, x="value", ax=ax)
 
         ax.set_xticks(ax.get_xticks(), labels)
         ax.set_title("Class distribution")
 
-        wandb.log({f"class_distribution/{panel}": wandb.Image(fig), "outer_fold": outer_fold})
+        metadata = metadata or {}
+        wandb.log({f"class_distribution/{split}": wandb.Image(fig), **metadata})
         plt.close(fig)

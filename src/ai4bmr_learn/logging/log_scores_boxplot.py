@@ -2,20 +2,33 @@ from matplotlib import pyplot as plt
 import pandas as pd
 import seaborn as sns
 import wandb
+from ai4bmr_core.utils.plotting import get_grid_dims
 
 
-def log_scores_boxplot(records: list):
-    for panel, data in records:
-        fig, ax = plt.subplots()
+def log_scores_boxplot(records: list, metadata: dict = None):
+    metadata = metadata or {}
 
-        pdat = pd.DataFrame.from_records(data)
-        pdat = pdat.melt(id_vars="outer_fold")
+    for item in records:
+
+        split, scores = item["split"], item["scores"]
+        pdat = scores.melt(id_vars="outer_fold")
         pdat["value"] = pdat.value.astype(float)
 
-        sns.boxplot(data=pdat, x="variable", y="value", ax=ax)
-        sns.stripplot(data=pdat, x="variable", y="value", hue="outer_fold", ax=ax)
+        num_vars = pdat.variable.nunique()
+        nrows, ncols = get_grid_dims(num_vars)
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(ncols * 5, nrows * 3))
+        fig.suptitle(split)
 
-        ax.set_title(panel)
+        for ax, (grp_name, grp_data) in zip(axs.flat, pdat.groupby("variable")):
+            sns.boxplot(data=grp_data, x="variable", y="value", ax=ax)
+            sns.stripplot(data=grp_data, x="variable", y="value", hue="outer_fold", ax=ax)
+            ax.set_title(grp_name)
 
-        wandb.log({f"scores/{panel}": wandb.Image(fig)})
+        for ax in axs.flatten()[num_vars:]:
+            ax.set_axis_off()
+
+        fig.tight_layout()
+        # fig.show()
+
+        wandb.log({f"scores/{split}": wandb.Image(fig), **metadata})
         plt.close(fig)

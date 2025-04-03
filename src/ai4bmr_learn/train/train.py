@@ -18,7 +18,9 @@ class TrainerConfig:
     fast_dev_run: bool = False
 
 
-def get_trainer(config: TrainerConfig, ckpt_dir: Path, metadata: dict | None = None):
+def get_trainer(
+    config: TrainerConfig, ckpt_dir: Path, monitor_metric_name="val_loss_epoch", metadata: dict | None = None
+):
 
     metadata = metadata or {}
 
@@ -27,7 +29,6 @@ def get_trainer(config: TrainerConfig, ckpt_dir: Path, metadata: dict | None = N
 
     # CALLBACKS
     # ckpt_dir = metadata.get("ckpt_dir")
-    monitor_metric_name = "val_loss_epoch"
     fname = f"{{epoch}}-{{{monitor_metric_name}:.4f}}"
 
     model_ckpt = ModelCheckpoint(
