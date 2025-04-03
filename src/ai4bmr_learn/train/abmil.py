@@ -4,7 +4,6 @@ from pathlib import Path
 
 import torch
 import wandb
-from loguru import logger
 from lightning import seed_everything
 from torchmetrics import MetricCollection
 from ai4bmr_learn.data_models.WandInitConfig import WandbInitConfig
@@ -13,13 +12,7 @@ from ai4bmr_learn.models.mil.ABMIL import ABMILModule
 from ai4bmr_learn.train.train import TrainerConfig, get_trainer
 
 from ..models.utils import collect_model_stats
-from ..logging.class_distribution import log_class_distribution
-from ..logging.confusion_matrix import log_confusion_matrix
 from ..metrics.classification import get_metric_collection
-
-# from ai4bmr_learn.metrics.classification import get_metric_collection
-# from ai4bmr_learn.models.utils import collect_model_stats
-
 
 @dataclass
 class ABMILConfig:
@@ -30,17 +23,6 @@ class ABMILConfig:
     gated: bool = False
     hidden_dim: int = 256
 
-
-# %%
-def setup_wandb(wandb_init: WandbInitConfig, config=None):
-    if wandb.run is not None:
-        logger.info(f"Active wandb run found ({wandb.run.name}). Skipping wandb init.")
-        return True
-    else:
-        wandb.init(**asdict(wandb_init), config=config)
-        return False
-
-
 # %%
 def abmil(
     datamodule: MILDataModule,
@@ -50,9 +32,7 @@ def abmil(
     trainer: TrainerConfig = TrainerConfig(),
     wandb_init: WandbInitConfig = WandbInitConfig(),
     metric_collection: MetricCollection = None,
-    viz_collection: tuple | None = ("confusion_matrix", "class_distribution"),
     metadata: dict = None,
-    metric_identifier: str = "scores",
 ):
 
     metadata = metadata or {}
@@ -74,8 +54,8 @@ def abmil(
 
     # METRICS
     metric_collection = metric_collection or get_metric_collection(num_classes=dm.dataset.num_classes)
-    metrics_train = metric_collection.clone(prefix=f"{metric_identifier}:train/")
-    metrics_test = metrics_train.clone(prefix=f"{metric_identifier}:test/")
+    metrics_train = metric_collection.clone(prefix="scores:train/")
+    metrics_test = metrics_train.clone(prefix=f"scores:test/")
 
     # MODEL
     module = ABMILModule(
@@ -112,8 +92,6 @@ def abmil(
     test_results = trainer.predict(model=best_model, dataloaders=dm.test_dataloader())
     y_test_pred = torch.concat([i["prediction"] for i in test_results])
     y_test = torch.concat([i["target"] for i in test_results])
-    # TODO: remove after testing
-    assert (dm.dataset.metadata.set_index("split").loc["test"].values.flatten() == y_test.numpy()).all()
 
     train_results = trainer.predict(model=best_model, dataloaders=dm.train_dataloader())
     y_train_pred = torch.concat([i["prediction"] for i in train_results])
@@ -127,17 +105,6 @@ def abmil(
     train_scores = metrics_train(y_train_pred, y_train)
     wandb.log({**train_scores, **metadata})
 
-    # VISUALIZATION
-    records = [
-        dict(split="train", y_true=y_train, y_pred=y_train_pred, labels=labels),
-        dict(split="test", y_true=y_test, y_pred=y_test_pred, labels=labels),
-    ]
-
-    if (viz_collection is not None) and ("class_distribution" in viz_collection):
-        log_class_distribution(records=records, metadata=metadata)
-    if (viz_collection is not None) and ("confusion_matrix" in viz_collection):
-        log_confusion_matrix(records=records, metadata=metadata)
-
     if not has_active_run:
         wandb.config.update({"ckpt_dir": str(ckpt_dir)})
         wandb.config.update({"best_model_path": str(best_model_path)})
@@ -146,4 +113,4 @@ def abmil(
     train_scores = {k: v.item() for k, v in train_scores.items()}
     test_scores = {k: v.item() for k, v in test_scores.items()}
 
-    return train_scores, test_scores, model_stats
+    return dict(train_scores=train_scores, test_scores=test_scores, model_stats=model_stats)

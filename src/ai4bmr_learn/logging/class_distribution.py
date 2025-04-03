@@ -5,10 +5,11 @@ import wandb
 
 
 def log_class_distribution(records: list, metadata: dict = None):
+    metadata = metadata or {}
     for item in records:
         fig, ax = plt.subplots()
 
-        split = item["split"]
+        name = item["name"]
         labels = item["labels"]
         y_true = item["y_true"]
 
@@ -16,8 +17,7 @@ def log_class_distribution(records: list, metadata: dict = None):
         sns.countplot(data=pdat, x="value", ax=ax)
 
         ax.set_xticks(ax.get_xticks(), labels)
-        ax.set_title("Class distribution")
+        ax.set_title(f"Class distribution")
 
-        metadata = metadata or {}
-        wandb.log({f"class_distribution/{split}": wandb.Image(fig), **metadata})
+        wandb.log({name: wandb.Image(fig), **metadata})
         plt.close(fig)

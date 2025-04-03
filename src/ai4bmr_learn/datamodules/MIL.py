@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 
 from ..data.splits import Split, generate_splits
 from ..datasets.MIL import MILDataset
+
 from ai4bmr_learn.datasets.MIL import MILDataset
 
 
@@ -75,16 +76,8 @@ class MILDataModule(L.LightningDataModule):
 
         # NOTE: we use fastparquet because it can preserve cateogrical dtypes for int in contrast to pyarrow
         #   in addition there is an issue with the dtype of the categories after re-loading, WIP
-        # metadata = pd.read_parquet(self.metadata_path, engine="fastparquet")
-        # metadata = metadata.convert_dtypes()
-
         splits = pd.read_parquet(self.splits_path, engine="fastparquet")
         splits = splits.convert_dtypes()
-
-        # ATTENTION: IT IS OF HIGHEST IMPORTANCE THAT THE SPLITS AND METADATA ARE ALIGNED
-        #   OTHERWISE THE CREATED SUBSET INDICES WILL RETRIVE THE WRONG SAMPLE
-        # metadata, splits = metadata.align(splits, axis=0, join="inner")
-        # assert metadata.index.equals(splits.index)
 
         data = {i: pd.read_parquet(self.data_dir / f"{i}.parquet", engine="fastparquet").values for i in splits.index}
 

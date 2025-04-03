@@ -10,14 +10,13 @@ def log_scores_boxplot(records: list, metadata: dict = None):
 
     for item in records:
 
-        split, scores = item["split"], item["scores"]
+        name, scores = item["name"], item["scores"]
         pdat = scores.melt(id_vars="outer_fold")
         pdat["value"] = pdat.value.astype(float)
 
         num_vars = pdat.variable.nunique()
         nrows, ncols = get_grid_dims(num_vars)
         fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(ncols * 5, nrows * 3))
-        fig.suptitle(split)
 
         for ax, (grp_name, grp_data) in zip(axs.flat, pdat.groupby("variable")):
             sns.boxplot(data=grp_data, x="variable", y="value", ax=ax)
@@ -30,5 +29,5 @@ def log_scores_boxplot(records: list, metadata: dict = None):
         fig.tight_layout()
         # fig.show()
 
-        wandb.log({f"scores/{split}": wandb.Image(fig), **metadata})
+        wandb.log({name: wandb.Image(fig), **metadata})
         plt.close(fig)

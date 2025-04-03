@@ -6,12 +6,11 @@ import wandb
 def log_confusion_matrix(records: list, metadata: dict = None):
     metadata = metadata or {}
     for item in records:
-        split = item["split"]
+        name = item["name"]
         labels = item["labels"]
         y_true, y_pred = item["y_true"], item["y_pred"]
 
         fig, axs = plt.subplots(1, 2, figsize=(10, 5))
-        fig.suptitle(split)
 
         axs[0].set_title(f"count")
         display = ConfusionMatrixDisplay.from_predictions(
@@ -24,6 +23,6 @@ def log_confusion_matrix(records: list, metadata: dict = None):
         )
         fig.tight_layout()
 
-        wandb.log({f"confusion_matrix/{split}": wandb.Image(fig), **metadata})
+        wandb.log({name: wandb.Image(fig), **metadata})
 
         plt.close(fig)

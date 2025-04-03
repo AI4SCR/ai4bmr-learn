@@ -1,6 +1,7 @@
 # %%
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from loguru import logger
 
 import pandas as pd
 import wandb
@@ -18,9 +19,9 @@ from ai4bmr_learn.datamodules.DummyMIL import DummyMIL
 @dataclass
 class Parameters:
     # TODO: add more tunable parameters
-    head_dim: list[int] = field(default_factory=lambda: [16, 32])
+    head_dim: list[int] = field(default_factory=lambda: [16, 32, 64, 128])
     n_heads: list[int] = field(default_factory=lambda: [1, 4])
-    hidden_dim: list[int] = field(default_factory=lambda: [16, 32])
+    hidden_dim: list[int] = field(default_factory=lambda: [32])
     dropout: list[float] = field(default_factory=lambda: [0.0, 0.5])
     gated: list[bool] = field(default_factory=lambda: [False])
 
@@ -43,6 +44,9 @@ def get_best_param_index(scores: pd.DataFrame, scoring: str, maximize=True):
 
 
 def create_fold_dataset(dataset, *, sweep: SweepConfig, save_dir: Path):
+    save_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Creating folds in {save_dir}")
+
     metadata = dataset.metadata
     target_column_name = dataset.target_column_name
     for outer_fold in range(sweep.num_outer_cv):
@@ -96,7 +100,7 @@ def abmil_cv(
     param_grid = list(ParameterGrid(param_grid=asdict(sweep.parameters)))
     for outer_fold in range(sweep.num_outer_cv):
 
-        for param_idx, params in enumerate(param_grid[:3]):
+        for param_idx, params in enumerate(param_grid):
             model = ABMILConfig(**params)
 
             for inner_fold in range(sweep.num_inner_cv):
@@ -163,8 +167,8 @@ def abmil_cv(
 
     # %%
     records = [
-        dict(split="train", scores=pd.DataFrame(overall_train)),
-        dict(split="test", scores=pd.DataFrame(overall_test)),
+        dict(name="train", scores=pd.DataFrame(overall_train)),
+        dict(name="test", scores=pd.DataFrame(overall_test)),
     ]
     log_scores_boxplot(records=records)
 
@@ -173,3 +177,5 @@ def abmil_cv(
     wandb.log({"scores": table})
 
     wandb.finish()
+
+    return scores

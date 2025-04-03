@@ -1,7 +1,7 @@
 # %%
 from dataclasses import asdict, dataclass, field
 from typing import Any
-
+from ..datamodules.Tabular import TabularDataModule
 import torch
 import wandb
 from ai4bmr_learn.data_models.WandInitConfig import WandbInitConfig
@@ -9,7 +9,7 @@ from ai4bmr_learn.metrics.classification import get_metric_collection
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from torchmetrics import MetricCollection
-
+import pandas as pd
 
 @dataclass
 class Parameters:
@@ -23,17 +23,17 @@ class Parameters:
 @dataclass
 class SweepConfig:
     method: str = "grid"
-    num_outer_cv: int = 3
-    num_inner_cv: int = 3
+    num_outer_cv: int = 5
+    num_inner_cv: int = 5
     parameters: Parameters = field(default_factory=lambda: Parameters())
 
 
 # %%
-def random_forest_classifier(
-    datamodule: Any,
+def rf_classifier(
+    datamodule: TabularDataModule,
     sweep: SweepConfig,
     wandb_init: WandbInitConfig = WandbInitConfig(),
-    metric_collection: MetricCollection = None,
+    metrics: MetricCollection = None,
 ):
 
     # DATA
@@ -41,19 +41,20 @@ def random_forest_classifier(
     dm.prepare_data()
     dm.setup()
 
-    x = dm.dataset.data
-    y = dm.dataset.targets
+    x = dm.dataset.data.values
+    y = dm.dataset.targets.values
 
     labels = dm.train_set.dataset.labels
     num_classes = dm.dataset.num_classes
 
     # METRICS
-    metric_collection = metric_collection or get_metric_collection(num_classes=num_classes)
-    metrics_train = metric_collection.clone(prefix="rf:train/")
-    metrics_test = metrics_train.clone(prefix="rf:test/")
+    metrics = metrics or get_metric_collection(num_classes=num_classes)
+    metrics_train = metrics.clone(prefix="train/")
+    metrics_test = metrics_train.clone(prefix="test/")
 
     overall_train = []
     overall_test = []
+    best_params = []
 
     # MODEL
     model = RandomForestClassifier(random_state=42)
@@ -64,7 +65,8 @@ def random_forest_classifier(
     inner_cv = StratifiedKFold(n_splits=sweep.num_inner_cv, shuffle=True, random_state=42)
 
     # RUN CONFIGURATION
-    wandb.init(**asdict(wandb_init), config=asdict(sweep))
+    config = {**asdict(sweep), "target_column_name": dm.target_column_name}
+    wandb.init(**asdict(wandb_init), config=config)
 
     for outer_fold, (train_idx, test_idx) in enumerate(outer_cv.split(x, y)):
         x_train, x_test = x[train_idx], x[test_idx]
@@ -74,7 +76,7 @@ def random_forest_classifier(
         grid = GridSearchCV(
             model,
             param_grid=param_grid,
-            scoring="accuracy",
+            scoring="balanced_accuracy",
             cv=inner_cv,
             n_jobs=-1,
         )
@@ -84,6 +86,11 @@ def random_forest_classifier(
         best_model = grid.best_estimator_
         y_test_pred = best_model.predict(x_test)
         y_train_pred = best_model.predict(x_train)
+
+        # BEST PARAMETERS
+        best_params_ = grid.best_params_
+        best_params_["outer_fold"] = outer_fold
+        best_params.append(best_params_)
 
         # TEST SCORES
         y_test_pred = torch.from_numpy(y_test_pred).long()
@@ -109,20 +116,32 @@ def random_forest_classifier(
         # 1. Class distribution
         from ..logging.class_distribution import log_class_distribution
         from ..logging.confusion_matrix import log_confusion_matrix
-
+        metadata = dict(outer_fold=outer_fold)
         records = [
-            dict(split="train", y_true=y_train, y_pred=y_train_pred, labels=labels, outer_fold=outer_fold),
-            dict(split="test", y_true=y_test, y_pred=y_test_pred, labels=labels, outer_fold=outer_fold),
+            dict(name=f"train:class_distribution/outer-fold={outer_fold}", y_true=y_train, y_pred=y_train_pred, labels=labels),
+            dict(name=f"test:class_distribution/outer-fold={outer_fold}", y_true=y_test, y_pred=y_test_pred, labels=labels),
         ]
-        log_class_distribution(records=records)
+        log_class_distribution(records=records, metadata=metadata)
 
         # 2. Confusion matrix
-        log_confusion_matrix(records=records)
+        records = [
+            dict(name=f"train:confusion_matrix/outer-fold={outer_fold}", y_true=y_train, y_pred=y_train_pred,
+                 labels=labels),
+            dict(name=f"test:confusion_matrix/outer-fold={outer_fold}", y_true=y_test, y_pred=y_test_pred,
+                 labels=labels),
+        ]
+        log_confusion_matrix(records=records, metadata=metadata)
 
     # VISUALIZATIONS
     from ..logging.log_scores_boxplot import log_scores_boxplot
-
-    records = [("train", overall_train), ("test", overall_test)]
+    records = [
+        dict(name="train:scores/", scores=pd.DataFrame(overall_train)),
+        dict(name="test:scores/", scores=pd.DataFrame(overall_test)),
+    ]
     log_scores_boxplot(records=records)
+
+    best_params = pd.DataFrame(best_params)
+    table = wandb.Table(dataframe=best_params)
+    wandb.log({"best_params": table})
 
     wandb.finish()

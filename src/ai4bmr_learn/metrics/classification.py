@@ -8,7 +8,8 @@ def get_metric_collection(num_classes: int) -> MetricCollection:
             "accuracy-macro": Accuracy(task="multiclass", average="macro", num_classes=num_classes),
             "recall": Recall(task="multiclass", num_classes=num_classes),
             "precision": Precision(task="multiclass", num_classes=num_classes),
-            "f1": F1Score(task="multiclass", num_classes=num_classes),
+            "f1-weighted": F1Score(task="multiclass", average="weighted", num_classes=num_classes),
+            "f1-macro": F1Score(task="multiclass", average="macro", num_classes=num_classes),
         },
     )
     return collection

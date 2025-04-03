@@ -15,8 +15,8 @@ class TabularDataModule(L.LightningDataModule):
         self,
         data_path: Path,
         metadata_path: Path,
-        target_column_name: str = "target",
         splits_path: Path = None,
+        target_column_name: str = "target",
         test_size: float = 0.2,
         val_size: float = 0.0,
         batch_size: int = 64,
@@ -57,14 +57,13 @@ class TabularDataModule(L.LightningDataModule):
         data = pd.read_parquet(self.data_path, engine="fastparquet")
         data = data.convert_dtypes()
 
-        metadata = pd.read_parquet(self.metadata_path, engine="fastparquet")
-        metadata = metadata.convert_dtypes()
-
         splits = pd.read_parquet(self.splits_path, engine="fastparquet")
         splits = splits.convert_dtypes()
 
+        data, splits = data.align(splits, axis=0, join="inner")
+
         self.dataset = dataset = TabularDataset(
-            data=data, metadata=metadata, target_column_name=self.target_column_name
+            data=data, metadata=splits, target_column_name=self.target_column_name
         )
 
         self.train_idx = np.flatnonzero(splits[Split.COLUMN_NAME] == Split.TRAIN)
@@ -80,7 +79,7 @@ class TabularDataModule(L.LightningDataModule):
             return
 
         self.splits_path.parent.mkdir(parents=True, exist_ok=True)
-        metadata = pd.read_parquet(self.metadata_path)
+        metadata = pd.read_parquet(self.metadata_path, engine="fastparquet")
         splits = generate_splits(
             metadata,
             target_column_name=self.target_column_name,
@@ -88,7 +87,7 @@ class TabularDataModule(L.LightningDataModule):
             val_size=self.val_size,
             random_state=self.random_state,
         )
-        splits.to_parquet(self.splits_path)
+        splits.to_parquet(self.splits_path, engine="fastparquet")
 
     def _prepare_data(self) -> None:
         raise NotImplementedError()
