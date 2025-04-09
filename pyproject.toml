@@ -27,6 +27,10 @@ timm = "*"
 flatdict = "*"
 jsonargparse = "^4.24.1"
 pydantic = "^2.6.1"
+igraph="*"
+anndata="*"
+leidenalg="*"
+rapids-singlecell="*"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"
