@@ -1,7 +1,7 @@
 # %%
 from dataclasses import asdict, dataclass, field
 from typing import Any
-from ..datamodules.Tabular import TabularDataModule
+from ai4bmr_learn.datamodules.Tabular import TabularDataModule
 import torch
 import wandb
 from ai4bmr_learn.data_models.WandInitConfig import WandbInitConfig
@@ -10,6 +10,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from torchmetrics import MetricCollection
 import pandas as pd
+
 
 @dataclass
 class Parameters:
@@ -116,24 +117,41 @@ def rf_classifier(
         # 1. Class distribution
         from ..logging.class_distribution import log_class_distribution
         from ..logging.confusion_matrix import log_confusion_matrix
+
         metadata = dict(outer_fold=outer_fold)
         records = [
-            dict(name=f"train:class_distribution/outer-fold={outer_fold}", y_true=y_train, y_pred=y_train_pred, labels=labels),
-            dict(name=f"test:class_distribution/outer-fold={outer_fold}", y_true=y_test, y_pred=y_test_pred, labels=labels),
+            dict(
+                name=f"train:class_distribution/outer-fold={outer_fold}",
+                y_true=y_train,
+                y_pred=y_train_pred,
+                labels=labels,
+            ),
+            dict(
+                name=f"test:class_distribution/outer-fold={outer_fold}",
+                y_true=y_test,
+                y_pred=y_test_pred,
+                labels=labels,
+            ),
         ]
         log_class_distribution(records=records, metadata=metadata)
 
         # 2. Confusion matrix
         records = [
-            dict(name=f"train:confusion_matrix/outer-fold={outer_fold}", y_true=y_train, y_pred=y_train_pred,
-                 labels=labels),
-            dict(name=f"test:confusion_matrix/outer-fold={outer_fold}", y_true=y_test, y_pred=y_test_pred,
-                 labels=labels),
+            dict(
+                name=f"train:confusion_matrix/outer-fold={outer_fold}",
+                y_true=y_train,
+                y_pred=y_train_pred,
+                labels=labels,
+            ),
+            dict(
+                name=f"test:confusion_matrix/outer-fold={outer_fold}", y_true=y_test, y_pred=y_test_pred, labels=labels
+            ),
         ]
         log_confusion_matrix(records=records, metadata=metadata)
 
     # VISUALIZATIONS
     from ..logging.log_scores_boxplot import log_scores_boxplot
+
     records = [
         dict(name="train:scores/", scores=pd.DataFrame(overall_train)),
         dict(name="test:scores/", scores=pd.DataFrame(overall_test)),

@@ -10,7 +10,7 @@ from ai4bmr_learn.data.splits import generate_splits, Split
 from ai4bmr_learn.data_models.WandInitConfig import WandbInitConfig
 from ai4bmr_learn.datamodules.MIL import MILDataModule
 from ai4bmr_learn.logging.log_scores_boxplot import log_scores_boxplot
-from ai4bmr_learn.train.abmil import ABMILConfig, abmil
+from ai4bmr_learn.routines.abmil import ABMILConfig, abmil
 from ai4bmr_learn.train.train import TrainerConfig
 from ai4bmr_learn.datamodules.DummyMIL import DummyMIL
 

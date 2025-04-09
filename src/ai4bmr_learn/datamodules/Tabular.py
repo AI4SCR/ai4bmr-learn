@@ -62,9 +62,7 @@ class TabularDataModule(L.LightningDataModule):
 
         data, splits = data.align(splits, axis=0, join="inner")
 
-        self.dataset = dataset = TabularDataset(
-            data=data, metadata=splits, target_column_name=self.target_column_name
-        )
+        self.dataset = dataset = TabularDataset(data=data, metadata=splits, target_column_name=self.target_column_name)
 
         self.train_idx = np.flatnonzero(splits[Split.COLUMN_NAME] == Split.TRAIN)
         self.val_idx = np.flatnonzero(splits[Split.COLUMN_NAME] == Split.VAL)

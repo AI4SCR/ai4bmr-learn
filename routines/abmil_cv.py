@@ -1,17 +1,14 @@
 # %%
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
-from loguru import logger
 
 import pandas as pd
 import wandb
 from sklearn.model_selection import ParameterGrid
 
-from ai4bmr_learn.data.splits import generate_splits, Split
 from ai4bmr_learn.data_models.WandInitConfig import WandbInitConfig
 from ai4bmr_learn.datamodules.MIL import MILDataModule
 from ai4bmr_learn.logging.log_scores_boxplot import log_scores_boxplot
-from ai4bmr_learn.train.abmil import ABMILConfig, abmil
+from ai4bmr_learn.routines.abmil import ABMILConfig, abmil
 from ai4bmr_learn.train.train import TrainerConfig
 from ai4bmr_learn.datamodules.DummyMIL import DummyMIL
 
@@ -28,8 +25,8 @@ class Parameters:
 
 @dataclass
 class SweepConfig:
-    test_size: float = 0.2
     train_size: float = 0.8
+    test_size: float = 0.2
     val_size: float = 0.2
     num_outer_cv: int = 2
     num_inner_cv: int = 2
@@ -41,30 +38,6 @@ def get_best_param_index(scores: pd.DataFrame, scoring: str, maximize=True):
     best_idx = scores.groupby(["outer_fold", "parameter_index"])[scoring].mean().sort_values(ascending=maximize)
     best_idx = best_idx.reset_index().parameter_index.iloc[-1]
     return best_idx
-
-
-def create_fold_dataset(dataset, *, sweep: SweepConfig, save_dir: Path):
-    save_dir.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Creating folds in {save_dir}")
-
-    metadata = dataset.metadata
-    target_column_name = dataset.target_column_name
-    for outer_fold in range(sweep.num_outer_cv):
-        outer_metadata = generate_splits(
-            metadata, target_column_name=target_column_name, test_size=sweep.test_size, random_state=outer_fold
-        )
-        outer_metadata.to_parquet(save_dir / f"outer_fold={outer_fold}.parquet", engine="fastparquet")
-
-        for inner_fold in range(sweep.num_inner_cv):
-            filter_ = outer_metadata[Split.COLUMN_NAME] == Split.TRAIN
-            inner_metadata = outer_metadata[filter_]
-            inner_metadata = generate_splits(
-                inner_metadata, target_column_name=target_column_name, test_size=sweep.val_size, random_state=inner_fold
-            )
-
-            inner_metadata.to_parquet(
-                save_dir / f"outer_fold={outer_fold}-inner_fold={inner_fold}.parquet", engine="fastparquet"
-            )
 
 
 class MILCVDataModule(MILDataModule):

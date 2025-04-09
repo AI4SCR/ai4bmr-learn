@@ -1,4 +1,4 @@
-from ai4bmr_learn.train.abmil import abmil
+from ai4bmr_learn.routines.abmil import abmil
 from ai4bmr_learn.datamodules.DummyMIL import DummyMIL
 from ai4bmr_learn.train.train import TrainerConfig
 

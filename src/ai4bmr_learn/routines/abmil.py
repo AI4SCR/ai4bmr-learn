@@ -11,8 +11,10 @@ from ai4bmr_learn.datamodules.MIL import MILDataModule
 from ai4bmr_learn.models.mil.ABMIL import ABMILModule
 from ai4bmr_learn.train.train import TrainerConfig, get_trainer
 
-from ..models.utils import collect_model_stats
-from ..metrics.classification import get_metric_collection
+from ai4bmr_learn.models.utils import collect_model_stats
+from ai4bmr_learn.metrics.classification import get_metric_collection
+from ..train.utils import setup_wandb
+
 
 @dataclass
 class ABMILConfig:
@@ -22,6 +24,7 @@ class ABMILConfig:
     n_branches: int = 1
     gated: bool = False
     hidden_dim: int = 256
+
 
 # %%
 def abmil(
@@ -76,10 +79,8 @@ def abmil(
     }
     has_active_run = setup_wandb(wandb_init=wandb_init, config=config)
 
-    # METADATA
-    ckpt_dir = Path(wandb.run.dir) / "checkpoints" / wandb_init.project / wandb.run.name
-
     # TRAIN
+    ckpt_dir = Path(wandb.run.dir) / "checkpoints" / wandb_init.project / wandb.run.name
     trainer = get_trainer(config=trainer, monitor_metric_name=monitor_metric_name, ckpt_dir=ckpt_dir)
     seed_everything(42, workers=True)
     trainer.fit(model=module, datamodule=dm)
@@ -105,10 +106,9 @@ def abmil(
     train_scores = metrics_train(y_train_pred, y_train)
     wandb.log({**train_scores, **metadata})
 
-    if not has_active_run:
-        wandb.config.update({"ckpt_dir": str(ckpt_dir)})
-        wandb.config.update({"best_model_path": str(best_model_path)})
-        wandb.finish()
+    wandb.config.update({"ckpt_dir": str(ckpt_dir)})
+    wandb.config.update({"best_model_path": str(best_model_path)})
+    wandb.finish()
 
     train_scores = {k: v.item() for k, v in train_scores.items()}
     test_scores = {k: v.item() for k, v in test_scores.items()}

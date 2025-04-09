@@ -74,7 +74,7 @@ class MILDataModule(L.LightningDataModule):
     def setup(self, stage=None):
         from torch.utils.data import Subset
 
-        # NOTE: we use fastparquet because it can preserve cateogrical dtypes for int in contrast to pyarrow
+        # NOTE: we use fastparquet because it can preserve categorical dtypes for int in contrast to pyarrow
         #   in addition there is an issue with the dtype of the categories after re-loading, WIP
         splits = pd.read_parquet(self.splits_path, engine="fastparquet")
         splits = splits.convert_dtypes()
