@@ -32,7 +32,7 @@ class MILDataset(Dataset):
             # NOTE: we use the codes to ensure that the targets are integers
             self.targets = self.targets.cat.codes
             self.num_classes = len(self.labels)
-            self.class_distribution = torch.tensor(np.bincount(self.targets))
+            self.class_distribution = torch.tensor(np.bincount(self.targets), dtype=torch.long)
         else:
             self.is_categorical = False
             self.labels = self.num_classes = self.label_to_index = self.class_distribution = None
@@ -42,9 +42,11 @@ class MILDataset(Dataset):
 
     def __getitem__(self, idx):
         sample_id = self.metadata.index[idx]
-        # note: cloned to avoid RuntimeError: Trying to resize storage that is not resizable
-        x = torch.tensor(self.data[sample_id]).float()
-        target = torch.tensor(self.targets.loc[sample_id])
-        target = target.long() if self.is_categorical else target.float()
+        # note: don't use from_numpy to avoid RuntimeError: Trying to resize storage that is not resizable
+        x = torch.tensor(self.data[sample_id], dtype=torch.float)
+
+        dtype = torch.long if self.is_categorical else torch.float
+        target = torch.tensor(self.targets.loc[sample_id], dtype=dtype)
+
         metadata = self.metadata.loc[sample_id].to_dict()
         return dict(x=x, target=target, metadata=metadata, sample_id=sample_id)

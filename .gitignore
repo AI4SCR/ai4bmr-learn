@@ -301,4 +301,4 @@ _version.py
 
 *.zarr
 *.pkl
-*.parquet
+*.parquetwandb

@@ -1,5 +1,6 @@
 import torch
 
+
 def reduce_to_rgb(tokens):
     from sklearn.decomposition import PCA
     from sklearn.preprocessing import MinMaxScaler
@@ -10,8 +11,11 @@ def reduce_to_rgb(tokens):
 
     return tokens
 
+
 from ai4bmr_core.utils.plotting import channel_to_rgba
-def token_to_color(image_size: tuple[int, int], tokens, coords, alpha=0.5, cmap_name: str = "gray", patch_size = None):
+
+
+def token_to_color(image_size: tuple[int, int], tokens, coords, alpha=0.5, cmap_name: str = "gray", patch_size=None):
     import einops
     from torch import nn
     from visualization.multi_channel_image import normalize_
@@ -26,22 +30,13 @@ def token_to_color(image_size: tuple[int, int], tokens, coords, alpha=0.5, cmap_
     height, width = image_size[-2:]
     attn = torch.zeros((3, height, width))
     for coord, token in zip(coords, tokens):
-        top, left = coord['top'], coord['left']
+        top, left = coord["top"], coord["left"]
         attn[:, top : top + patch_size, left : left + patch_size] = token
 
     return attn
 
 
-def viz_tokens(
-    channel,
-    tokens,
-    coords,
-    patch_size,
-    alpha=0.5,
-    cmap_name: str = "gray",
-    grid_mode=False,
-    rgb = None
-):
+def viz_tokens(channel, tokens, coords, patch_size, alpha=0.5, cmap_name: str = "gray", grid_mode=False, rgb=None):
     # WIP: visualize the single tokens not only the summary tokens.
     import einops
     from torch import nn
@@ -54,9 +49,7 @@ def viz_tokens(
 
     tokens = tokens.reshape(-1, num_dim)  # concat all embeddings
     tokens = reduce_to_rgb(tokens=tokens)
-    tokens = tokens.reshape(
-        num_patches, num_tokens_per_patch, -1
-    )  # shape back to B, N, C
+    tokens = tokens.reshape(num_patches, num_tokens_per_patch, -1)  # shape back to B, N, C
 
     num_tokens_per_dim = num_tokens_per_patch**0.5
     assert int(num_tokens_per_dim) == num_tokens_per_dim

@@ -38,11 +38,13 @@ def cluster(
         csr = mapper.graph_
     elif graph_method == "knn":
         from sklearn.neighbors import kneighbors_graph
+
         metric = "euclidean"
-        csr = kneighbors_graph(data, n_neighbors=n_neighbors, mode='distance', metric=metric, include_self=False)
+        csr = kneighbors_graph(data, n_neighbors=n_neighbors, mode="distance", metric=metric, include_self=False)
         # assert False, 'we need to convert distance to weights'
     elif graph_method == "scanpy":
         from anndata import AnnData
+
         if cuda.is_available():
             logger.info("GPU available")
             import rapids_singlecell as sc
@@ -97,6 +99,7 @@ def csr_to_ig(csr: scipy.sparse.csr_matrix, directed=False, weighted=True):
     g.es["weight"] = weights
     return g
 
+
 def get_leiden_membership(G, resolution: float = 1):
     partition = la.find_partition(
         G,
@@ -106,8 +109,10 @@ def get_leiden_membership(G, resolution: float = 1):
     )
     return partition.membership
 
+
 def get_igraph_membership(G, resolution: float = 1):
     return G.community_leiden(objective_function="modularity", resolution=resolution, weights="weight").membership
+
 
 def get_kmeans_membership(data, n_clusters: int = 20):
     from sklearn.cluster import KMeans

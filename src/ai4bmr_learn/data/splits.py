@@ -7,6 +7,7 @@ from sklearn.model_selection import StratifiedShuffleSplit, ShuffleSplit
 from torch.utils.data import Dataset
 from pathlib import Path
 
+
 class Split(str, Enum):
     COLUMN_NAME = "split"
     TRAIN = "train"
@@ -83,27 +84,34 @@ def generate_splits(
     metadata.loc[train_indices, Split.COLUMN_NAME.value] = Split.TRAIN.value
     metadata.loc[val_indices, Split.COLUMN_NAME.value] = Split.VAL.value
     assert metadata[Split.COLUMN_NAME.value].isna().any() == False
-    metadata[Split.COLUMN_NAME.value] = metadata[Split.COLUMN_NAME.value].astype("category")
+    dtype = pd.CategoricalDtype(categories=[Split.TRAIN.value, Split.VAL.value, Split.TEST.value], ordered=False)
+    metadata[Split.COLUMN_NAME.value] = metadata[Split.COLUMN_NAME.value].astype(dtype)
 
     return metadata
 
 
-def create_nested_cv_datasets(*,
-                        metadata: pd.DataFrame,
-                        num_outer_cv: int = 5,
-                        num_inner_cv: int = 5,
-                        target_column_name: str = "target",
-                        test_size: float | None = None,
-                        val_size: float | None = None,
-                        stratify: bool = False,
-                        random_state: int = 42,
-                        save_dir: Path):
+def create_nested_cv_datasets(
+    *,
+    metadata: pd.DataFrame,
+    num_outer_cv: int = 5,
+    num_inner_cv: int = 5,
+    target_column_name: str = "target",
+    test_size: float | None = None,
+    val_size: float | None = None,
+    stratify: bool = False,
+    random_state: int = 42,
+    save_dir: Path,
+):
     save_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Creating folds in {save_dir}")
 
     for outer_fold in range(num_outer_cv):
         outer_metadata = generate_splits(
-            metadata, target_column_name=target_column_name, test_size=test_size, random_state=outer_fold
+            metadata,
+            target_column_name=target_column_name,
+            test_size=test_size,
+            stratify=stratify,
+            random_state=outer_fold,
         )
         outer_metadata.to_parquet(save_dir / f"outer_fold={outer_fold}.parquet", engine="fastparquet")
 
@@ -111,7 +119,11 @@ def create_nested_cv_datasets(*,
             filter_ = outer_metadata[Split.COLUMN_NAME] == Split.TRAIN
             inner_metadata = outer_metadata[filter_]
             inner_metadata = generate_splits(
-                inner_metadata, target_column_name=target_column_name, test_size=val_size, random_state=inner_fold
+                inner_metadata,
+                target_column_name=target_column_name,
+                test_size=test_size,
+                val_size=val_size,
+                random_state=inner_fold,
             )
 
             inner_metadata.to_parquet(
