@@ -70,14 +70,14 @@ def abmil(
     model_stats = collect_model_stats(module)
 
     # RUN CONFIGURATION
-    config = {
+    wandb_init.config.update({
         **asdict(model),
         **model_stats,
         **asdict(trainer),
         "weighted": weighted,
         "target_column_name": dm.target_column_name,
-    }
-    has_active_run = setup_wandb(wandb_init=wandb_init, config=config)
+    })
+    has_active_run = setup_wandb(wandb_init=wandb_init)
 
     # TRAIN
     ckpt_dir = Path(wandb.run.dir) / "checkpoints" / wandb_init.project / wandb.run.name

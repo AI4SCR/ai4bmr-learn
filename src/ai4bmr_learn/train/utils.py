@@ -6,10 +6,10 @@ from loguru import logger
 from ai4bmr_learn.data_models import WandbInitConfig
 
 
-def setup_wandb(wandb_init: WandbInitConfig, config=None):
+def setup_wandb(wandb_init: WandbInitConfig):
     if wandb.run is not None:
         logger.info(f"Active wandb run found ({wandb.run.name}). Skipping wandb init.")
         return True
     else:
-        wandb.init(**asdict(wandb_init), config=config)
+        wandb.init(**asdict(wandb_init))
         return False

@@ -11,3 +11,4 @@ class WandbInitConfig:
     notes: str = ""
     mode: str = "online"
     dir: Path = Path("/work/FAC/FBM/DBC/mrapsoma/prometex/logs/wandb").expanduser().resolve()
+    config: dict = None
