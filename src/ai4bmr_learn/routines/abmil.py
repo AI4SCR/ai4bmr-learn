@@ -108,9 +108,10 @@ def abmil(
 
     wandb.config.update({"ckpt_dir": str(ckpt_dir)})
     wandb.config.update({"best_model_path": str(best_model_path)})
+    config = {k:v for k,v in wandb.config.items()}
     wandb.finish()
 
     train_scores = {k: v.item() for k, v in train_scores.items()}
     test_scores = {k: v.item() for k, v in test_scores.items()}
 
-    return dict(train_scores=train_scores, test_scores=test_scores, model_stats=model_stats)
+    return dict(**train_scores, **test_scores, **config)

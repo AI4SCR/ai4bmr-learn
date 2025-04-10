@@ -21,7 +21,7 @@ def generate_splits(
     test_size: float | None = None,
     val_size: float | None = None,
     stratify: bool = False,
-    random_state: int = 42,
+    random_state: int | None = None,
     verbose: int = 1,
 ):
     assert test_size or val_size, "Either `test_size` or `val_size` must be provided"
@@ -99,7 +99,6 @@ def create_nested_cv_datasets(
     test_size: float | None = None,
     val_size: float | None = None,
     stratify: bool = False,
-    random_state: int = 42,
     save_dir: Path,
 ):
     save_dir.mkdir(parents=True, exist_ok=True)
