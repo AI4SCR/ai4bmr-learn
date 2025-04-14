@@ -2,7 +2,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from ai4bmr_learn.data.splits import generate_splits, Split
+from ai4bmr_learn.data.splits import Split, generate_splits
 
 
 def create_nested_cv_datasets(

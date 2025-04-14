@@ -1,5 +1,6 @@
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
 import lightning as L
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger

@@ -1,8 +1,7 @@
-from matplotlib import pyplot as plt
-import pandas as pd
 import seaborn as sns
 import wandb
 from ai4bmr_core.utils.plotting import get_grid_dims
+from matplotlib import pyplot as plt
 
 
 def log_scores_boxplot(records: list, metadata: dict = None):

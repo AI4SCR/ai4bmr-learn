@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -11,4 +11,4 @@ class WandbInitConfig:
     notes: str = ""
     mode: str = "online"
     dir: Path = Path("/work/FAC/FBM/DBC/mrapsoma/prometex/logs/wandb").expanduser().resolve()
-    config: dict = None
+    config: dict = field(default_factory=dict)

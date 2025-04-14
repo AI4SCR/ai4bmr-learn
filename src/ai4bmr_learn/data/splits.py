@@ -1,11 +1,11 @@
 from enum import Enum
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from loguru import logger
-from sklearn.model_selection import StratifiedShuffleSplit, ShuffleSplit
+from sklearn.model_selection import ShuffleSplit, StratifiedShuffleSplit
 from torch.utils.data import Dataset
-from pathlib import Path
 
 
 class Split(str, Enum):

@@ -1,6 +1,6 @@
-from sklearn.metrics import ConfusionMatrixDisplay
-from matplotlib import pyplot as plt
 import wandb
+from matplotlib import pyplot as plt
+from sklearn.metrics import ConfusionMatrixDisplay
 
 
 def log_confusion_matrix(records: list, metadata: dict = None):

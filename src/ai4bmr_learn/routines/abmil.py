@@ -6,13 +6,13 @@ import torch
 import wandb
 from lightning import seed_everything
 from torchmetrics import MetricCollection
+
 from ai4bmr_learn.data_models.WandInitConfig import WandbInitConfig
 from ai4bmr_learn.datamodules.MIL import MILDataModule
-from ai4bmr_learn.models.mil.ABMIL import ABMILModule
-from ai4bmr_learn.train.train import TrainerConfig, get_trainer
-
-from ai4bmr_learn.models.utils import collect_model_stats
 from ai4bmr_learn.metrics.classification import get_metric_collection
+from ai4bmr_learn.models.mil.ABMIL import ABMILModule
+from ai4bmr_learn.models.utils import collect_model_stats
+from ai4bmr_learn.train.train import TrainerConfig, get_trainer
 from ..train.utils import setup_wandb
 
 
@@ -24,6 +24,10 @@ class ABMILConfig:
     n_branches: int = 1
     gated: bool = False
     hidden_dim: int = 256
+    pre_attention: bool = False,
+    pre_attention_dim: int | None = None,
+    post_attention: bool = False
+
 
 
 # %%

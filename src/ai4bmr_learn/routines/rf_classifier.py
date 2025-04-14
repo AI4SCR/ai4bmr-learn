@@ -1,15 +1,16 @@
 # %%
 from dataclasses import asdict, dataclass, field
-from typing import Any
-from ai4bmr_learn.datamodules.Tabular import TabularDataModule
+
+import pandas as pd
 import torch
 import wandb
-from ai4bmr_learn.data_models.WandInitConfig import WandbInitConfig
-from ai4bmr_learn.metrics.classification import get_metric_collection
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from torchmetrics import MetricCollection
-import pandas as pd
+
+from ai4bmr_learn.data_models.WandInitConfig import WandbInitConfig
+from ai4bmr_learn.datamodules.Tabular import TabularDataModule
+from ai4bmr_learn.metrics.classification import get_metric_collection
 
 
 @dataclass

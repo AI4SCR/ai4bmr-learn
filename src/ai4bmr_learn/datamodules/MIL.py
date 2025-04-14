@@ -9,10 +9,8 @@ from loguru import logger
 from torch import get_num_threads
 from torch.utils.data import DataLoader
 
-from ..data.splits import Split, generate_splits
-from ..datasets.MIL import MILDataset
-
 from ai4bmr_learn.datasets.MIL import MILDataset
+from ..data.splits import Split, generate_splits
 
 
 @dataclass

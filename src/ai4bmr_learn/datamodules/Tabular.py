@@ -1,12 +1,13 @@
 # %%
 from pathlib import Path
-from torch import get_num_threads
-from ..data.splits import Split, generate_splits
+
 import lightning as L
 import numpy as np
 import pandas as pd
-import torch
-from torch.utils.data import Dataset, DataLoader
+from torch import get_num_threads
+from torch.utils.data import DataLoader
+
+from ..data.splits import Split, generate_splits
 
 
 class TabularDataModule(L.LightningDataModule):

@@ -1,11 +1,13 @@
-from ai4bmr_learn.routines.abmil import abmil, ABMILConfig
-from ai4bmr_learn.datamodules.DummyMIL import DummyMIL
-from ai4bmr_learn.train.train import TrainerConfig
-from ai4bmr_learn.data_models import WandbInitConfig
-from ai4bmr_learn.datamodules.NestedCV import NestedCV
 from datetime import datetime
-from sklearn.model_selection import ParameterGrid
+
 import pandas as pd
+from sklearn.model_selection import ParameterGrid
+
+from ai4bmr_learn.data_models import WandbInitConfig
+from ai4bmr_learn.datamodules.DummyMIL import DummyMIL
+from ai4bmr_learn.datamodules.NestedCV import NestedCV
+from ai4bmr_learn.routines.abmil import ABMILConfig, abmil
+from ai4bmr_learn.train.train import TrainerConfig
 
 # %% DATA
 dm = DummyMIL()
@@ -28,7 +30,7 @@ param_grid = {
 param_grid = list(ParameterGrid(param_grid))
 
 # %% CROSS-VALIDATION
-trainer = TrainerConfig(max_epochs=2, log_every_n_steps=1)
+trainer = TrainerConfig(max_epochs=2, log_every_n_steps=50)
 timestamp = datetime.now().strftime("%Y%m%d-%H:%M")
 metric_for_best_model = "scores:test/f1-macro"
 for outer_fold in range(ncv.num_outer_cv):

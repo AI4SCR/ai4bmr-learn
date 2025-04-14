@@ -1,4 +1,5 @@
 # copy & paste from: https://github.com/mahmoodlab/TRIDENT/blob/main/trident/slide_encoder_models/load.py and referenced sources
+# with some extensions to increase flexibility like pre/post_attention
 
 import lightning as L
 import torch
@@ -6,12 +7,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from einops import rearrange
-from torchmetrics import MetricCollection
+
 
 # %%
-from dataclasses import dataclass
-
-
 class ABMIL(nn.Module):
     """
     Multi-headed attention network with optional gating. Uses tanh-attention and sigmoid-gating as in ABMIL (https://arxiv.org/abs/1802.04712).
@@ -65,14 +63,14 @@ class ABMIL(nn.Module):
         """
 
         assert (
-            features.dim() == 3
+                features.dim() == 3
         ), f"Input features must be 3-dimensional (batch_size x num_images x feature_dim). Got {features.shape} instead."
         if attn_mask is not None:
             assert (
-                attn_mask.dim() == 2
+                    attn_mask.dim() == 2
             ), f"Attention mask must be 2-dimensional (batch_size x num_images). Got {attn_mask.shape} instead."
             assert (
-                features.shape[:2] == attn_mask.shape
+                    features.shape[:2] == attn_mask.shape
             ), f"Batch size and number of images must match between features and mask. Got {features.shape[:2]} and {attn_mask.shape} instead."
 
         # Get attention scores for each head
@@ -133,35 +131,46 @@ class ABMIL(nn.Module):
 # %%
 class ABMILClassifier(nn.Module):
     def __init__(
-        self,
-        num_classes: int,
-        feature_dim=1024,
-        head_dim=256,
-        n_heads=8,
-        dropout=0.0,
-        n_branches=1,
-        gated=False,
-        hidden_dim=256,
+            self,
+            num_classes: int,
+            feature_dim=1024,
+            head_dim=256,
+            n_heads=1,
+            dropout=0.0,
+            gated=False,
+            n_branches=1,
+            hidden_dim=256,
+            pre_attention: bool = False,
+            pre_attention_dim: int | None = None,
+            post_attention=False,
     ):
         super().__init__()
 
         self.num_classes = num_classes
+        dim = feature_dim
 
-        self.pre_attention = nn.Sequential(nn.Linear(feature_dim, feature_dim), nn.GELU(), nn.Dropout(0.1))
+        if pre_attention:
+            dim = feature_dim if pre_attention_dim is None else pre_attention_dim
+            self.pre_attention = nn.Sequential(nn.Linear(feature_dim, dim), nn.GELU(), nn.Dropout(0.1))
+        else:
+            self.pre_attention = nn.Identity()
 
         self.abmil = ABMIL(
             n_heads=n_heads,
-            feature_dim=feature_dim,
+            feature_dim=dim,
             head_dim=head_dim,
             dropout=dropout,
-            n_branches=1,  # no branching
+            n_branches=n_branches,
             gated=gated,
         )
 
-        self.post_attention = nn.Sequential(nn.Linear(feature_dim, feature_dim), nn.GELU(), nn.Dropout(0.1))
+        if post_attention:
+            self.post_attention = nn.Sequential(nn.Linear(dim, dim), nn.GELU(), nn.Dropout(0.1))
+        else:
+            self.post_attention = nn.Identity()
 
         self.classifier = nn.Sequential(
-            nn.Linear(feature_dim, hidden_dim),
+            nn.Linear(dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, num_classes),
         )
@@ -184,23 +193,25 @@ class ABMILClassifier(nn.Module):
 
 
 # %%
-from torchmetrics.classification import Accuracy, Recall, Precision, F1Score, ConfusionMatrix
 from ai4bmr_learn.metrics.classification import get_metric_collection
 
 
 class ABMILModule(L.LightningModule):
 
     def __init__(
-        self,
-        num_classes: int,
-        feature_dim=1024,
-        head_dim=256,
-        n_heads=8,
-        dropout=0.0,
-        n_branches=1,
-        gated=False,
-        hidden_dim=256,
-        class_weight: torch.tensor = None,
+            self,
+            num_classes: int,
+            feature_dim=1024,
+            head_dim=256,
+            n_heads=1,
+            dropout=0.0,
+            n_branches=1,
+            gated=False,
+            hidden_dim=256,
+            pre_attention=False,
+            pre_attention_dim=None,
+            post_attention=False,
+            class_weight: torch.tensor = None,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -213,6 +224,9 @@ class ABMILModule(L.LightningModule):
             dropout=dropout,
             gated=gated,
             hidden_dim=hidden_dim,
+            pre_attention=pre_attention,
+            pre_attention_dim=pre_attention_dim,
+            post_attention=post_attention,
         )
 
         self.class_weight = class_weight

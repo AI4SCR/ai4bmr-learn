@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import scipy.sparse
 import umap
-from numba import cuda
 from loguru import logger
+from numba import cuda
 
 
 def cluster(
