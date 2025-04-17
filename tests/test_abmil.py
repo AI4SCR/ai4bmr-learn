@@ -10,29 +10,30 @@ abmil(datamodule=dm, trainer=trainer)
 # %%
 from ai4bmr_learn.models.mil.ABMIL import ABMILModule
 import torchinfo
+
 module = ABMILModule(
-        num_classes=2,
-        feature_dim=1024,
-        class_weight=None,
-        head_dim=4,
-        n_heads=1,
-        dropout=0.0,
-        hidden_dim=4,
-        pre_attention=False,
-        pre_attention_dim=None,
-        post_attention=False,
-    )
+    num_classes=2,
+    feature_dim=1024,
+    class_weight=None,
+    head_dim=4,
+    n_heads=1,
+    dropout=0.0,
+    hidden_dim=4,
+    pre_attention=False,
+    pre_attention_dim=None,
+    post_attention=False,
+)
 torchinfo.summary(module, verbose=0)
 
 module = ABMILModule(
-        num_classes=2,
-        feature_dim=1024,
-        class_weight=None,
-        head_dim=2,
-        n_heads=1,
-        # dropout=0.0,
-        hidden_dim=2,
-        pre_attention_dim=None,
-        post_attention=False,
-    )
+    num_classes=2,
+    feature_dim=1024,
+    class_weight=None,
+    head_dim=2,
+    n_heads=1,
+    # dropout=0.0,
+    hidden_dim=2,
+    pre_attention_dim=None,
+    post_attention=False,
+)
 torchinfo.summary(module, verbose=0)

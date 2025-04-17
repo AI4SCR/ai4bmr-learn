@@ -24,10 +24,9 @@ class ABMILConfig:
     n_branches: int = 1
     gated: bool = False
     hidden_dim: int = 256
-    pre_attention: bool = False,
-    pre_attention_dim: int | None = None,
+    pre_attention: bool = (False,)
+    pre_attention_dim: int | None = (None,)
     post_attention: bool = False
-
 
 
 # %%
@@ -74,13 +73,15 @@ def abmil(
     model_stats = collect_model_stats(module)
 
     # RUN CONFIGURATION
-    wandb_init.config.update({
-        **asdict(model),
-        **model_stats,
-        **asdict(trainer),
-        "weighted": weighted,
-        "target_column_name": dm.target_column_name,
-    })
+    wandb_init.config.update(
+        {
+            **asdict(model),
+            **model_stats,
+            **asdict(trainer),
+            "weighted": weighted,
+            "target_column_name": dm.target_column_name,
+        }
+    )
     has_active_run = setup_wandb(wandb_init=wandb_init)
 
     # TRAIN
@@ -112,7 +113,7 @@ def abmil(
 
     wandb.config.update({"ckpt_dir": str(ckpt_dir)})
     wandb.config.update({"best_model_path": str(best_model_path)})
-    config = {k:v for k,v in wandb.config.items()}
+    config = {k: v for k, v in wandb.config.items()}
     wandb.finish()
 
     train_scores = {k: v.item() for k, v in train_scores.items()}

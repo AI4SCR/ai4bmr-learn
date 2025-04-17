@@ -10,7 +10,9 @@ class NestedCV:
     def __init__(
         self,
         *,
-        metadata: pd.DataFrame, save_dir: Path, force: bool = False,
+        metadata: pd.DataFrame,
+        save_dir: Path,
+        force: bool = False,
         num_outer_cv: int = 5,
         num_inner_cv: int = 5,
         target_column_name: str | None = None,
@@ -22,7 +24,7 @@ class NestedCV:
         self.num_outer_cv = num_outer_cv
         self.num_inner_cv = num_inner_cv
         self.save_dir = save_dir
-        self.target_column_name: str = None,
+        self.target_column_name: str = (None,)
         self.test_size = test_size
         self.val_size = val_size
         self.target_column_name = target_column_name

@@ -63,14 +63,14 @@ class ABMIL(nn.Module):
         """
 
         assert (
-                features.dim() == 3
+            features.dim() == 3
         ), f"Input features must be 3-dimensional (batch_size x num_images x feature_dim). Got {features.shape} instead."
         if attn_mask is not None:
             assert (
-                    attn_mask.dim() == 2
+                attn_mask.dim() == 2
             ), f"Attention mask must be 2-dimensional (batch_size x num_images). Got {attn_mask.shape} instead."
             assert (
-                    features.shape[:2] == attn_mask.shape
+                features.shape[:2] == attn_mask.shape
             ), f"Batch size and number of images must match between features and mask. Got {features.shape[:2]} and {attn_mask.shape} instead."
 
         # Get attention scores for each head
@@ -131,18 +131,18 @@ class ABMIL(nn.Module):
 # %%
 class ABMILClassifier(nn.Module):
     def __init__(
-            self,
-            num_classes: int,
-            feature_dim=1024,
-            head_dim=256,
-            n_heads=1,
-            dropout=0.0,
-            gated=False,
-            n_branches=1,
-            hidden_dim=256,
-            pre_attention: bool = False,
-            pre_attention_dim: int | None = None,
-            post_attention=False,
+        self,
+        num_classes: int,
+        feature_dim=1024,
+        head_dim=256,
+        n_heads=1,
+        dropout=0.0,
+        gated=False,
+        n_branches=1,
+        hidden_dim=256,
+        pre_attention: bool = False,
+        pre_attention_dim: int | None = None,
+        post_attention=False,
     ):
         super().__init__()
 
@@ -199,19 +199,19 @@ from ai4bmr_learn.metrics.classification import get_metric_collection
 class ABMILModule(L.LightningModule):
 
     def __init__(
-            self,
-            num_classes: int,
-            feature_dim=1024,
-            head_dim=256,
-            n_heads=1,
-            dropout=0.0,
-            n_branches=1,
-            gated=False,
-            hidden_dim=256,
-            pre_attention=False,
-            pre_attention_dim=None,
-            post_attention=False,
-            class_weight: torch.tensor = None,
+        self,
+        num_classes: int,
+        feature_dim=1024,
+        head_dim=256,
+        n_heads=1,
+        dropout=0.0,
+        n_branches=1,
+        gated=False,
+        hidden_dim=256,
+        pre_attention=False,
+        pre_attention_dim=None,
+        post_attention=False,
+        class_weight: torch.tensor = None,
     ):
         super().__init__()
         self.save_hyperparameters()

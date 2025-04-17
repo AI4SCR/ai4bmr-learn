@@ -31,6 +31,7 @@ class TabularDataset(Dataset):
             # NOTE: we use the codes to ensure that the targets are integers
             self.targets = self.targets.cat.codes
             self.num_classes = len(self.labels)
+            self.class_distribution = torch.tensor(np.bincount(self.targets), dtype=torch.long)
         else:
             self.is_categorical = False
             self.labels = self.num_classes = self.label_to_index = None
