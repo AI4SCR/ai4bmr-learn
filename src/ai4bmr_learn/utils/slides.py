@@ -21,3 +21,5 @@ def get_mpp(slide: OpenSlide):
     assert mpp_x == mpp_y
 
     return mpp_x
+
+
