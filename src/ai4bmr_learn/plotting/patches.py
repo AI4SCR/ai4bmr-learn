@@ -1,10 +1,11 @@
-import matplotlib.pyplot as plt
 from ai4bmr_learn.data_models.Coordinate import BaseCoordinate
-import geopandas as gpd
+from ai4bmr_learn.utils.images import get_thumbnail_size_and_scale
+
 import numpy as np
+from PIL.Image import Image
 
 def draw_coords(
-    canvas: np.ndarray,
+    canvas: np.ndarray | Image,
     coords: list[BaseCoordinate],
     scale_factor: float = 1,
     thickness: int | None = None,
@@ -25,18 +26,20 @@ def draw_coords(
 
     return canvas
 
-def draw_contours(canvas: np.ndarray,
-                  contours: gpd.GeoDataFrame,
-                  scale_factor: float = 1,
-                  linewidth: int = 1,
-                  ) -> plt.Axes:
-    from shapely.affinity import scale
 
-    contours = contours["geometry"].apply(lambda geom: scale(geom, xfact=scale_factor, yfact=scale_factor, origin=(0, 0)))
-    ax = plt.imshow(canvas).axes
+def visualize_coords(slide, coords, canvas = None, level=0, max_size=1000):
+    size = slide.level_dimensions[level][:2]
+    size, scale_factor = get_thumbnail_size_and_scale(size=size, max_size=1000)
 
-    contours.plot(ax=ax, facecolor="none", edgecolor='green', linewidth=1)
+    if canvas is None:
+        canvas = slide.get_thumbnail(size=size)
+        canvas = np.asarray(canvas).copy()
+    else:
+        assert max(canvas.shape[:2]) == max_size
 
-    # import cv2
-    # cv2.drawContours(canvas, contours, -1, color, thickness)
-    return ax
+    return draw_coords(
+        canvas=canvas,
+        coords=coords,
+        scale_factor=scale_factor,
+        thickness=1,
+    )
