@@ -11,13 +11,16 @@ class BaseCoordinate:
 
 
 @dataclass
-class SlideCoordinate(BaseCoordinate):
-    image_path: str
+class SlideCoordinate:
     x: int
     y: int
     kernel_size: int
     stride: int
     mpp: float
-    effective_mpp: float = None
-    slide_path: str = None
-    slide_level: int = 0
+    image_path: str
+
+    target_mpp: float
+    effective_mpp: float
+    scale_factor: float
+    overlap: float | None = None
+
