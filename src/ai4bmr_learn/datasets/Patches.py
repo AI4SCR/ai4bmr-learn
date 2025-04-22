@@ -2,6 +2,7 @@ from torch.utils.data import Dataset
 from dataclasses import asdict
 from ai4bmr_learn.data_models.Coordinate import BaseCoordinate
 from ai4bmr_learn.utils.utils import pair
+from ai4bmr_learn.utils.images import get_patch
 from torchvision.tv_tensors import Image
 import openslide
 import torch
@@ -17,6 +18,7 @@ class Patches(Dataset):
 
     def __getitem__(self, idx):
         coord = self.coords[idx]
+        
         item = {**asdict(coord)}
 
         img_path = item["image_path"]
@@ -27,8 +29,7 @@ class Patches(Dataset):
 
         patch = slide.read_region((x, y), 0, (patch_width, patch_height))
         patch = patch.convert("RGB")
-        # note: if we keep the PIL image, the resize transform is magnitudes faster
-        # patch = np.array(patch)[..., :3]  # Remove alpha channel if present
+
         item["patch"] = Image(patch)
 
         if self.transform:
