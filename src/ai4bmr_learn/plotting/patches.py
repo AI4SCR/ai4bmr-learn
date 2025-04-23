@@ -1,5 +1,6 @@
 from ai4bmr_learn.data_models.Coordinate import BaseCoordinate
-from ai4bmr_learn.utils.images import get_thumbnail_size_and_scale
+from ai4bmr_learn.utils.images import get_thumbnail, get_thumbnail_size_and_scale
+import openslide
 
 import numpy as np
 from PIL.Image import Image
@@ -27,19 +28,20 @@ def draw_coords(
     return canvas
 
 
-def visualize_coords(slide, coords, canvas = None, level=0, max_size=1000):
-    size = slide.level_dimensions[level][:2]
-    size, scale_factor = get_thumbnail_size_and_scale(size=size, max_size=1000)
+def visualize_coords(coords, *, slide: openslide.OpenSlide, image = None, max_size: int = 1000, thickness: int = 1):
 
-    if canvas is None:
-        canvas = slide.get_thumbnail(size=size)
-        canvas = np.asarray(canvas).copy()
+    if image is None:
+        canvas, scale_factor = get_thumbnail(slide=slide, image=image, max_size=max_size)
     else:
-        assert max(canvas.shape[:2]) == max_size
+        height, width, _ = image.shape
+        max_size = max(height, width)
+        size = slide.level_dimensions[0]
+        _, scale_factor = get_thumbnail_size_and_scale(size, max_size=max_size)
+        canvas = image.copy()
 
     return draw_coords(
         canvas=canvas,
         coords=coords,
         scale_factor=scale_factor,
-        thickness=1,
+        thickness=thickness,
     )

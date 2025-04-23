@@ -24,8 +24,8 @@ class ABMILConfig:
     n_branches: int = 1
     gated: bool = False
     hidden_dim: int = 256
-    pre_attention: bool = (False,)
-    pre_attention_dim: int | None = (None,)
+    pre_attention: bool = False
+    pre_attention_dim: int | None = None
     post_attention: bool = False
 
 

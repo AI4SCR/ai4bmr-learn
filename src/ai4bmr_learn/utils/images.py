@@ -1,6 +1,6 @@
 import numpy as np
 import openslide
-
+from ai4bmr_learn.utils.utils import pair
 
 def get_thumbnail_size_and_scale(size, max_size: int = 1000):
     h, w = size
@@ -24,7 +24,8 @@ def get_thumbnail(*, slide: openslide.OpenSlide = None, image: np.ndarray = None
         (h, w), scale_factor = get_thumbnail_size_and_scale(image.shape[:2], max_size=max_size)
         return cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA), scale_factor
 
-def get_patcher_params(slide, kernel_size: int, stride: int, target_mpp: float):
+
+def get_slide_patcher_params(slide, patch_size: int, patch_stride: int, target_mpp: float):
     from ai4bmr_learn.utils.slides import get_mpp_and_resolution
     width, height = slide.dimensions
     image_path = str(slide._filename)
@@ -32,30 +33,38 @@ def get_patcher_params(slide, kernel_size: int, stride: int, target_mpp: float):
     mpp, res = get_mpp_and_resolution(slide)
     scale_factor = target_mpp / mpp
 
-    new_kernel_size = int(kernel_size * scale_factor)
-    new_stride = int(stride * scale_factor)
+    kernel_size = round(patch_size * scale_factor)
+    stride = round(patch_stride * scale_factor)
 
-    effective_scale_factor = new_kernel_size / kernel_size
+    effective_scale_factor = kernel_size / patch_size
     effective_mpp = mpp * effective_scale_factor
     return dict(
         height=height,
         width=width,
-        kernel_size=new_kernel_size,
-        stride=new_stride,
+        
+        kernel_size=kernel_size,
+        stride=stride,
         mpp=mpp,
+        
+        patch_size=patch_size,
+        patch_stride=patch_stride,
+        patch_mpp=effective_mpp,
         target_mpp=target_mpp,
-        effective_mpp=effective_mpp,
         scale_factor=effective_scale_factor,
+        
         image_path=image_path,
     )
 
 
-def get_coordinates_dict(height: int, width: int, kernel_size: int, stride: int, **kwargs) -> dict:
+def get_coordinates_dict(height: int, width: int, kernel_size: int | tuple[int, int], stride: int | tuple[int, int], **kwargs) -> dict:
     import numpy as np
     from itertools import product
 
-    x_coords = np.arange(0, width - kernel_size + 1, stride)
-    y_coords = np.arange(0, height - kernel_size + 1, stride)
+    kh, kw = pair(kernel_size)
+    sh, sw = pair(stride)
+
+    x_coords = np.arange(0, width - kw + 1, sw)
+    y_coords = np.arange(0, height - kh + 1, sh)
 
     coords = product(y_coords, x_coords)
     coords = [dict(id=i, x=int(x), y=int(y), kernel_size=kernel_size, stride=stride, **kwargs)
@@ -91,7 +100,6 @@ def filter_coords(coords: list[SlideCoordinate | XeniumCoordinate], *, contours:
 
 def get_patch(coord):
     import openslide
-    from ai4bmr_learn.utils.utils import pair
     from torchvision.transforms import v2
     import torch
 
@@ -100,10 +108,11 @@ def get_patch(coord):
 
     x, y = coord.x, coord.y
     kernel_height, kernel_width = pair(coord.kernel_size)
+    patch_height, patch_width = pair(coord.patch_size)
     scale_factor = coord.scale_factor
 
-    patch_height = round(kernel_height / scale_factor)
-    patch_width = round(kernel_width / scale_factor)
+    assert patch_height == round(kernel_height / scale_factor)
+    assert patch_width == round(kernel_width / scale_factor)
 
     # MORPHOLOGY
     patch = slide.read_region((x, y), 0, (kernel_width, kernel_height))
@@ -112,7 +121,7 @@ def get_patch(coord):
     transform = v2.Compose([
         v2.ToImage(),
         v2.Resize((patch_height, patch_width)),
-        v2.ToDtype(torch.float32, scale=True),
+        # v2.ToDtype(torch.float32, scale=True),
     ])
     patch = transform(patch)
 

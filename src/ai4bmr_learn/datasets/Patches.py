@@ -1,14 +1,13 @@
 from torch.utils.data import Dataset
 from dataclasses import asdict
-from ai4bmr_learn.data_models.Coordinate import BaseCoordinate
+from ai4bmr_learn.data_models.Coordinate import BaseCoordinate, SlideCoordinate
 from ai4bmr_learn.utils.utils import pair
 from ai4bmr_learn.utils.images import get_patch
-from torchvision.tv_tensors import Image
 import openslide
 import torch
 
 class Patches(Dataset):
-    def __init__(self, coords: list[BaseCoordinate], transform=None):
+    def __init__(self, coords: list[BaseCoordinate | SlideCoordinate], transform=None):
         super().__init__()
         self.coords = coords
         self.transform = transform
@@ -18,19 +17,11 @@ class Patches(Dataset):
 
     def __getitem__(self, idx):
         coord = self.coords[idx]
+
+        patch = get_patch(coord)
         
         item = {**asdict(coord)}
-
-        img_path = item["image_path"]
-        slide = openslide.OpenSlide(img_path)
-
-        x, y = item["x"], item["y"]
-        patch_height, patch_width = pair(item["kernel_size"])
-
-        patch = slide.read_region((x, y), 0, (patch_width, patch_height))
-        patch = patch.convert("RGB")
-
-        item["patch"] = Image(patch)
+        item["image"] = patch
 
         if self.transform:
             item = self.transform(item)
