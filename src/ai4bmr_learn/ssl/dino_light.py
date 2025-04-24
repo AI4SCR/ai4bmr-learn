@@ -7,16 +7,16 @@
 
 import copy
 
-import pytorch_lightning as pl
+import lightning as L
 import torch
-
 from lightly.loss import DINOLoss
 from lightly.models.modules import DINOProjectionHead
 from lightly.models.utils import deactivate_requires_grad, update_momentum
 from lightly.utils.scheduler import cosine_schedule
 from torch import nn
 
-class DINOLight(pl.LightningModule):
+
+class DINOLight(L.LightningModule):
     def __init__(self, backbone: nn.Module | None = None, input_dim: int | None = None):
         super().__init__()
 
