@@ -9,7 +9,7 @@ from lightly.transforms.torchvision_v2_compatibility import torchvision_transfor
 from lightly.transforms.utils import IMAGENET_NORMALIZE
 from torch import Tensor
 from torchvision.transforms import v2
-
+import torch
 
 class DINOTransform(nn.Module):
     """Implements the global and local view augmentations for DINO [0].
@@ -53,11 +53,7 @@ class DINOTransform(nn.Module):
         rr_prob:
             Probability that random rotation is applied.
         rr_degrees:
-            Range of degrees to select from for random rotation. If rr_degrees is None,
-            images are rotated by 90 degrees. If rr_degrees is a (min, max) tuple,
-            images are rotated by a random angle in [min, max]. If rr_degrees is a
-            single number, images are rotated by a random angle in
-            [-rr_degrees, +rr_degrees]. All rotations are counter-clockwise.
+            [-rr_degrees, +rr_degrees]
         cj_prob:
             Probability that color jitter is applied.
         cj_strength:
@@ -98,7 +94,7 @@ class DINOTransform(nn.Module):
             hf_prob: float = 0.5,
             vf_prob: float = 0,
             rr_prob: float = 0,
-            rr_degrees: Optional[Union[float, Tuple[float, float]]] = None,
+            rr_degrees: float | tuple[float, float] = 45,
             cj_prob: float = 0.8,
             cj_strength: float = 0.5,
             cj_bright: float = 0.8,
@@ -223,6 +219,8 @@ class DINOViewTransform(nn.Module):
         super().__init__()
 
         transform = [
+            # v2.ToImage(), # note: we already expect images in the accepted dict
+            v2.ToDtype(torch.float32, scale=True),
             v2.RandomResizedCrop(
                 size=crop_size,
                 scale=crop_scale,
@@ -264,7 +262,7 @@ class DINOViewTransform(nn.Module):
             #     sigmas=sigmas,
             #     prob=gaussian_blur,
             # ),
-            v2.RandomSolarize(p=solarization_prob),
+            v2.RandomSolarize(p=solarization_prob, threshold=0.5),
             # T.RandomSolarization(prob=solarization_prob),
             # T.ToTensor(),
         ]

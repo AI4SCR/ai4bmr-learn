@@ -10,10 +10,20 @@ from ai4bmr_learn.transforms.dino_transform import DINOTransform
 model = DINOLight()
 
 # %% DATA
-transform = DINOTransform()
+transform = DINOTransform(normalize=None)
 # ds = CIFAR10()
 ds = CIFAR10(transform=transform)
 item = ds[0]
+
+from matplotlib import pyplot as plt
+fig, axs = plt.subplots(3, 3)
+imgs = [item['image']] + item['global_views'] + item['local_views']
+for img, ax in zip(imgs, axs.flatten()):
+    ax.imshow(img.permute(1,2,0))
+
+fig.tight_layout()
+fig.show()
+
 item.keys()
 
 
