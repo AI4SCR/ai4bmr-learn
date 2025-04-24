@@ -5,13 +5,10 @@ from typing import Dict, List, Optional, Tuple, Union
 import PIL
 import torch.nn as nn
 from PIL.Image import Image
-from lightly.transforms.gaussian_blur import GaussianBlur
-from lightly.transforms.rotation import random_rotation_transform
-from lightly.transforms.solarize import RandomSolarization
 from lightly.transforms.torchvision_v2_compatibility import torchvision_transforms as T
-from torchvision.transforms import v2
 from lightly.transforms.utils import IMAGENET_NORMALIZE
 from torch import Tensor
+from torchvision.transforms import v2
 
 
 class DINOTransform(nn.Module):
