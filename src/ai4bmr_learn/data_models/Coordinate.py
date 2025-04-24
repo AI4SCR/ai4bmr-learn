@@ -8,6 +8,7 @@ class BaseCoordinate:
     y: int
     kernel_size: int
     stride: int
+    
     mpp: float | None = None
     image_path: str | None = None
 
