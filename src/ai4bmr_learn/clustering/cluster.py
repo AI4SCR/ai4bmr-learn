@@ -63,12 +63,10 @@ def cluster(
 
     if cluster_method == "leiden":
         membership = get_leiden_membership(G, resolution=resolution)
-    elif cluster_method == "igraph":
-        membership = get_igraph_membership(G, resolution=resolution)
     elif cluster_method == "kmeans":
         n_clusters = 20
         membership = get_kmeans_membership(data, n_clusters=n_clusters)
-    elif cluster_method == "scanpy":
+    elif cluster_method == "leiden-scanpy":
         assert graph_method == "scanpy"
         sc.tl.leiden(ad, resolution=resolution)
         # sc.tl.leiden(ad, resolution=resolution, flavor="igraph", n_iterations=2)
