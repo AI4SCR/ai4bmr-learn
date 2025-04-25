@@ -69,6 +69,12 @@ class DINOLight(L.LightningModule):
         loss = self.criterion(teacher_out, student_out, epoch=self.current_epoch)
         return loss
 
+    def predict_step(self, batch, batch_idx):
+        x = batch['image']
+        x = self.student_backbone(x)
+        batch['embedding'] = x
+        return batch
+
     def on_after_backward(self):
         self.student_head.cancel_last_layer_gradients(current_epoch=self.current_epoch)
 

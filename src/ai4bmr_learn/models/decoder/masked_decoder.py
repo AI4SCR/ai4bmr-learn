@@ -1,10 +1,18 @@
 import torch
 from einops import rearrange, repeat
+from pydantic import BaseModel
 from timm.layers import trunc_normal_
 from timm.models.vision_transformer import Block
 
-from ai4bmr_learn.models.utils import set_at_index
 from ai4bmr_learn.models.decoder.base import BaseMaskedDecoder
+from ai4bmr_learn.models.utils import set_at_index
+
+
+class MaskedDecoderDefault(BaseModel):
+    num_tokens: int
+    dim: int = 192
+    num_layers: int = 12
+    num_heads: int = 3
 
 
 class MaskedDecoder(BaseMaskedDecoder):

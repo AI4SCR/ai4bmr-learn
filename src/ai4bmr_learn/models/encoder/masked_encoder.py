@@ -3,6 +3,7 @@ from einops import rearrange
 from pydantic import BaseModel, ConfigDict, Field
 from timm.layers import trunc_normal_
 from timm.models.vision_transformer import Block
+from ai4bmr_learn.models.encoder.base import BaseMaskedEncoder
 
 from ai4bmr_learn.models.utils import get_at_index
 
@@ -22,22 +23,14 @@ from ai4bmr_learn.models.utils import get_at_index
 #     attn_dropout: float = 0.1  # timm: 0.0
 
 
-class EncoderDefault(BaseModel):
-    num_patches: int = None
+class MaskedEncoderDefault(BaseModel):
+    num_patches: int
     dim: int = 192
     num_layers: int = 12
     num_heads: int = 3
     num_prefix_tokens: int = 1
 
 
-class EncoderConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = "default"
-    init_kwargs: EncoderDefault = Field(default_factory=EncoderDefault)
-
-
-from ai4bmr_learn.models.encoder.base import BaseMaskedEncoder
 
 
 class MaskedEncoder(BaseMaskedEncoder):

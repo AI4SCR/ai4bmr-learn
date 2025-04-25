@@ -2,10 +2,19 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from ai4bmr_learn.models.tokenizer.base import BaseTokenizer
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class TokenizerConvConfig(BaseModel):
+    image_size: int = 224
+    kernel_size: int = 16
+    dim: int = 192
+    num_channels: int = 3
+
 
 class TokenizerConv(BaseTokenizer):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, *, image_size: int, kernel_size: int, dim: int, num_channels: int):
+        super().__init__(image_size=image_size, kernel_size=kernel_size, dim=dim, num_channels=num_channels)
 
         self.proj = nn.Conv2d(
             in_channels=self.num_channels,
