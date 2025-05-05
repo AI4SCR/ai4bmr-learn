@@ -17,14 +17,14 @@ from torch import nn
 
 
 class DINOLight(L.LightningModule):
-    def __init__(self, backbone: nn.Module | None = None, input_dim: int | None = None):
+    def __init__(self, backbone: nn.Module | None = None,
+                 input_dim: int = 512, hidden_dim: int = 512, bottleneck_dim: int = 64, output_dim: int = 2048):
         super().__init__()
 
         if backbone is None:
             import torchvision
             resnet = torchvision.models.resnet18()
             backbone = nn.Sequential(*list(resnet.children())[:-1])
-            input_dim = 512
 
         # instead of a resnet you can also use a vision transformer backbone as in the
         # original paper (you might have to reduce the batch size in this case):
@@ -33,10 +33,10 @@ class DINOLight(L.LightningModule):
 
         self.student_backbone = backbone
         self.student_head = DINOProjectionHead(
-            input_dim, 512, 64, 2048, freeze_last_layer=1
+            input_dim, hidden_dim, bottleneck_dim, output_dim, freeze_last_layer=1
         )
         self.teacher_backbone = copy.deepcopy(backbone)
-        self.teacher_head = DINOProjectionHead(input_dim, 512, 64, 2048)
+        self.teacher_head = DINOProjectionHead(input_dim, hidden_dim, bottleneck_dim, output_dim)
         deactivate_requires_grad(self.teacher_backbone)
         deactivate_requires_grad(self.teacher_head)
 

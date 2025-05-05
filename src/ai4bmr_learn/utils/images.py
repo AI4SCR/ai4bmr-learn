@@ -154,17 +154,15 @@ def get_points(coord):
     ymax = ymin + kernel_height
     bbox = (xmin, ymin, xmax, ymax)
 
-    scale_factor = coord.scale_factor
+    scale_factor = getattr(coord, 'scale_factor', 1)
 
     points = gpd.read_file(coord.points_path, bbox=bbox)
-    # points['geometry'] = points['geometry'].map(lambda geom: translate(geom=geom, xoff=-xmin, yoff=-ymin, zoff=0))
-    # points['geometry'] = points['geometry'].map(lambda geom: scale(geom=geom, xfact=scale_factor, yfact=scale_factor, zoff=0))
 
     points['geometry'] = points['geometry'].map(
         lambda geom: scale(
             translate(geom=geom, xoff=-xmin, yoff=-ymin, zoff=0),
-            xfact=1 / scale_factor,
-            yfact=1 / scale_factor,
+            xfact= 1 / scale_factor,
+            yfact= 1 / scale_factor,
             origin=(0, 0)
         )
     )

@@ -35,6 +35,18 @@ class SlideCoordinate:
 
 
 @dataclass
+class PointsCoordinate:
+    id: int
+
+    x: int
+    y: int
+    kernel_size: int
+    stride: int
+
+    points_path: str
+
+
+@dataclass
 class XeniumCoordinate:
     id: int
 
