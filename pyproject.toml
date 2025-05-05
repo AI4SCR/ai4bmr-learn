@@ -6,11 +6,11 @@ authors = ["Adriano Martinelli <adrianom@student.ethz.ch>"]
 packages = [{ include = "ai4bmr_learn", from = "src" }]
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "3.12"
 scikit-learn = "*"
-zarr = "*"
+zarr = "<3"  # anndata
 loguru = "*"
-omegaconf = { version = "*", extras = ["all"] }
+omegaconf = "*"
 wandb = "*"
 umap-learn = { version = "*", extras = ["plot"] }
 scikit-image = "*"
@@ -25,13 +25,17 @@ pandas = "*"
 einops = "*"
 timm = "*"
 flatdict = "*"
-jsonargparse = "^4.24.1"
+jsonargparse = { version = "^4.24.1", extras = ["all"] }
 pydantic = "^2.6.1"
 igraph="*"
 anndata="*"
 leidenalg="*"
 rapids-singlecell="*"
 geopandas="*"
+#cuml="*"
+openslide-bin="*"
+openslide-python="*"
+lightly="*"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"

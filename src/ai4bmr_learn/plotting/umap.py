@@ -1,3 +1,4 @@
+from matplotlib import pyplot as plt
 
 def run_umap(data, n_neighbors= 15, min_dist=0.3, metric='euclidean', engine: str = 'umap-learn', **kwargs):
     import pandas as pd
@@ -29,3 +30,49 @@ def run_umap(data, n_neighbors= 15, min_dist=0.3, metric='euclidean', engine: st
 
         case _:
             raise ValueError(f"Unknown engine: {engine}")
+
+def plot_umap(data, *,
+              n_neighbors= 15, min_dist=0.3, metric='euclidean', engine: str = 'umap-learn', umap_kwargs: dict | None = None,
+              ax: plt.Axes | None = None, labels: list[str, int] | None = None, values: list[int, float] | None = None, num_samples: int | None = 50_000, show_legend: bool = True, **kwargs):
+
+        import pandas as pd
+        import numpy as np
+        import umap.plot
+
+        data = data.values if isinstance(data, pd.DataFrame) else data
+
+        if num_samples and len(data) > num_samples:
+            indices = np.random.choice(len(data), num_samples, replace=False)
+            data = data[indices]
+            labels = labels[indices] if labels is not None else None
+            values = values[indices] if values is not None else None
+
+        if ax is None:
+            _, ax = plt.subplots()
+
+        reducer = run_umap(data, metric=metric, engine=engine)
+
+        match engine:
+            case 'rapids-sc':
+                import scanpy as sc
+
+                if labels is not None:
+                    reducer.obs['labels'] = labels
+                    color = 'labels'
+                elif values is not None:
+                    reducer.obs['values'] = values
+                    color = 'values'
+                else:
+                    color = None
+
+                legend_loc = 'right margin' if show_legend else None
+                sc.pl.umap(reducer, ax=ax, color=color, show=False, legend_loc=legend_loc, color_map='inferno', **kwargs)
+                ax.set_facecolor('black')
+
+            case _:
+                umap.plot.points(reducer,
+                                 labels=labels, values=values,
+                                 background='black', cmap='inferno',
+                                 ax=ax, show_legend=show_legend, **kwargs)
+
+        return ax

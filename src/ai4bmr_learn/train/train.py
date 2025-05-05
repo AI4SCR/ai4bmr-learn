@@ -29,7 +29,6 @@ def get_trainer(
     wandb_logger = WandbLogger()
 
     # CALLBACKS
-    # ckpt_dir = metadata.get("ckpt_dir")
     fname = f"{{epoch}}-{{{monitor_metric_name}:.4f}}"
 
     model_ckpt = ModelCheckpoint(

@@ -1,15 +1,21 @@
 import numpy as np
-import openslide
 from ai4bmr_learn.utils.utils import pair
+import openslide
 
 def get_thumbnail_size_and_scale(size, max_size: int = 1000):
+    import numpy as np
+
     h, w = size
     
     if max(h, w) <= max_size:
         return size, 1
     
     scale = max_size / max(h, w)
-    size = (round(h * scale), round(w * scale))
+    # note: Openslide.get_thumbnail() uses the largest downsample factor, thus we need to increase the size of the
+    # smaller dimension
+    # TODO: maybe add flag to use round instead of ceil
+    # size = (round(h * scale), round(w * scale))
+    size = np.ceil(h * scale), np.ceil(w * scale)
     return size, scale
 
 def get_thumbnail(*, slide: openslide.OpenSlide = None, image: np.ndarray = None, max_size: int = 1000) -> tuple[np.ndarray, float]:
@@ -56,15 +62,24 @@ def get_slide_patcher_params(slide, patch_size: int, patch_stride: int, target_m
     )
 
 
-def get_coordinates_dict(height: int, width: int, kernel_size: int | tuple[int, int], stride: int | tuple[int, int], **kwargs) -> dict:
+def get_coordinates_dict(height: int, width: int,
+                         kernel_size: int | tuple[int, int], stride: int | tuple[int, int],
+                         include_out_of_bounds: bool = False,
+                         **kwargs) -> dict:
     import numpy as np
     from itertools import product
 
     kh, kw = pair(kernel_size)
     sh, sw = pair(stride)
 
-    x_coords = np.arange(0, width - kw + 1, sw)
-    y_coords = np.arange(0, height - kh + 1, sh)
+    if include_out_of_bounds:
+        x_coords = np.arange(0, width, sw)
+        y_coords = np.arange(0, height, sh)
+    else:
+        x_coords = np.arange(0, width - kw + 1, sw)
+        y_coords = np.arange(0, height - kh + 1, sh)
+
+    # TODO: introduce a `clip_to_image: bool = False` that adjusts the kernel_size to end at the image border
 
     coords = product(y_coords, x_coords)
     coords = [dict(id=i, x=int(x), y=int(y), kernel_size=kernel_size, stride=stride, **kwargs)

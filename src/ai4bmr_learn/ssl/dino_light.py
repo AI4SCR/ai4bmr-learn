@@ -53,20 +53,44 @@ class DINOLight(L.LightningModule):
         return z
 
     def training_step(self, batch, batch_idx):
-        global_views = batch['global_views']
-        local_views = batch['local_views']
+        views = batch['views']
+        batch_size = len(views[0]['image'])
+
+        global_views = views[:2]
+        local_views = views[2:]
 
         momentum = cosine_schedule(self.current_epoch, 10, 0.996, 1)
         update_momentum(self.student_backbone, self.teacher_backbone, m=momentum)
         update_momentum(self.student_head, self.teacher_head, m=momentum)
 
-        global_views = [view.to(self.device) for view in global_views]
-        local_views = [view.to(self.device) for view in local_views]
+        global_views = [view['image'].to(self.device) for view in global_views]
+        local_views = [view['image'].to(self.device) for view in local_views]
+
+        assert all(torch.isfinite(out).all() for out in global_views)
+        assert all(torch.isfinite(out).all() for out in local_views)
 
         teacher_out = [self.forward_teacher(view) for view in global_views]
         student_out = [self.forward(view) for view in local_views]
 
+        assert all(torch.isfinite(out).all() for out in student_out)
+        assert all(torch.isfinite(out).all() for out in teacher_out)
+
+        assert not any(torch.isnan(out).any() for out in student_out)
+        assert not any(torch.isnan(out).any() for out in teacher_out)
+
         loss = self.criterion(teacher_out, student_out, epoch=self.current_epoch)
+
+        assert not torch.isnan(loss).any()
+        assert torch.isfinite(loss).all()
+
+        self.log(
+            "train_loss_epoch",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            batch_size=batch_size,
+        )
+
         return loss
 
     def predict_step(self, batch, batch_idx):

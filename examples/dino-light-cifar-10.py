@@ -7,7 +7,7 @@ from torchvision.transforms import v2
 from torch.utils.data import Subset
 
 from ai4bmr_learn.ssl.dino_light import DINOLight
-from ai4bmr_learn.transforms.dino_transform import DINOTransform
+from ai4bmr_learn.transforms.dino_transform import DINOTransformLightly
 
 # %% SSL MODULE
 model = DINOLight()
@@ -19,9 +19,8 @@ transform = v2.Compose([
     v2.Normalize(mean=IMAGENET_NORMALIZE['mean'], std=IMAGENET_NORMALIZE['std'])
 ])
 
-viz_transform = DINOTransform(normalize=None)
-
-dino_transform = DINOTransform()
+viz_transform = DINOTransformLightly(normalize=None)
+dino_transform = DINOTransformLightly()
 
 # %% DATA
 random_indices = torch.randperm(50000)[:5000]
@@ -32,7 +31,8 @@ ds_train = Subset(CIFAR10(transform=dino_transform), indices=random_indices)
 # %% VISUALIZE TRANSFORM
 item = ds_viz[0]
 fig, axs = plt.subplots(3, 3)
-imgs = [item['image']] + item['global_views'] + item['local_views']
+imgs = [item['item']['image']] + [i['image'] for i in item['views']]
+
 for img, ax in zip(imgs, axs.flatten()):
     ax.imshow(img.permute(1, 2, 0))
 
@@ -48,6 +48,9 @@ dl_train = torch.utils.data.DataLoader(
     num_workers=8,
 )
 
+item = ds_train[0]
+batch = next(iter(dl_train))
+
 dl_test = torch.utils.data.DataLoader(
     ds_test,
     batch_size=64,
@@ -57,40 +60,29 @@ dl_test = torch.utils.data.DataLoader(
 )
 
 # %%
-trainer = L.Trainer(max_epochs=1, devices=1)
+trainer = L.Trainer(max_epochs=50, devices=1)
 
 # %%
 pre_train_embeddings = trainer.predict(model=model, dataloaders=dl_test)
+pre_train_targets = torch.cat([emb['target'] for emb in pre_train_embeddings])
+pre_train_embeddings = torch.cat([emb['embedding'] for emb in pre_train_embeddings])
+pre_train_embeddings = pre_train_embeddings.squeeze()
 
 # %%
 trainer.fit(model=model, train_dataloaders=dl_train)
 
 # %%
 post_train_embeddings = trainer.predict(model=model, dataloaders=dl_test)
+post_train_targets = torch.cat([emb['target'] for emb in post_train_embeddings])
+post_train_embeddings = torch.cat([emb['embedding'] for emb in post_train_embeddings])
+post_train_embeddings = post_train_embeddings.squeeze()
 
 # %%
-pre_train_features = torch.cat([emb['embedding'] for emb in pre_train_embeddings])
-pre_train_features = pre_train_features.squeeze()
-pre_train_targets = torch.cat([emb['target'] for emb in pre_train_embeddings])
+from ai4bmr_learn.plotting.umap import plot_umap
 
-post_train_features = torch.cat([emb['embedding'] for emb in post_train_embeddings])
-post_train_features = post_train_features.squeeze()
-post_train_targets = torch.cat([emb['target'] for emb in pre_train_embeddings])
-
-# %%
-def plot_umap(features, targets, ax: plt.Axes | None = None):
-    from umap import UMAP
-    import umap.plot
-
-    reducer = UMAP(n_components=2)
-    reducer.fit(features)
-
-    ax = umap.plot.points(reducer, labels=targets, ax=ax)
-    return ax
-
-# %%
 fig, axs = plt.subplots(1,2, figsize=(10, 5))
-ax = plot_umap(pre_train_features, pre_train_targets, ax=axs[0])
+ax = plot_umap(pre_train_embeddings, labels=pre_train_targets, ax=axs[0])
 ax.set_title('Pre-training')
-ax = plot_umap(post_train_features, post_train_targets, ax=axs[1])
+ax = plot_umap(post_train_embeddings, labels=post_train_targets, ax=axs[1])
 ax.set_title('Post-training')
+ax.figure.show()

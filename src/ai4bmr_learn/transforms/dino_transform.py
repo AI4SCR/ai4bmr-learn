@@ -1,5 +1,3 @@
-# Adapted from: lightly.transforms.dino_transform.DINOTransform
-
 from typing import Dict, List, Optional, Tuple, Union
 
 import PIL
@@ -274,3 +272,23 @@ class DINOViewTransform(nn.Module):
     def forward(self, item: dict) -> Tensor:
         transformed: Tensor = self.transform(item)
         return transformed
+
+
+class DINOTransformLightly:
+
+    def __init__(self, **kwargs):
+        from lightly.transforms import DINOTransform
+        self.transform = DINOTransform(**kwargs)
+
+    def __call__(self, item: dict):
+        from PIL import Image
+        img = item['image']
+
+        if isinstance(img, Tensor):
+            img = Image.fromarray(img.permute(1, 2, 0).numpy())
+
+        views = [{**item, 'image': view} for view in self.transform(img)]
+        result = {'views': views, 'item': item}
+
+        return result
+
