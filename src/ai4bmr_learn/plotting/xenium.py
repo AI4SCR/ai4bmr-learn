@@ -15,6 +15,7 @@ def visualize_points(points, *, slide=None, image=None, feature_names: list[str]
         points = points[filter_]
 
     if num_points is not None:
+        num_points = min(num_points, len(points))
         points = points.sample(num_points)
 
     # Prepare color mapping from colorcet

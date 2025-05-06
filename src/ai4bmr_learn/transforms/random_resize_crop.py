@@ -34,27 +34,28 @@ class RandomResizeCrop(nn.Module):
         points = points[filter_]
 
         # scale/translate points to match the crop after resizing
-        xfact = width / params['width']
-        yfact = height / params['height']
+        xfact = self.random_resize_crop.size[0] / params['width']
+        yfact = self.random_resize_crop.size[1] / params['height']
 
         xoff = -params['left']
         yoff = -params['top']
 
-        points['geometry'] = points['geometry'].map(
+        points = points.assign(geometry=points['geometry'].map(
             lambda geom: scale(
                 translate(geom, xoff=xoff, yoff=yoff),
                 xfact=xfact,
                 yfact=yfact,
                 origin=(0, 0)
             )
-        )
+        ))
 
-        assert points.geometry.x.min() >= 0
         assert points.geometry.y.min() >= 0
-        assert points.geometry.x.max() <= self.random_resize_crop.size[0]
-        assert points.geometry.y.max() <= self.random_resize_crop.size[1]
+        assert points.geometry.x.min() >= 0
+        assert points.geometry.y.max() <= self.random_resize_crop.size[0]
+        assert points.geometry.x.max() <= self.random_resize_crop.size[1]
 
         result['points'] = points
+        result.setdefault('metadata', {}).setdefault('transform', {})['RandomResizeCrop'] = params
 
         return result
     
