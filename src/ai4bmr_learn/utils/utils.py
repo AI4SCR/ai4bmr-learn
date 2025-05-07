@@ -19,8 +19,14 @@ def chunked(iterable: Iterable[T], n: int) -> List[List[T]]:
     """Split an iterable into n chunks, trying to balance their lengths."""
     items = list(iterable)
     k, m = divmod(len(items), n)
-    n += m > 0
-    return [items[i * k:(i + 1) * k] for i in range(n)]
+    chunk_sizes = [k] * (n-1) + [k + m]
+    
+    idx = 0
+    while chunk_sizes:
+        size = chunk_sizes.pop(0)
+        yield items[idx:idx+size]
+        idx += size
+
 
 
 def get_batch_size(iterable, n: int):
