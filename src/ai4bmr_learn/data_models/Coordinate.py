@@ -31,7 +31,7 @@ class SlideCoordinate:
     target_mpp: float
     scale_factor: float
 
-    overlap: float | None = None
+    overlap: float = -1
 
 
 @dataclass

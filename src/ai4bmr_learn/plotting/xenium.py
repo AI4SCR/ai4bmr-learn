@@ -21,13 +21,8 @@ def visualize_points(points, *, slide=None, image=None, feature_names: list[str]
     # Prepare color mapping from colorcet
     default_color = (0, 0, 255)
     if color_by_feature_name:
-        unique_features = sorted(points.feature_name.unique())
-        glasbey_colors = cc.glasbey_bw[:len(unique_features)]
-        color_map = {
-            # feat: tuple(int(255 * c) for c in reversed(rgb))  # RGB -> BGR for OpenCV
-            feat: tuple(int(255 * c) for c in rgb)
-            for feat, rgb in zip(unique_features, glasbey_colors)
-        }
+        from ai4bmr_learn.plotting.utils import get_colorcet_map
+        color_map = get_colorcet_map(points.feature_name.tolist(), as_int=True)
     else:
         unique_features = sorted(points.feature_name.unique())
         color_map = dict()

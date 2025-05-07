@@ -2,7 +2,7 @@ from openslide import OpenSlide
 import json
 from dataclasses import asdict
 from pathlib import Path
-
+from tqdm import tqdm
 import einops
 import openslide
 import torch
@@ -24,8 +24,8 @@ from shapely.affinity import scale
 from skimage.io import imsave
 from torchvision.transforms import v2
 
-def get_mpp_and_resolution(slide: OpenSlide):
 
+def get_mpp_and_resolution(slide: OpenSlide):
     res_unit = slide.properties['tiff.ResolutionUnit']
     x_res = float(slide.properties['tiff.XResolution'])
     y_res = float(slide.properties['tiff.YResolution'])
@@ -39,6 +39,7 @@ def get_mpp_and_resolution(slide: OpenSlide):
             raise ValueError(f"Unknown resolution unit: {res_unit}")
 
     return mpp, res
+
 
 def get_mpp(slide: OpenSlide):
     mpp_x = float(slide.properties['openslide.mpp-x'])
@@ -63,14 +64,18 @@ def get_seg_model(model_name: str = 'hest', device: str = 'cuda') -> torch.nn.Mo
         raise e
 
     # MODEL
-    return segmentation_model_factory(model_name).to(device=device)  # type: ignore[reportGeneralTypeIssues]
+    return segmentation_model_factory(model_name).eval().to(device=device)  # type: ignore[reportGeneralTypeIssues]
 
 
 def segment_slide(slide: openslide.OpenSlide,
                   target_mpp: float = 4,
+                  min_area: float = 500,
                   seg_model: torch.nn.Module | None = None,
                   save_contours_path: Path | None = None,
                   save_coords_path: Path | None = None,
+                  batch_size: int = 32,
+                  num_workers: int = 8,
+                  **kwargs
                   ):
     """
     Segments histological images in a given sample directory using a pretrained model.
@@ -112,11 +117,17 @@ def segment_slide(slide: openslide.OpenSlide,
 
     # %% DATASET
     ds = Patches(coords=coords, transform=transform)
-    patches = torch.stack([i['image'] for i in ds], dim=0).to(device=device)
+    dl = torch.utils.data.DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=num_workers,
+                                     pin_memory=num_workers > 0)
 
     # %% SEGMENT
+    mask = []
     with torch.no_grad():
-        mask = seg_model(patches).cpu()
+        for batch in tqdm(dl, desc='Segmenting'):
+            images = batch['image']
+            mask.append(seg_model(images.to(device=device)).cpu())
+
+    mask = torch.cat(mask, dim=0)
 
     # %% MASK
     height, width, kernel_size, stride = (params['height'], params['width'], params['kernel_size'], params['stride'])
@@ -135,7 +146,7 @@ def segment_slide(slide: openslide.OpenSlide,
     mask = einops.rearrange(mask, '(h w) ph pw -> (h ph) (w pw)', h=h, w=w, ph=size, pw=size)
 
     # CONTOURS
-    gdf = find_contours(mask=mask.numpy())
+    gdf = find_contours(mask=mask.numpy(), min_area=min_area)
     scale_factor = params['scale_factor']
     gdf['geometry'] = gdf['geometry'].map(
         lambda geom: scale(geom, xfact=scale_factor, yfact=scale_factor, origin=(0, 0))
@@ -149,6 +160,6 @@ def segment_slide(slide: openslide.OpenSlide,
     save_coords_overlay = save_coords_path.parent / f'{save_coords_path.stem}.png'
     imsave(str(save_coords_overlay), canvas)
 
-    canvas = visualize_contours(contours=gdf, slide=slide, image=thumbnail)
+    canvas = visualize_contours(contours=gdf, slide=slide, image=thumbnail, **kwargs)
     save_contours_overlay = save_contours_path.parent / f'{save_contours_path.stem}.png'
     imsave(str(save_contours_overlay), canvas)
