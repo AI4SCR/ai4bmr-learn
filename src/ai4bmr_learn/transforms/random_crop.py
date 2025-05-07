@@ -40,20 +40,21 @@ class RandomCrop(nn.Module):
         filter_ = points.geometry.x.between(xmin, xmax) & points.geometry.y.between(ymin, ymax)
         points = points[filter_]
 
-        xoff = -params['left']
-        yoff = -params['top']
+        if len(points):
+            xoff = -params['left']
+            yoff = -params['top']
 
-        points['geometry'] = points['geometry'].map(
-            lambda geom: translate(geom, xoff=xoff, yoff=yoff)
-        )
+            points.loc[:, 'geometry'] = points['geometry'].map(
+                lambda geom: translate(geom, xoff=xoff, yoff=yoff)
+            )
 
-        height = params['height']
-        width = params['width']
+            height = params['height']
+            width = params['width']
 
-        assert points.geometry.x.min() >= 0
-        assert points.geometry.y.min() >= 0
-        assert points.geometry.x.max() <= width
-        assert points.geometry.y.max() <= height
+            assert points.geometry.x.min() >= 0
+            assert points.geometry.y.min() >= 0
+            assert points.geometry.x.max() <= width
+            assert points.geometry.y.max() <= height
 
         result['points'] = points
         result['height'] = height

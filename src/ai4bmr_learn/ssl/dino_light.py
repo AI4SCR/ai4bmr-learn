@@ -17,9 +17,11 @@ from torch import nn
 
 
 class DINOLight(L.LightningModule):
-    def __init__(self, backbone: nn.Module | None = None,
+    def __init__(self, backbone: nn.Module | None = None, view_key: str = 'image',
                  input_dim: int = 512, hidden_dim: int = 512, bottleneck_dim: int = 64, output_dim: int = 2048):
         super().__init__()
+
+        self.view_key = view_key
 
         if backbone is None:
             import torchvision
@@ -40,7 +42,7 @@ class DINOLight(L.LightningModule):
         deactivate_requires_grad(self.teacher_backbone)
         deactivate_requires_grad(self.teacher_head)
 
-        self.criterion = DINOLoss(output_dim=2048, warmup_teacher_temp_epochs=5)
+        self.criterion = DINOLoss(output_dim=output_dim, warmup_teacher_temp_epochs=5)
 
     def forward(self, x):
         y = self.student_backbone(x).flatten(start_dim=1)
@@ -54,7 +56,7 @@ class DINOLight(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         views = batch['views']
-        batch_size = len(views[0]['image'])
+        batch_size = len(views[0][self.view_key])
 
         global_views = views[:2]
         local_views = views[2:]
@@ -63,12 +65,13 @@ class DINOLight(L.LightningModule):
         update_momentum(self.student_backbone, self.teacher_backbone, m=momentum)
         update_momentum(self.student_head, self.teacher_head, m=momentum)
 
-        global_views = [view['image'].to(self.device) for view in global_views]
-        local_views = [view['image'].to(self.device) for view in local_views]
+        global_views = [view[self.view_key].to(self.device) for view in global_views]
+        local_views = [view[self.view_key].to(self.device) for view in local_views]
 
         assert all(torch.isfinite(out).all() for out in global_views)
         assert all(torch.isfinite(out).all() for out in local_views)
 
+        view = global_views[0]
         teacher_out = [self.forward_teacher(view) for view in global_views]
         student_out = [self.forward(view) for view in local_views]
 

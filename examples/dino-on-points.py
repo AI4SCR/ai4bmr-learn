@@ -20,48 +20,56 @@ coords = [PointsCoordinate(**i, points_path=str(ds.data_dir / f'{sample_id}.gpkg
           for sample_id in ds.sample_ids for i in coord_dicts]
 
 coord = coords[0]
-ds = PointsPatches(coords=coords)
+labels = ['type_1', 'type_2', 'type_3', 'type_4']
+ds = PointsPatches(coords=coords, labels=labels, label_key='label')
 item = ds[0]
 
 # %%
 from ai4bmr_learn.transforms.random_crop import RandomCrop
 from ai4bmr_learn.transforms.multiview import MultiViewTransform
+from torch.utils.data import DataLoader
 
 global_transform = [RandomCrop(scale=(0.66, 1)), RandomCrop(scale=(0.66, 1))]
 local_transform = [RandomCrop(scale=(0.25, 0.66)), RandomCrop(scale=(0.25, 0.66)), RandomCrop(scale=(0.25, 0.66)), RandomCrop(scale=(0.25, 0.66))]
 views_transform = global_transform + local_transform
 transform = MultiViewTransform(transforms=views_transform)
 
-ds = PointsPatches(coords=coords, transform=transform)
+ds = PointsPatches(coords=coords, labels=labels, transform=transform)
 item = ds[0]
+dl = DataLoader(ds, batch_size=5)
+batch = next(iter(dl))
 
-for view in item['views']:
-    print(view['data'].shape)
-    print(view['metadata']['coord']['height'])
-    print(view['metadata']['coord']['width'])
+# for view in item['views']:
+#     print(view['data'].shape)
+#     print(view['metadata']['coord']['height'])
+#     print(view['metadata']['coord']['width'])
 
 # %% MODEL
+import torch.nn.functional as F
 import torch.nn as nn
 import torch
 class PointsEncoder(nn.Module):
 
-    def __init__(self, in_channels: int):
+    def __init__(self, in_channels: int, embed_dim: int = 4):
         super().__init__()
         self.in_channels = in_channels
-        self.cls_token = nn.Parameter(torch.randn(1, 1, in_channels))
-
-        layer = nn.TransformerEncoderLayer(d_model=in_channels, nhead=4, dim_feedforward=4, batch_first=True)
-        self.encoder = nn.TransformerEncoder(layer, num_layers=2, enable_nested_tensor=False)
+        self.proj = nn.Linear(in_channels, embed_dim)
 
     def forward(self, x):
-        x = torch.cat([self.cls_token, x], dim=1)
-        return self.encoder(x)
+        return F.relu(self.proj(x))
 
-backbone = PointsEncoder(in_channels=num_features)
-inp = torch.randn((1, 10, num_features))
+backbone = PointsEncoder(in_channels=len(labels))
+inp = torch.randn((1, 10, len(labels)))
 inp = item['views'][4]['data'].unsqueeze(0)
 out = backbone(inp)
 
 # %% SSL-TRAINING
+import lightning as L
 from ai4bmr_learn.ssl.dino_light import DINOLight
-ssl = DINOLight(backbone=backbone, input_dim=16, hidden_dim=16, output_dim=32)
+ssl = DINOLight(backbone=backbone, input_dim=4, hidden_dim=4, output_dim=4, view_key='data')
+ssl.training_step(batch, batch_idx=0)
+
+trainer = L.Trainer(max_epochs=50, devices=1)
+trainer.fit(model=ssl, train_dataloaders=dl)
+
+# %%

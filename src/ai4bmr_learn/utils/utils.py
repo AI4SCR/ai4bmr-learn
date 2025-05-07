@@ -20,7 +20,7 @@ def chunked(iterable: Iterable[T], n: int) -> List[List[T]]:
     items = list(iterable)
     k, m = divmod(len(items), n)
     chunk_sizes = [k] * (n-1) + [k + m]
-    
+
     idx = 0
     while chunk_sizes:
         size = chunk_sizes.pop(0)
