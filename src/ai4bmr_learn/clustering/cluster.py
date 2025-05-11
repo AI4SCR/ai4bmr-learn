@@ -6,14 +6,15 @@ import pandas as pd
 import scipy.sparse
 import umap
 from loguru import logger
+from ai4bmr_learn.plotting.umap import plot_umap
 
-def compute_knn_graph(data, n_neighbors: int = 15, metric: str = 'euclidean', mode: str = 'connectivity', engine: str = 'sklearn', **kwargs):
+def kneighbors_graph(data, n_neighbors: int = 15, metric: str = 'euclidean', mode: str = 'connectivity', engine: str = 'sklearn', algorithm: str = 'auto', **kwargs):
     """
     Compute a graph from data using different methods and engines.
 
     Args:
         data (array-like): Input data matrix.
-        engine (str): Backend engine to use ('rapids', 'pydecent', or 'sklearn').
+        engine (str): Backend engine to use ('rapids', 'rapids-sc', or 'sklearn').
         kwargs: Additional keyword arguments (e.g., n_neighbors).
 
     Returns:
@@ -25,123 +26,96 @@ def compute_knn_graph(data, n_neighbors: int = 15, metric: str = 'euclidean', mo
     data = data.values if isinstance(data, pd.DataFrame) else data
 
     if engine == 'sklearn':
-        from sklearn.neighbors import kneighbors_graph
+        from sklearn.neighbors import NearestNeighbors
 
-        kwargs = {'n_neighbors': n_neighbors, 'metric': metric, 'mode': mode, **kwargs}
-        csr = kneighbors_graph(data, **kwargs)
-
-    elif engine == 'cuml':
-        from cuml.neighbors import NearestNeighbors
-
-        kwargs = {'n_neighbors': n_neighbors, 'metric': metric, **kwargs}
+        kwargs = {'n_neighbors': n_neighbors, 'metric': metric, 'algorithm': algorithm, **kwargs}
         nn = NearestNeighbors(**kwargs)
         nn.fit(data)
         csr = nn.kneighbors_graph(data, mode=mode)
-        csr = csr.get()  # to cpu
 
-    elif engine == 'rapids-sc':
-        import rapids_singlecell as rsc
+    elif engine == 'cuml':
+        from cuml.neighbors import NearestNeighbors
+        import cupy as cp
+
+        data = cp.asarray(data)
+
+        kwargs = {'n_neighbors': n_neighbors, 'metric': metric, 'algorithm': algorithm, **kwargs}
+        nn = NearestNeighbors(**kwargs)
+        nn.fit(data)
+        csr = nn.kneighbors_graph(data, mode=mode)
+        csr = csr.get()
+
+    elif engine == 'pydecent':
+        raise NotImplementedError()
+
+    elif engine == 'rapids-sc' or engine == 'scanpy':
         from anndata import AnnData
-
         ad = AnnData(X=data, obs=None)
-        rsc.get.anndata_to_GPU(ad)
-        rsc.pp.neighbors(ad, n_neighbors=n_neighbors, metric=metric, use_rep='X', **kwargs)
+
+        if engine == 'rapids-sc':
+            import rapids_singlecell as sc
+            sc.get.anndata_to_GPU(ad)
+        else:
+            import scanpy as sc
+
+        algorithm = 'brute' if algorithm in ['brute', 'auto'] else algorithm
+        sc.pp.neighbors(ad, n_neighbors=n_neighbors, metric=metric, use_rep='X', **kwargs)
+
         if mode == 'connectivity':
             csr = ad.obsp["connectivities"]
         elif mode == 'distance':
             csr = ad.obsp["distances"]
 
     else:
-        raise ValueError(f"Unknown engine '{engine}'. Choose from 'sklearn', 'rapids', or 'pydecent'.")
+        raise ValueError(f"Unknown engine '{engine}'. Choose from 'sklearn', 'cuml', 'scanpy', 'rapids-sc' or 'pydecent'.")
 
     return csr
 
 
-
-def cluster(
-        data: pd.DataFrame,
+def get_membership_from_data(
+        data: pd.DataFrame | np.ndarray,
         resolution: float = 1,
         n_neighbors: int = 15,
-        graph_method: str = "rapids",
+        method: str = None,
+        graph_engine: str = "cuml",
         graph_kwargs: dict = None,
-        cluster_method: str = "igraph",
-        clutering_kwargs: dict = None,
+        membership_engine: str = "igraph",
+        membership_kwargs: dict = None,
 ):
-    logger.info(f"cluster data with {len(data)} observations")
-    logger.info(f"compute graph with method `{graph_method}`")
+
+    data = data.values if isinstance(data, pd.DataFrame) else data
 
     if graph_kwargs is None:
         graph_kwargs = dict()
 
-    if clutering_kwargs is None:
-        clutering_kwargs = dict()
+    if membership_kwargs is None:
+        membership_kwargs = dict()
 
-    # %%
-    if graph_method == "rapids":
-        kwargs = dict(
-            n_neighbors=n_neighbors,
-            min_dist=0.1,
-                      metric="euclidean",
-                      n_components=2)
-        kwargs.update(graph_kwargs)
-
-        mapper = umap.UMAP(
-            n_neighbors=n_neighbors,
-            min_dist=min_dist,
-            metric=metric,
-            n_components=n_components,
-            n_jobs=-1,
-        )
-        mapper.fit(data)
-        csr = mapper.graph_
-    elif graph_method == "knn":
-        from sklearn.neighbors import kneighbors_graph
-        metric = "euclidean"
-        csr = kneighbors_graph(data, n_neighbors=n_neighbors, mode="connectivity", metric=metric, include_self=False)
-        # assert False, 'we need to convert distance to weights'
-    elif graph_method == "rapids-sc":
-        pass
-    elif graph_method == "scanpy":
+    if method in ['scanpy', 'rapids-sc']:
         from anndata import AnnData
-        import scanpy as sc
-        from numba import cuda
 
-        sc.pp.neighbors(data)
-        if cuda.is_available():
-            logger.info("GPU available")
+        logger.info(f'Using {method} for membership computation.')
+
+        ad = AnnData(X=data, obs=None)
+
+        if method == 'rapids-sc':
             import rapids_singlecell as sc
-        else:
-            import scanpy as sc
-
-        # %% create AnnData
-        ad = AnnData(X=data.values, obs=None)
-
-        if cuda.is_available():
             sc.get.anndata_to_GPU(ad)
-        sc.pp.neighbors(ad, n_neighbors=n_neighbors, use_rep="X")
-        csr = ad.obsp["connectivities"]
+        elif method == 'scanpy':
+            import scanpy as sc
+        else:
+            raise ValueError(f"Unknown method '{method}'. Choose from 'scanpy' or 'rapids-sc'.")
 
-    G = csr_to_ig(csr)
-
-    if cluster_method == "leiden":
-        membership = get_leiden_membership(G, resolution=resolution)
-    elif cluster_method == "kmeans":
-        n_clusters = 20
-        membership = get_kmeans_membership(data, n_clusters=n_clusters)
-    elif cluster_method == "leiden-scanpy":
-        assert graph_method == "scanpy"
-        sc.tl.leiden(ad, resolution=resolution)
-        # sc.tl.leiden(ad, resolution=resolution, flavor="igraph", n_iterations=2)
+        sc.pp.neighbors(ad, n_neighbors=n_neighbors, use_rep="X", **graph_kwargs)
+        sc.tl.leiden(ad, resolution=resolution, **membership_kwargs)
         membership = ad.obs["leiden"].astype(str).values
 
-    membership = pd.Categorical([str(i) for i in membership])
+    else:
+        csr = kneighbors_graph(data, n_neighbors=n_neighbors, engine=graph_engine, **graph_kwargs)
+        graph = csr_to_ig(csr, directed=False, weighted=False)
+        membership = get_membership(graph, resolution=resolution, engine=membership_engine, **membership_kwargs)
 
-    num_cluster = np.unique(membership).size
-    metadata = pd.Series(membership, index=data.index, name="membership")
-    result = dict(num_obs=len(data), num_cluster=num_cluster)
-
-    logger.info("completed")
-    return metadata
+    return membership
 
 
 def csr_to_ig(csr: scipy.sparse.csr_matrix, directed=False, weighted=False):
@@ -159,6 +133,28 @@ def csr_to_ig(csr: scipy.sparse.csr_matrix, directed=False, weighted=False):
     g.es["weight"] = weights
 
     return g
+
+
+def get_membership(graph, resolution: float = 1, engine: str = "igraph"):
+    """
+    Get the membership of the graph using the Leiden algorithm.
+
+    Args:
+        G (igraph.Graph): The input graph.
+        resolution (float): Resolution parameter for the Leiden algorithm.
+
+    Returns:
+        list: Membership of each vertex in the graph.
+    """
+
+    match engine:
+
+        case "igraph":
+            return get_igraph_membership(graph, resolution=resolution)
+        case "leiden":
+            return get_leiden_membership(graph, resolution=resolution)
+        case _:
+            raise ValueError(f"Unknown engine '{engine}'. Choose from 'igraph' or 'leiden'.")
 
 
 def get_leiden_membership(G, resolution: float = 1):
