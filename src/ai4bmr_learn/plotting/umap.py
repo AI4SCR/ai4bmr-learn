@@ -1,4 +1,5 @@
 from matplotlib import pyplot as plt
+import numpy as np
 
 def run_umap(data, n_neighbors= 15, min_dist=0.3, metric='euclidean', engine: str = 'umap-learn', **kwargs):
     import pandas as pd
@@ -32,14 +33,18 @@ def run_umap(data, n_neighbors= 15, min_dist=0.3, metric='euclidean', engine: st
             raise ValueError(f"Unknown engine: {engine}")
 
 def plot_umap(data, *,
-              n_neighbors= 15, min_dist=0.3, metric='euclidean', engine: str = 'umap-learn', umap_kwargs: dict | None = None,
-              ax: plt.Axes | None = None, labels: list[str, int] | None = None, values: list[int, float] | None = None, num_samples: int | None = 50_000, show_legend: bool = True, **kwargs):
+              n_neighbors: int = 15, min_dist: float = 0.3, metric: str = 'euclidean', engine: str = 'umap-learn', umap_kwargs: dict | None = None,
+              ax: plt.Axes | None = None, labels: np.ndarray | list[str, int] | None = None, values: np.ndarray | list[int, float] | None = None, num_samples: int | None = None, show_legend: bool = True, **kwargs):
 
         import pandas as pd
         import numpy as np
         import umap.plot
 
+        umap_kwargs = umap_kwargs or {}
+
         data = data.values if isinstance(data, pd.DataFrame) else data
+        labels = labels.values if isinstance(labels, pd.Series) else labels
+        values = values.values if isinstance(values, pd.Series) else values
 
         if num_samples and len(data) > num_samples:
             indices = np.random.choice(len(data), num_samples, replace=False)
@@ -50,7 +55,7 @@ def plot_umap(data, *,
         if ax is None:
             _, ax = plt.subplots()
 
-        reducer = run_umap(data, metric=metric, engine=engine)
+        reducer = run_umap(data, n_neighbors=n_neighbors, min_dist=min_dist, metric=metric, engine=engine, **umap_kwargs)
 
         match engine:
             case 'rapids-sc':
@@ -76,3 +81,11 @@ def plot_umap(data, *,
                                  ax=ax, show_legend=show_legend, **kwargs)
 
         return ax
+
+def csr_to_precomputed_knn(csr, k):
+    """
+    Convert a CSR matrix to a tuple of indices and distances for UMAP precomputed knn.
+    """
+    indices = csr.indices.reshape(-1, k)
+    distances = csr.data.reshape(-1, k)
+    return indices, distances

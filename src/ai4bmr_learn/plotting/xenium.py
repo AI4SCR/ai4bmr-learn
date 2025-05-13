@@ -1,17 +1,19 @@
 from ai4bmr_learn.utils.images import get_thumbnail, get_thumbnail_size_and_scale
 import numpy as np
 
-def visualize_points(points, *, slide=None, image=None, feature_names: list[str] = None,
-                     num_points: int=None, max_size=1000,
-                     color_by_feature_name: bool=False, legend: bool=False):
+def visualize_points(points, *, slide=None, image=None,
+                     include_labels: list[str] = None, labels_key: str = 'feature_name',
+                     num_points: int=None, max_size=1000, radius: int = 2, thickness: int = -1,
+                     color_by_label: bool=False, color: tuple = (0, 0, 255), color_map: dict, legend: bool=False):
     import cv2
     import colorcet as cc
+    from itertools import repeat
 
     canvas, scale_factor = get_thumbnail(slide=slide, image=image)
 
-    # Filter by feature names
-    if feature_names is not None:
-        filter_ = points.feature_name.isin(feature_names)
+    # Filter by labels
+    if include_labels is not None:
+        filter_ = points[labels_key].isin(include_labels)
         points = points[filter_]
 
     if num_points is not None:
@@ -20,30 +22,27 @@ def visualize_points(points, *, slide=None, image=None, feature_names: list[str]
 
     # Prepare color mapping from colorcet
     default_color = (0, 0, 255)
-    if color_by_feature_name:
+    if color_by_label:
         from ai4bmr_learn.plotting.utils import get_colorcet_map
-        color_map = get_colorcet_map(points.feature_name.tolist(), as_int=True)
-    else:
-        unique_features = sorted(points.feature_name.unique())
-        color_map = dict()
+        color_map = color_map or get_colorcet_map(points[labels_key], as_int=True)
 
     # coordinates and scale
     coords = np.vstack([points.geometry.x, points.geometry.y]).T
     coords = (coords * scale_factor).round().astype(int)
 
     # points
-    for (x, y), feat in zip(coords, points.feature_name):
-        color = color_map[feat] if color_by_feature_name else default_color
-        cv2.circle(canvas, (x, y), radius=2, color=color, thickness=-1)
+    colors = [color_map[label] for label in points[labels_key]] if color_by_label else [color] * len(coords)
+    for (x, y), color in zip(coords, colors):
+        cv2.circle(canvas, (x, y), radius=radius, color=color, thickness=thickness)
 
     # legend
-    if legend:
+    if legend and color_by_label:
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_scale = 0.4
         y_offset = 15
-        for idx, feat in enumerate(unique_features):
-            color = color_map.get(feat, default_color)
+        for idx, label in enumerate(color_map.values()):
+            color = color_map.get(label, default_color)
             position = (2, 5 + y_offset * (idx + 1))
-            cv2.putText(canvas, str(feat), position, font, font_scale, color, thickness=1, lineType=cv2.LINE_AA)
+            cv2.putText(canvas, str(label), position, font, font_scale, color, thickness=1, lineType=cv2.LINE_AA)
 
     return canvas

@@ -81,7 +81,7 @@ def get_membership_from_data(
         graph_kwargs: dict = None,
         membership_engine: str = "igraph",
         membership_kwargs: dict = None,
-):
+) -> np.ndarray:
 
     data = data.values if isinstance(data, pd.DataFrame) else data
 
@@ -111,11 +111,13 @@ def get_membership_from_data(
         membership = ad.obs["leiden"].astype(str).values
 
     else:
+        logger.info(f'Using {graph_engine} for graph computation and {membership_engine} for membership computation.')
+
         csr = kneighbors_graph(data, n_neighbors=n_neighbors, engine=graph_engine, **graph_kwargs)
         graph = csr_to_ig(csr, directed=False, weighted=False)
         membership = get_membership(graph, resolution=resolution, engine=membership_engine, **membership_kwargs)
 
-    return membership
+    return np.array(membership)
 
 
 def csr_to_ig(csr: scipy.sparse.csr_matrix, directed=False, weighted=False):

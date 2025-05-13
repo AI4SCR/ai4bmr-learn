@@ -302,3 +302,5 @@ _version.py
 *.zarr
 *.pkl
 *.parquetwandb
+mlm-test/
+wandb/
