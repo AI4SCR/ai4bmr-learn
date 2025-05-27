@@ -4,7 +4,7 @@ import numpy as np
 def visualize_points(points, *, slide=None, image=None,
                      include_labels: list[str] = None, labels_key: str = 'feature_name',
                      num_points: int=None, max_size=1000, radius: int = 2, thickness: int = -1,
-                     color_by_label: bool=False, color: tuple = (0, 0, 255), color_map: dict, legend: bool=False):
+                     color_by_label: bool=False, color: tuple = (0, 0, 255), color_map: dict = None, legend: bool=False):
     import cv2
     import colorcet as cc
     from itertools import repeat
@@ -21,7 +21,6 @@ def visualize_points(points, *, slide=None, image=None,
         points = points.sample(num_points)
 
     # Prepare color mapping from colorcet
-    default_color = (0, 0, 255)
     if color_by_label:
         from ai4bmr_learn.plotting.utils import get_colorcet_map
         color_map = color_map or get_colorcet_map(points[labels_key], as_int=True)
@@ -40,9 +39,9 @@ def visualize_points(points, *, slide=None, image=None,
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_scale = 0.4
         y_offset = 15
-        for idx, label in enumerate(color_map.values()):
-            color = color_map.get(label, default_color)
+        for idx, label in enumerate(color_map):
+            color_ = color_map.get(label, color)
             position = (2, 5 + y_offset * (idx + 1))
-            cv2.putText(canvas, str(label), position, font, font_scale, color, thickness=1, lineType=cv2.LINE_AA)
+            cv2.putText(canvas, str(label), position, font, font_scale, color_, thickness=1, lineType=cv2.LINE_AA)
 
     return canvas

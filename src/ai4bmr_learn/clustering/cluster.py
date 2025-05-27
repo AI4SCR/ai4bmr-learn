@@ -72,7 +72,7 @@ def kneighbors_graph(data, n_neighbors: int = 15, metric: str = 'euclidean', mod
     return csr
 
 
-def get_membership_from_data(
+def get_memberships_from_data(
         data: pd.DataFrame | np.ndarray,
         resolution: float = 1,
         n_neighbors: int = 15,

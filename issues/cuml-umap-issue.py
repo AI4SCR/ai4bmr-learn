@@ -53,9 +53,9 @@ def test_run_umap(random_state=None):
         ax.axis('off')
 
     fig.tight_layout()
-    # fig.show()
-    fig.savefig(f'/work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn/issues/random-seed={random_state}.png', dpi=300)
+    fig.show()
+    # fig.savefig(f'/work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn/issues/random-seed={random_state}.png', dpi=300)
     plt.close(fig)
 
-
-test_run_umap(random_state=2)
+for _ in range(5):
+    test_run_umap(random_state=None)
