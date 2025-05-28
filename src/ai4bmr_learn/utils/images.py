@@ -113,7 +113,7 @@ def filter_coords(coords: list[SlideCoordinate | XeniumCoordinate], *, contours:
     return filtered
 
 
-def get_patch(coord):
+def get_patch(coord, as_tensor: bool = True):
     import openslide
     from torchvision.transforms import v2
     import torch
@@ -126,19 +126,27 @@ def get_patch(coord):
     patch_height, patch_width = pair(coord.patch_size)
     scale_factor = coord.scale_factor
 
+    assert np.isclose(kernel_width, patch_width * scale_factor)
+    assert np.isclose(kernel_height, patch_height * scale_factor)
+    assert np.isclose(coord.mpp * scale_factor, coord.patch_mpp)
     assert patch_height == round(kernel_height / scale_factor)
     assert patch_width == round(kernel_width / scale_factor)
 
     # MORPHOLOGY
     patch = slide.read_region((x, y), 0, (kernel_width, kernel_height))
-    patch = patch.convert("RGB")  # remove alpha channel, #TODO: is this more efficient than current solution?
-    # note: this order seems to perform the best, i.e. resize after ToImage
-    transform = v2.Compose([
-        v2.ToImage(),
-        v2.Resize((patch_height, patch_width)),
-        # v2.ToDtype(torch.float32, scale=True),
-    ])
-    patch = transform(patch)
+    # TODO: is this more efficient than [...,:3]?
+    patch = patch.convert("RGB")  # remove alpha channel
+
+    if as_tensor:
+        # note: this order seems to perform the best, i.e. resize after ToImage
+        transform = v2.Compose([
+            v2.ToImage(),
+            v2.Resize((patch_height, patch_width)),
+            # v2.ToDtype(torch.float32, scale=True),
+        ])
+        patch = transform(patch)
+    else:
+        patch = patch.resize((patch_height, patch_width))
 
     return patch
 

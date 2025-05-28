@@ -1,10 +1,12 @@
 from ai4bmr_learn.utils.images import get_thumbnail, get_thumbnail_size_and_scale
 import numpy as np
 
+
 def visualize_points(points, *, slide=None, image=None,
                      include_labels: list[str] = None, labels_key: str = 'feature_name',
-                     num_points: int=None, max_size=1000, radius: int = 2, thickness: int = -1,
-                     color_by_label: bool=False, color: tuple = (0, 0, 255), color_map: dict = None, legend: bool=False):
+                     num_points: int = None, max_size: int = 1000, radius: int = 2, thickness: int = -1,
+                     color_by_label: bool = False, color: tuple = (0, 0, 255), color_map: dict = None,
+                     legend: bool = False):
     import cv2
     import colorcet as cc
     from itertools import repeat
