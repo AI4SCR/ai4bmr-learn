@@ -31,3 +31,28 @@ def chunked(iterable: Iterable[T], n: int) -> List[List[T]]:
 
 def get_batch_size(iterable, n: int):
     return (len(iterable) + n - 1) // n
+
+
+def setup_wandb_auth():
+    import os
+    import netrc
+
+    # Try environment variable first
+    api_key = os.getenv("WANDB_API_KEY_ETHZ")
+
+    if api_key is None:
+        try:
+            # Default wandb API host
+            machine = "api.wandb.ai"
+            auth = netrc.netrc().authenticators(machine)
+            if auth:
+                login, _, api_key = auth
+        except FileNotFoundError:
+            print("No .netrc file found")
+        except Exception as e:
+            print(f"Failed to load API key from .netrc: {e}")
+
+    if api_key:
+        os.environ["WANDB_API_KEY"] = api_key
+    else:
+        raise RuntimeError("No WANDB API key found in env or .netrc")

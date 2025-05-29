@@ -1,18 +1,19 @@
 # check: resample_abs_pos_embed in timm
 import torch
 from timm.models.vision_transformer import VisionTransformer
-from ai4bmr_learn.models.encoder.base import BaseMaskedEncoder
 from ai4bmr_learn.models.tokenizer.base import BaseTokenizer
-from ai4bmr_learn.models.encoder.masked_encoder import MaskedEncoder
-from ai4bmr_learn.models.decoder.masked_decoder import MaskedDecoder
+from ai4bmr_learn.models.encoder.masked_encoder import BaseMaskedEncoder
 
 from ai4bmr_learn.models.utils import get_at_index
 
-class TimmViTTokenizer(BaseTokenizer):
+
+class Tokenizer(BaseTokenizer):
     def __init__(self, model, image_size: int):
+
         kernel_size = model.patch_embed.proj.kernel_size
         dim = model.patch_embed.proj.out_channels
         num_channels = model.patch_embed.proj.in_channels
+
         super().__init__(
             image_size=image_size,
             kernel_size=kernel_size,
@@ -36,7 +37,7 @@ class TimmViTTokenizer(BaseTokenizer):
         img = rearrange(x, "b (h w) (c p1 p2) -> b c (h p1) (w p2)", p1=kh, p2=kw, h=h)
         return img
 
-class TimmVitEncoder(BaseMaskedEncoder):
+class MaskedEncoder(BaseMaskedEncoder):
     def __init__(self, model, num_patches: int):
         self.num_patches = num_patches
         self.num_prefix_tokens = model.num_prefix_tokens
@@ -122,8 +123,8 @@ def get_timm_backbones(
             print(f"Create new ViT model")
             model = VisionTransformer(**timm_kwargs)
 
-        tokenizer = TimmViTTokenizer(model=model, image_size=image_size)
-        encoder = TimmVitEncoder(model=model, num_patches=tokenizer.num_patches)
+        tokenizer = Tokenizer(model=model, image_size=image_size)
+        encoder = MaskedEncoder(model=model, num_patches=tokenizer.num_patches)
         decoder = Masked(
             num_tokens=encoder.num_tokens,
             dim=decoder_dim,

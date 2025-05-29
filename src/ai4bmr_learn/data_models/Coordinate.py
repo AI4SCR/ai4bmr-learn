@@ -23,7 +23,8 @@ class RandomCoordinate:
     kernel_size: int
 
     image_path: str | None = None
-    uuid: UUID = field(default_factory=uuid4)
+    sample_id: str | None = None
+    uuid: str = field(default_factory=lambda: str(uuid4()))
 
 
 @dataclass
