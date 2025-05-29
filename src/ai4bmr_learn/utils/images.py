@@ -62,6 +62,23 @@ def get_slide_patcher_params(slide, patch_size: int, patch_stride: int, target_m
     )
 
 
+def get_random_coordinates_dict(height: int, width: int, kernel_size: int | tuple[int, int], num_coords: int, seed: int | None = None, **kwargs) -> dict:
+    import numpy as np
+    rng = np.random.default_rng(seed)
+
+    # TODO: accept contours and only sample within contours
+    coords = []
+    for i in range(num_coords):
+        kh, kw = pair(kernel_size)
+
+        y = rng.integers(0, height - kh)
+        x = rng.integers(0, width - kw)
+        # TODO: id might be misleading as it is not unique across all coordinates but only within the current sample
+        coords.append(dict(id=i, x=int(x), y=int(y), kernel_size=kernel_size, **kwargs))
+
+    return coords
+
+
 def get_coordinates_dict(height: int, width: int,
                          kernel_size: int | tuple[int, int], stride: int | tuple[int, int],
                          include_out_of_bounds: bool = False,
@@ -82,6 +99,7 @@ def get_coordinates_dict(height: int, width: int,
     # TODO: introduce a `clip_to_image: bool = False` that adjusts the kernel_size to end at the image border
 
     coords = product(y_coords, x_coords)
+    # TODO: id might be misleading as it is not unique across all coordinates but only within the current sample
     coords = [dict(id=i, x=int(x), y=int(y), kernel_size=kernel_size, stride=stride, **kwargs)
               for i, (y, x) in enumerate(coords)]
     return coords

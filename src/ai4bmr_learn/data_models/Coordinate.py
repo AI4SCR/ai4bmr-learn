@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from uuid import uuid4, UUID
 
 @dataclass
 class BaseCoordinate:
@@ -11,6 +12,18 @@ class BaseCoordinate:
     
     mpp: float | None = None
     image_path: str | None = None
+    uuid: UUID = field(default_factory=uuid4)
+
+@dataclass
+class RandomCoordinate:
+
+    id: int
+    x: int
+    y: int
+    kernel_size: int
+
+    image_path: str | None = None
+    uuid: UUID = field(default_factory=uuid4)
 
 
 @dataclass
@@ -32,6 +45,7 @@ class SlideCoordinate:
     scale_factor: float
 
     overlap: float = -1
+    uuid: UUID = field(default_factory=uuid4)
 
 
 @dataclass
@@ -44,6 +58,7 @@ class PointsCoordinate:
     stride: int
 
     points_path: str
+    uuid: UUID = field(default_factory=uuid4)
 
 
 @dataclass
@@ -66,4 +81,5 @@ class XeniumCoordinate:
     scale_factor: float
 
     overlap: float | None = None
+    uuid: UUID = field(default_factory=uuid4)
 
