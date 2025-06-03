@@ -24,7 +24,6 @@ seaborn = "*"
 pandas = "*"
 einops = "*"
 timm = "*"
-flatdict = "*"
 jsonargparse = { version = "^4.24.1", extras = ["all"] }
 pydantic = "^2.6.1"
 igraph="*"
