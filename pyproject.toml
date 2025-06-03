@@ -28,14 +28,15 @@ flatdict = "*"
 jsonargparse = { version = "^4.24.1", extras = ["all"] }
 pydantic = "^2.6.1"
 igraph="*"
-anndata="*"
 leidenalg="*"
-rapids-singlecell="*"
 geopandas="*"
-#cuml="*"
 openslide-bin="*"
 openslide-python="*"
 lightly="*"
+
+[tool.poetry.group.scanpy.dependencies]
+anndata="*"
+rapids-singlecell="*"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"

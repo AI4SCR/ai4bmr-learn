@@ -304,6 +304,7 @@ class Danenberg(L.LightningDataModule):
             with open(coords_file, "r") as f:
                 sample_coords = json.load(f)
                 coords.extend(sample_coords)
+
         metadata = pd.DataFrame.from_records(coords)
         splits = generate_splits(metadata, val_size=0.05, test_size=0.25, random_state=0)
         self.splits_dir.mkdir(exist_ok=True, parents=True)
