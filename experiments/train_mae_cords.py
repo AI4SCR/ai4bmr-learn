@@ -64,6 +64,7 @@ def preprocess_images(
 
     panel.to_parquet(save_panel)
 
+    # %%
     sr = StatsRecorder()
     sample_ids = set()
     for i, img in enumerate(images.values(), start=1):
@@ -185,7 +186,7 @@ class Patches(Dataset):
 
 
 # %% DATAMODULE
-class Danenberg(L.LightningDataModule):
+class Cords2024(L.LightningDataModule):
 
     def __init__(
             self,
@@ -212,7 +213,7 @@ class Danenberg(L.LightningDataModule):
 
         # DATASET
         self.base_dir = base_dir
-        self.dataset_dir = base_dir / "Danenberg"
+        self.dataset_dir = base_dir / "Cords2024"
         self.image_version = image_version
         self.images_dir = self.dataset_dir / "images" / image_version
 
@@ -246,9 +247,9 @@ class Danenberg(L.LightningDataModule):
         from pathlib import Path
 
         # DATASET
-        from ai4bmr_datasets import Danenberg2022
-        base_dir = Path("/work/FAC/FBM/DBC/mrapsoma/prometex/data/datasets/Danenberg2022")
-        dm = Danenberg2022(base_dir=base_dir)
+        from ai4bmr_datasets import Cords2024
+        base_dir = Path("/work/FAC/FBM/DBC/mrapsoma/prometex/data/datasets/Cords2024")
+        dm = Cords2024(base_dir=base_dir)
         dm.setup(image_version='published', mask_version='published')
 
         # preprocessing
@@ -342,7 +343,8 @@ class Danenberg(L.LightningDataModule):
         )
 
 
-dm = self = Danenberg(num_workers=8)
+dm = self = Cords2024(num_workers=8)
+dm.prepare_data()
 dm.setup()
 
 # %% BACKBONE
@@ -353,7 +355,7 @@ model_name = 'vit_small_patch16_224'
 backbone = BaseBackbone.from_timm_vit(model_name=model_name, image_size=image_size, num_channels=num_channels)
 
 # %% CONFIGURATIONS
-project_cfg = ProjectConfig(name="mae-danenberg")
+project_cfg = ProjectConfig(name="mae-cords2024")
 trainer_cfg = TrainerConfig(max_epochs=1000,
                             accumulate_grad_batches=32,
                             # precision=16,
