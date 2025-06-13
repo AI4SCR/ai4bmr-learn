@@ -1,0 +1,33 @@
+datamodule:
+  data_path: /users/amarti51/prometex/data/ai4bmr-learn/test/data.parquet
+  metadata_path: /users/amarti51/prometex/data/ai4bmr-learn/test/metadata.parquet
+  backbone:
+    class_path: ai4bmr_learn.models.encoder.vision_encoder_torch_hub.VisionFeatureExtractor
+    init_args:
+      model_name: resnet18
+  dataset:
+    class_path: ai4bmr_learn.datasets.cifar10.CIFAR10
+    init_args:
+      base_dir: null
+      transform:
+        class_path: torchvision.transforms.v2.Compose
+        init_args:
+          transforms:
+            - class_path: torchvision.transforms.v2.Resize
+              init_args:
+                size: 224
+            - class_path: torchvision.transforms.v2.ToImage
+            - class_path: torchvision.transforms.v2.ToDtype
+              init_args:
+                dtype: torch.float32
+                scale: true
+            - class_path: torchvision.transforms.v2.Normalize
+              init_args:
+                mean: [0.485, 0.456, 0.406]
+                std: [0.229, 0.224, 0.225]
+  target_column_name: target
+  batch_size: 64
+  num_workers: null
+  persistent_workers: true
+  shuffle: true
+  pin_memory: true

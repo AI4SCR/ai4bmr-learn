@@ -94,7 +94,7 @@ def get_memberships_from_data(
     if method in ['scanpy', 'rapids-sc']:
         from anndata import AnnData
 
-        logger.info(f'Using {method} for membership computation.')
+        logger.info(f'Using {method} for membership computation with resolution {resolution}.')
 
         ad = AnnData(X=data, obs=None)
 
@@ -111,7 +111,7 @@ def get_memberships_from_data(
         membership = ad.obs["leiden"].astype(str).values
 
     else:
-        logger.info(f'Using {graph_engine} for graph computation and {membership_engine} for membership computation.')
+        logger.info(f'Using {graph_engine} for graph computation and {membership_engine} for membership computation with resolution {resolution}.')
 
         csr = kneighbors_graph(data, n_neighbors=n_neighbors, engine=graph_engine, **graph_kwargs)
         graph = csr_to_ig(csr, directed=False, weighted=False)
