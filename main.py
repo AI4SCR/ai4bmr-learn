@@ -1,16 +1,14 @@
-# This is a sample Python script.
+from lightning.pytorch.cli import LightningCLI
 
-# Press ⌃R to execute it or replace it with your code.
-# Press Double ⇧ to search everywhere for classes, files, tool windows, actions, and settings.
-
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f"Hi, {name}")  # Press ⌘F8 to toggle the breakpoint.
+# simple demo classes for your convenience
+from lightning.pytorch.demos.boring_classes import DemoModel, BoringDataModule
 
 
-# Press the green button in the gutter to run the script.
+def cli_main():
+    cli = LightningCLI(DemoModel, BoringDataModule)
+    # note: don't call fit!!
+
+
 if __name__ == "__main__":
-    print_hi("PyCharm")
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+    cli_main()
+    # note: it is good practice to implement the CLI in a function and call it in the main if block

@@ -71,7 +71,7 @@ class VisionFeatureExtractor(L.LightningModule):
     def predict_step(self, batch, batch_idx):
         x = batch['image']
         features = self(x)
-        batch['prediction'] = features
+        batch['embedding'] = features
         return batch
 
 

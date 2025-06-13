@@ -1,3 +1,5 @@
+from typing import Any
+
 from einops import repeat
 import lightning as L
 import torch
@@ -192,3 +194,7 @@ class MAE(L.LightningModule):
             },
         }
 
+    def predict_step(self, batch, batch_idx) -> dict:
+        images = batch['image']
+        out = self.backbone(images)
+        return out

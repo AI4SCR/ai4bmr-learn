@@ -1,9 +1,9 @@
 # %%
-
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-
+from sklearn.preprocessing import LabelEncoder
+import numpy as np
 
 class TabularDataset(Dataset):
 
@@ -26,15 +26,19 @@ class TabularDataset(Dataset):
 
         if self.targets.dtype == "category":
             self.is_categorical = True
-            self.label_to_index = {k: v for k, v in zip(self.targets.cat.categories, self.targets.cat.codes)}
+            self.label_encoder = LabelEncoder()
+
             self.labels = self.targets.cat.categories.to_list()
-            # NOTE: we use the codes to ensure that the targets are integers
-            self.targets = self.targets.cat.codes
+            self.label_encoder.fit(self.labels)
+            self.label_to_target = {k:v for k, v in zip(self.labels, self.label_encoder.transform(self.labels))}
+
+            # NOTE: we use the codes to ensure that the targets are integers, self.targets.cat.codes
+            self.targets = pd.Series(self.label_encoder.transform(self.targets), index=self.targets.index)
             self.num_classes = len(self.labels)
             self.class_distribution = torch.tensor(np.bincount(self.targets), dtype=torch.long)
         else:
             self.is_categorical = False
-            self.labels = self.num_classes = self.label_to_index = None
+            self.label_encoder = self.labels = self.num_classes = self.label_to_index = None
 
     def __len__(self):
         return self.num_samples
@@ -45,3 +49,9 @@ class TabularDataset(Dataset):
         target = target.long() if self.is_categorical else target.float()
         metadata = self.metadata.iloc[idx].to_dict()
         return dict(x=x, target=target, metadata=metadata)
+
+    @classmethod
+    def from_paths(cls, data_path: str, metadata_path: str, target_column_name: str = "target") -> "TabularDataset":
+        data = pd.read_parquet(data_path, engine="fastparquet")
+        metadata = pd.read_parquet(metadata_path, engine="fastparquet")
+        return cls(data=data, metadata=metadata, target_column_name=target_column_name)
