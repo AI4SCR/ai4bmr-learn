@@ -6,7 +6,7 @@ from loguru import logger
 from torch import get_num_threads
 from ai4bmr_learn.datamodules.TabularLight import TabularDataModule
 
-class ImageEmbedding(TabularDataModule):
+class PatchEmbeddings(TabularDataModule):
 
     def __init__(self,
                  data_path: Path, metadata_path: Path,

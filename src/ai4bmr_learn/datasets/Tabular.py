@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import Dataset
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
+from pathlib import Path
 
 class TabularDataset(Dataset):
 
@@ -51,7 +52,7 @@ class TabularDataset(Dataset):
         return dict(x=x, target=target, metadata=metadata)
 
     @classmethod
-    def from_paths(cls, data_path: str, metadata_path: str, target_column_name: str = "target") -> "TabularDataset":
+    def from_paths(cls, data_path: Path, metadata_path: Path, target_column_name: str = "target") -> "TabularDataset":
         data = pd.read_parquet(data_path, engine="fastparquet")
         metadata = pd.read_parquet(metadata_path, engine="fastparquet")
         return cls(data=data, metadata=metadata, target_column_name=target_column_name)

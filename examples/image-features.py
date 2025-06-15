@@ -1,13 +1,16 @@
+import dotenv
+dotenv.load_dotenv()
 
 if __name__ == "__main__":
-    from ai4bmr_learn.datamodules.image_embeddings import ImageEmbeddings
-    from ai4bmr_learn.routines.estimator_cv import estimator_cv, SweepConfig, WandbInitConfig
+    from ai4bmr_learn.datamodules.image_embedding import ImageEmbedding
+    from ai4bmr_learn.routines.logistic_regression import logistic_regression, SweepConfig, WandbInitConfig
+
     from jsonargparse import ArgumentParser
     import os
 
     parser = ArgumentParser()
     parser.add_argument("--config", action="config")
-    parser.add_class_arguments(ImageEmbeddings, 'datamodule')
+    parser.add_class_arguments(ImageEmbedding, 'datamodule')
 
     args = parser.parse_args()
 
@@ -16,9 +19,9 @@ if __name__ == "__main__":
     sweep = SweepConfig()
 
     wandb_init = WandbInitConfig(project="image-features")
-    os.environ["WANDB_API_KEY"] = 'REDACTED_WANDB_API_KEY'
+    os.environ["WANDB_API_KEY"] = os.environ['WANDB_API_KEY_ETHZ']
 
-    estimator_cv(
+    logistic_regression(
         datamodule=datamodule,
         sweep=sweep,
         wandb_init=wandb_init,

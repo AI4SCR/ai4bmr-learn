@@ -68,11 +68,11 @@ def get_seg_model(model_name: str = 'hest', device: str = 'cuda') -> torch.nn.Mo
 
 
 def segment_slide(slide: openslide.OpenSlide,
+                  save_contours_path: Path,
+                  save_coords_path: Path,
                   target_mpp: float = 4,
                   min_area: float = 500,
                   seg_model: torch.nn.Module | None = None,
-                  save_contours_path: Path | None = None,
-                  save_coords_path: Path | None = None,
                   batch_size: int = 32,
                   num_workers: int = 8,
                   **kwargs

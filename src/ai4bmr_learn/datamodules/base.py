@@ -1,113 +1,62 @@
 # %%
 from pathlib import Path
-
 import lightning as L
-import numpy as np
 import pandas as pd
-from torch import get_num_threads
-from torch.utils.data import DataLoader
 
-from ..data.splits import Split, generate_splits
-
-
-class BaseDataModule(L.LightningDataModule):
+# %% TABULAR
+from ai4bmr_learn.datasets.Tabular import TabularDataset
+class BaseTabularDataModule(L.LightningDataModule):
 
     def __init__(
-        self,
-        splits_path: Path = None,
-        target_column_name: str = "target",
-        test_size: float = 0.2,
-        val_size: float = 0.0,
-        batch_size: int = 64,
-        num_workers: int = None,
-        persistent_workers: bool = True,
-        shuffle: bool = True,
-        pin_memory: bool = True,
-        random_state: int = 42,
+            self,
+            data_path: Path,
+            metadata_path: Path,
+            target_column_name: str = "target",
     ):
         super().__init__()
 
         # CONFIGURE PATHS
+        self.data_path = data_path.resolve()
+        self.metadata_path = metadata_path.resolve()
         self.target_column_name = target_column_name
-        self.splits_path = splits_path or self.metadata_path.parent / "splits.parquet"
 
-        # SPLITTING
-        self.test_size = test_size
-        self.val_size = val_size
-        self.random_state = random_state
-
-        # DATALOADERS
-        self.batch_size = batch_size
-        self.num_workers = num_workers if num_workers is not None else max(0, get_num_threads() - 1)
-        self.persistent_workers = persistent_workers if self.num_workers > 0 else False
-        self.shuffle = shuffle
-        self.pin_memory = pin_memory
-
-        # DATASET
-        self.train_idx = self.val_idx = self.test_idx = None
-        self.dataset = self.train_set = self.val_set = self.test_set = None
+        self.tabular = None
 
     def setup(self, stage=None):
-        from torch.utils.data import Subset
-        from ..datasets.Tabular import TabularDataset
+        self.tabular = TabularDataset.from_paths(
+            data_path=self.data_path,
+            metadata_path=self.metadata_path,)
 
-        data = pd.read_parquet(self.data_path, engine="fastparquet")
-        data = data.convert_dtypes()
+    def prepare_data(self):
+        pass
 
-        splits = pd.read_parquet(self.splits_path, engine="fastparquet")
-        splits = splits.convert_dtypes()
 
-        data, splits = data.align(splits, axis=0, join="inner")
+# %%
+from ai4bmr_learn.datasets.MIL import MILDataset
+class BaseMILDataModule(L.LightningDataModule):
 
-    def prepare_splits(self) -> None:
+    def __init__(
+            self,
+            data_dir: Path,
+            metadata_path: Path,
+            target_column_name: str = "target",
+    ):
+        super().__init__()
 
-        self.train_idx = np.flatnonzero(splits[Split.COLUMN_NAME] == Split.TRAIN)
-        self.val_idx = np.flatnonzero(splits[Split.COLUMN_NAME] == Split.VAL)
-        self.test_idx = np.flatnonzero(splits[Split.COLUMN_NAME] == Split.TEST)
+        # CONFIGURE PATHS
+        self.data_dir = data_dir.resolve()
+        self.metadata_path = metadata_path.resolve()
+        self.target_column_name = target_column_name
 
-        self.train_set = Subset(self.dataset, self.train_idx)
-        self.val_set = Subset(self.dataset, self.val_idx)
-        self.test_set = Subset(self.dataset, self.test_idx)
+        self.mil = None
 
-    def generate_splits(self, force: bool = False) -> None:
-        if self.splits_path.exists() and not force:
-            return
+    def setup(self, stage=None):
+        data = {k: pd.read_parquet(self.data_dir / f"{k}.parquet", engine="fastparquet")
+                for k in self.data_dir.glob('*.parquet')}
 
-        self.splits_path.parent.mkdir(parents=True, exist_ok=True)
         metadata = pd.read_parquet(self.metadata_path, engine="fastparquet")
-        splits = generate_splits(
-            metadata,
-            target_column_name=self.target_column_name,
-            test_size=self.test_size,
-            val_size=self.val_size,
-            random_state=self.random_state,
-        )
-        splits.to_parquet(self.splits_path, engine="fastparquet")
+        self.mil = MILDataset(data=data, metadata=metadata, target_column_name=self.target_column_name)
 
-    def train_dataloader(self):
-        return DataLoader(
-            self.train_set,
-            batch_size=self.batch_size,
-            shuffle=self.shuffle,
-            num_workers=self.num_workers,
-            persistent_workers=self.persistent_workers,
-            pin_memory=self.pin_memory,
-        )
+    def prepare_data(self):
+        pass
 
-    def val_dataloader(self):
-        return DataLoader(
-            self.val_set,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            persistent_workers=self.persistent_workers,
-            pin_memory=self.pin_memory,
-        )
-
-    def test_dataloader(self):
-        return DataLoader(
-            self.test_set,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            persistent_workers=self.persistent_workers,
-            pin_memory=self.pin_memory,
-        )
