@@ -1,18 +1,17 @@
 from pathlib import Path
 from torch.utils.data import DataLoader, Dataset
 import lightning as l
-import torch
 import pandas as pd
 from loguru import logger
 from torch import get_num_threads
 from ai4bmr_learn.datamodules.TabularLight import TabularDataModule
 
-class ImageEmbeddings(TabularDataModule):
+class ImageEmbedding(TabularDataModule):
 
     def __init__(self,
                  data_path: Path, metadata_path: Path,
                  dataset: Dataset,
-                 backbone: l.LightningModule = None,
+                 backbone: l.LightningModule,
                  target_column_name: str = "target",
                  batch_size: int = 64,
                  num_workers: int = None,
