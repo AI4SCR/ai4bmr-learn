@@ -8,6 +8,9 @@ class CIFAR10(torchvision.datasets.CIFAR10):
         base_dir = base_dir.resolve()
         super().__init__(root=base_dir, **kwargs)
 
+    def setup(self, *args, **kwargs):
+        pass
+
     def __getitem__(self, item):
         image, target = super().__getitem__(item)
         return {'image': image, 'target': target}

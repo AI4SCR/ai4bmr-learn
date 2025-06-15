@@ -1,6 +1,6 @@
 datamodule:
-  data_path: /users/amarti51/prometex/data/ai4bmr-learn/test/data.parquet
-  metadata_path: /users/amarti51/prometex/data/ai4bmr-learn/test/metadata.parquet
+  data_path: /users/amarti51/prometex/data/ai4bmr-learn/cifar10-resnet18/data.parquet
+  metadata_path: /users/amarti51/prometex/data/ai4bmr-learn/cifar10-resnet18/metadata.parquet
   backbone:
     class_path: ai4bmr_learn.models.encoder.vision_encoder_torch_hub.VisionFeatureExtractor
     init_args:

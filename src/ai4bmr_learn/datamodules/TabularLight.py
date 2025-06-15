@@ -26,12 +26,11 @@ class TabularDataModule(L.LightningDataModule):
         self.target_column_name = target_column_name
         self.tabular = None
 
-    def setup(self):
-        from torch.utils.data import Subset
-        from ..datasets.Tabular import TabularDataset
+    def setup(self, *args, **kwargs) -> None:
+        from ai4bmr_learn.datasets.Tabular import TabularDataset
 
-        self.tabular = TabularDataset.from_paths(data_path=self.data_path,
-                                                 metadata_path=self.metadata_path,
+        self.tabular = TabularDataset.from_paths(data_path=str(self.data_path),
+                                                 metadata_path=str(self.metadata_path),
                                                  target_column_name=self.target_column_name)
 
     def prepare_data(self) -> None:

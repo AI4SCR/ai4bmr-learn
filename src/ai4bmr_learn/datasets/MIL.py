@@ -26,15 +26,19 @@ class MILDataset(Dataset):
 
         if self.targets.dtype == "category":
             self.is_categorical = True
-            self.label_to_index = {k: v for k, v in zip(self.targets.cat.categories, self.targets.cat.codes)}
+            self.label_encoder = LabelEncoder()
+
             self.labels = self.targets.cat.categories.to_list()
-            # NOTE: we use the codes to ensure that the targets are integers
-            self.targets = self.targets.cat.codes
+            self.label_encoder.fit(self.labels)
+            self.label_to_target = {k: v for k, v in zip(self.labels, self.label_encoder.transform(self.labels))}
+
+            # NOTE: we use the codes to ensure that the targets are integers, self.targets.cat.codes
+            self.targets = pd.Series(self.label_encoder.transform(self.targets), index=self.targets.index)
             self.num_classes = len(self.labels)
             self.class_distribution = torch.tensor(np.bincount(self.targets), dtype=torch.long)
         else:
             self.is_categorical = False
-            self.labels = self.num_classes = self.label_to_index = self.class_distribution = None
+            self.label_encoder = self.labels = self.num_classes = self.label_to_index = None
 
     def __len__(self):
         return self.num_samples

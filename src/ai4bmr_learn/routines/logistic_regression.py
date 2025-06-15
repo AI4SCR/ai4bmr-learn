@@ -3,7 +3,6 @@ from dataclasses import asdict, dataclass, field
 import pandas as pd
 import torch
 import wandb
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from torchmetrics import MetricCollection
 from datetime import datetime
@@ -12,12 +11,9 @@ from ai4bmr_learn.datamodules.TabularLight import TabularDataModule
 from ai4bmr_learn.metrics.classification import get_metric_collection
 from sklearn.model_selection import ParameterGrid
 
+# %%
 param_grid = {
-    "n_estimators": [50, 100],
-    "max_depth": [None],
-    "min_samples_split": [2],
-    "max_features": ["sqrt"],
-    "criterion": ["gini"],
+    "C": [0.01, 0.1, 1, 10, 100],
 }
 
 default_params = list(ParameterGrid(param_grid))
@@ -31,9 +27,8 @@ class SweepConfig:
     num_inner_cv: int = 5
     test_size: float = 0.2
 
-
 # %%
-def estimator_cv(
+def logistic_regression(
         datamodule: TabularDataModule,
         sweep: SweepConfig,
         wandb_init: WandbInitConfig = WandbInitConfig(),
@@ -47,13 +42,11 @@ def estimator_cv(
     x = dm.tabular.data.values
     y = dm.tabular.targets.values
 
-    labels = dm.tabular.labels
     num_classes = dm.tabular.num_classes
     num_samples = dm.tabular.num_samples
 
     # %%
     cv_id = datetime.now().strftime("%Y%m%d-%H:%M:%S")
-    save_dir = dm.metadata_path.parent / "nested_cv_splits" / cv_id
 
     # METRICS
     metrics = metrics or get_metric_collection(num_classes=num_classes)
@@ -61,7 +54,8 @@ def estimator_cv(
     metrics_test = metrics_train.clone(prefix="scores:test/")
 
     # MODEL
-    model = RandomForestClassifier(random_state=42)
+    from sklearn.linear_model import LogisticRegression
+    model = LogisticRegression(max_iter=1000)
 
     # SWEEP
     # note: GridSearch only accepts a list of dicts with parameter lists
@@ -75,10 +69,11 @@ def estimator_cv(
         config = dict(cv_id=cv_id,
                       cv_type='outer',
                       outer_fold=outer_fold,
-                      target_column_name=dm.target_column_name,
+                      target_column_name=dm.tabular.target_column_name,
                       num_classes=num_classes,
                       num_samples=num_samples,
                       metric_for_best_model=metric_for_best_model)
+
         wandb_init.config.update(config)
         wandb.init(**asdict(wandb_init))
 
@@ -107,6 +102,7 @@ def estimator_cv(
 
         cv_results_ = pd.DataFrame.from_dict(grid.cv_results_)
         cv_results_ = cv_results_.drop(columns=['params'])
+        # TODO: log tabel to wandb
         cv_results_ = cv_results_.convert_dtypes()
 
         # TEST SCORES
@@ -127,3 +123,11 @@ def estimator_cv(
 
         wandb.finish()
 
+# import os
+# from ai4bmr_learn.datamodules.DummyTabular import DummyTabular
+# os.environ["WANDB_API_KEY"] = ''
+#
+# dm = DummyTabular()
+# wandb_init = WandbInitConfig(name="logistic_regression")
+# sweep = SweepConfig()
+# logistic_regression(datamodule=dm, sweep=sweep, wandb_init=wandb_init)
