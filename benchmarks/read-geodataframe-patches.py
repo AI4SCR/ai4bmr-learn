@@ -10,10 +10,11 @@ base_dir = Path('/work/FAC/FBM/DBC/mrapsoma/prometex/data/benchmark')
 base_dir.mkdir(parents=True, exist_ok=True)
 
 # Bounding boxes within 1000x1000 coordinate space
+h, w = 100_000, 100_000
 bboxs = []
-for size in [10, 50, 100]:
-    xmin = np.random.uniform(0, 1000 - size)
-    ymin = np.random.uniform(0, 1000 - size)
+for size in [256, 512]:
+    xmin = np.random.uniform(0, w - size)
+    ymin = np.random.uniform(0, h - size)
     xmax = xmin + size
     ymax = ymin + size
     bboxs.append((xmin, ymin, xmax, ymax))
@@ -24,7 +25,7 @@ test_path_gpkg = base_dir / 'with_bbox.gpkg'
 test_path_feather = base_dir / 'with_bbox.feather'
 
 # Generate dummy data: 10 million random points
-N = 1_000_000
+N = 10_000_000
 np.random.seed(42)
 x = np.random.uniform(0, 1000, N)
 y = np.random.uniform(0, 1000, N)
@@ -35,10 +36,10 @@ df = gpd.GeoDataFrame(pd.DataFrame({'id': range(N)}), geometry=geometries, crs="
 # Export to different formats
 df.to_parquet(test_path_parquet, geometry_encoding='geoarrow')
 df.to_file(test_path_gpkg, driver='GPKG')
-df.to_feather(test_path_feather)
+# df.to_feather(test_path_feather)
 
 # Benchmarking function
-def benchmark(method_name, func, num_iters=5):
+def benchmark(method_name, func, num_iters=1024):
     start = time.time()
     for _ in range(num_iters):
         result = func()
@@ -65,8 +66,8 @@ for i, (xmin, ymin, xmax, ymax) in enumerate(bboxs):
     )
 
     # Feather (entire file in memory + in-memory filter)
-    benchmark("Feather + in-memory filter", lambda: gpd.read_feather(
-        test_path_feather
-    ).loc[
-        lambda d: d.geometry.x.between(xmin, xmax) & d.geometry.y.between(ymin, ymax)
-    ])
+    # benchmark("Feather + in-memory filter", lambda: gpd.read_feather(
+    #     test_path_feather
+    # ).loc[
+    #     lambda d: d.geometry.x.between(xmin, xmax) & d.geometry.y.between(ymin, ymax)
+    # ])
