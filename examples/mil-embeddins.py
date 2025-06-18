@@ -3,9 +3,10 @@ dm = self = BEAT()
 
 # dm.prepare_clinical()
 # dm.prepare_wsi()
-dm.segment(model_name='hest', target_mpp=4, source_mpp=0.25)
 dm.segment(model_name='hest', target_mpp=4)
-# dm.segment(model_name='grandqc', target_mpp=4, source_mpp=0.25)
+dm.segment(model_name='hest', target_mpp=4, source_mpp=0.25)
+dm.segment(model_name='grandqc', target_mpp=4)
+dm.segment(model_name='grandqc', target_mpp=4, source_mpp=0.25)
 
 # %%
 import openslide
