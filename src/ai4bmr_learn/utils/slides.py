@@ -71,6 +71,7 @@ def segment_slide(slide: openslide.OpenSlide,
                   save_contours_path: Path,
                   save_coords_path: Path,
                   target_mpp: float = 4,
+                  source_mpp: float | None = None,
                   min_area: float = 500,
                   seg_model: torch.nn.Module | None = None,
                   batch_size: int = 32,
@@ -105,6 +106,7 @@ def segment_slide(slide: openslide.OpenSlide,
         patch_size=patch_size,
         patch_stride=patch_stride,
         target_mpp=target_mpp,
+        source_mpp=source_mpp
     )
 
     coords = get_coordinates_dict(**params, include_out_of_bounds=True)
