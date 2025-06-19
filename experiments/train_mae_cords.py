@@ -24,6 +24,9 @@ from ai4bmr_core.utils.saving import save_zarr
 import pickle
 from torch.utils.data import DataLoader
 
+from ai4bmr_learn.utils.device import batch_to_device
+
+
 # %% HELPER
 def normalize(img, censoring=0.99, cofactor=1, exclude_zeros=True):
     img = np.arcsinh(img / cofactor)
@@ -192,6 +195,7 @@ class Cords2024(L.LightningDataModule):
             self,
             base_dir: Path = Path("/work/FAC/FBM/DBC/mrapsoma/prometex/data/mae/datasets/"),
             image_version: str = "v1_standard",
+            coords_version: str = 'num_coords=30000',
             batch_size: int = 64,
             num_workers: int = None,
             persistent_workers: bool = True,
@@ -217,7 +221,8 @@ class Cords2024(L.LightningDataModule):
         self.image_version = image_version
         self.images_dir = self.dataset_dir / "images" / image_version
 
-        self.coords_dir = self.dataset_dir / 'coords'
+        self.coords_version = coords_version
+        self.coords_dir = self.dataset_dir / 'coords' / coords_version
         self.splits_dir = self.dataset_dir / 'splits'
         self.metadata_path = self.dataset_dir / "metadata.parquet"
 
@@ -227,19 +232,19 @@ class Cords2024(L.LightningDataModule):
 
         self.train_set = Patches(
             images_dir=self.images_dir,
-            coords_path=self.splits_dir / 'train.json',
+            coords_path=self.splits_dir / self.coords_version / 'train.json',
             metadata_path=self.metadata_path,
         )
 
         self.test_set = Patches(
             images_dir=self.images_dir,
-            coords_path=self.splits_dir / 'test.json',
+            coords_path=self.splits_dir / self.coords_version /'test.json',
             metadata_path=self.metadata_path,
         )
 
         self.val_set = Patches(
             images_dir=self.images_dir,
-            coords_path=self.splits_dir / 'val.json',
+            coords_path=self.splits_dir / self.coords_version / 'val.json',
             metadata_path=self.metadata_path,
         )
 
@@ -344,7 +349,8 @@ class Cords2024(L.LightningDataModule):
 
 
 dm = self = Cords2024(num_workers=8)
-dm.prepare_data()
+# dm.prepare_coords()
+# dm.prepare_data()
 dm.setup()
 
 # %% BACKBONE
@@ -370,6 +376,19 @@ from ai4bmr_learn.ssl.mae import MAE
 decoder_kwargs = {'num_layers': 8, 'num_heads': 8, 'dim': 192}
 ssl = MAE(backbone=backbone, decoder_kwargs=decoder_kwargs,
           batch_size=dm.batch_size, accumulate_grad_batches=trainer_cfg.accumulate_grad_batches)
+
+model = MAE.load_from_checkpoint(
+    backbone=backbone,
+    checkpoint_path='/work/FAC/FBM/DBC/mrapsoma/prometex/ckpt/mae-cords2024/solar-blaze-4/epoch=639-val_loss=0.0000.ckpt')
+
+from ai4bmr_learn.utils.device import batch_to_device
+batch = next(iter(dm.train_dataloader()))
+model.to('cuda')
+batch = batch_to_device(batch, device='cuda')
+out = model.predict_step(batch, batch_idx=0)
+
+out.shape
+cls_token = out[:, 0, ...]
 
 # LOGGER
 from ai4bmr_learn.utils.utils import setup_wandb_auth
