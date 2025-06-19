@@ -12,7 +12,20 @@ class BaseCoordinate:
     
     mpp: float | None = None
     image_path: str | None = None
-    uuid: UUID = field(default_factory=uuid4)
+    uuid: str = field(default_factory=lambda: str(uuid4()))
+
+@dataclass
+class Coordinate:
+
+    id: int
+    x: int
+    y: int
+    kernel_size: int
+    stride: int
+
+    image_path: str | None = None
+    sample_id: str | None = None
+    uuid: str = field(default_factory=lambda: str(uuid4()))
 
 @dataclass
 class RandomCoordinate:
@@ -46,7 +59,7 @@ class SlideCoordinate:
     scale_factor: float
 
     overlap: float = -1
-    uuid: UUID = field(default_factory=uuid4)
+    uuid: str = field(default_factory=lambda: str(uuid4()))
 
 
 @dataclass
@@ -59,7 +72,7 @@ class PointsCoordinate:
     stride: int
 
     points_path: str
-    uuid: UUID = field(default_factory=uuid4)
+    uuid: str = field(default_factory=lambda: str(uuid4()))
 
 
 @dataclass
@@ -82,5 +95,5 @@ class XeniumCoordinate:
     scale_factor: float
 
     overlap: float | None = None
-    uuid: UUID = field(default_factory=uuid4)
+    uuid: str = field(default_factory=lambda: str(uuid4()))
 
