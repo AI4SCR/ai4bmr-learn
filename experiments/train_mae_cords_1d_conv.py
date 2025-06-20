@@ -12,6 +12,7 @@ from ai4bmr_learn.data_models.Coordinate import RandomCoordinate
 from ai4bmr_learn.data_models.lightning_training import ProjectConfig, TrainerConfig, TrainingConfig, WandbInitConfig
 import lightning as L
 from ai4bmr_learn.models.backbones.base_backbone import BaseBackbone
+from ai4bmr_learn.models.backbones.multi_to_rgb_vit import MultiChannelVit
 import torch
 import wandb
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
@@ -23,6 +24,10 @@ from loguru import logger
 from ai4bmr_core.utils.saving import save_zarr
 import pickle
 from torch.utils.data import DataLoader
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 # %% HELPER
 def normalize(img, censoring=0.99, cofactor=1, exclude_zeros=True):
@@ -192,6 +197,7 @@ class Cords2024(L.LightningDataModule):
             self,
             base_dir: Path = Path("/work/FAC/FBM/DBC/mrapsoma/prometex/data/mae/datasets/"),
             image_version: str = "v1_standard",
+            coords_version: str = 'num_coords=30000',
             batch_size: int = 64,
             num_workers: int = None,
             persistent_workers: bool = True,
@@ -217,8 +223,9 @@ class Cords2024(L.LightningDataModule):
         self.image_version = image_version
         self.images_dir = self.dataset_dir / "images" / image_version
 
-        self.coords_dir = self.dataset_dir / 'coords'
-        self.splits_dir = self.dataset_dir / 'splits'
+        self.coords_version = coords_version
+        self.coords_dir = self.dataset_dir / 'coords' / coords_version
+        self.splits_dir = self.dataset_dir / 'splits' / coords_version
         self.metadata_path = self.dataset_dir / "metadata.parquet"
 
         self.train_set, self.val_set, self.test_set = None, None, None
@@ -343,7 +350,7 @@ class Cords2024(L.LightningDataModule):
         )
 
 
-dm = self = Cords2024(num_workers=8)
+dm = self = Cords2024(num_workers=12)
 dm.prepare_data()
 dm.setup()
 
@@ -352,7 +359,14 @@ image_size = dm.train_set.image_size
 num_channels = dm.train_set.num_channels
 
 model_name = 'vit_small_patch16_224'
-backbone = BaseBackbone.from_timm_vit(model_name=model_name, image_size=image_size, num_channels=num_channels)
+backbone = MultiChannelVit.from_timm_vit(model_name=model_name,
+                                         image_size=image_size,
+                                         num_channels=num_channels,
+                                         pretrained=True,
+                                         freeze_encoder=True)
+
+# inp = torch.randn(1, 43, 224, 224)
+# out = backbone(inp)
 
 # %% CONFIGURATIONS
 project_cfg = ProjectConfig(name="mae-cords2024")
@@ -374,6 +388,7 @@ ssl = MAE(backbone=backbone, decoder_kwargs=decoder_kwargs,
 # LOGGER
 from ai4bmr_learn.utils.utils import setup_wandb_auth
 from ai4bmr_learn.utils.stats import model_stats
+
 # TODO: split in tokenizer, encoder, proj, decoder, head
 model_stats_dict = {f'backbone_{k}': v for k, v in model_stats(ssl.backbone).items()}
 model_stats_dict.update({f'decoder_{k}': v for k, v in model_stats(ssl.decoder).items()})
@@ -400,7 +415,7 @@ model_ckpt = ModelCheckpoint(
     dirpath=ckpt_dir,
     monitor=monitor_metric_name,
     mode="min",
-    save_top_k=3,
+    save_top_k=1,
     filename=filename,
 )
 lr_monitor = LearningRateMonitor(logging_interval="epoch")

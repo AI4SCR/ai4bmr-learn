@@ -34,7 +34,7 @@ class Tokenizer(BaseTokenizer):
 
         kh, kw = self.kernel_size
         h, w = self.grid_size
-        img = rearrange(x, "b (h w) (c p1 p2) -> b c (h p1) (w p2)", p1=kh, p2=kw, h=h)
+        img = rearrange(x, "b (h w) (c p1 p2) -> b c (h p1) (w p2)", p1=kh, p2=kw, h=h, w=w)
         return img
 
 class MaskedEncoder(BaseMaskedEncoder):
