@@ -19,9 +19,7 @@
 # Load modules
 module load python/3.12.1
 
-export WANDB_API_KEY_ETHZ=0869e6d0e018860ee017240132100bfd828c056a
-
 PROJECT_DIR=/work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn
 cd "$PROJECT_DIR" || exit
 
-/work/FAC/FBM/DBC/mrapsoma/prometex/envs/adrianom/rapids/bin/python3.12 /work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn/experiments/train_mae_cords.py
+/work/FAC/FBM/DBC/mrapsoma/prometex/envs/adrianom/rapids/bin/python3.12 /work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn/experiments/train_mae_cords_1d_conv.py
