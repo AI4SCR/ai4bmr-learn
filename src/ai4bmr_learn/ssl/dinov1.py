@@ -14,34 +14,30 @@ from lightly.models.modules import DINOProjectionHead
 from lightly.models.utils import deactivate_requires_grad, update_momentum
 from lightly.utils.scheduler import cosine_schedule
 from torch import nn
+from ai4bmr_learn.models.backbones.base_backbone import BaseBackbone
 
 
-class DINOLight(L.LightningModule):
-    def __init__(self, backbone: BaseBackbone, view_key: str = 'image',
-                 input_dim: int = 512, hidden_dim: int = 512, bottleneck_dim: int = 64, output_dim: int = 2048):
+def head_from_backbone(backbone: BaseBackbone, hidden_dim: int = 512, bottleneck_dim: int = 64, output_dim: int = 2048):
+    DINOProjectionHead(
+        backbone.tokenizer., hidden_dim, bottleneck_dim, output_dim, freeze_last_layer=1
+    )
+    return
+
+
+class DINOv1(L.LightningModule):
+    def __init__(self, backbone: BaseBackbone, head: DINOProjectionHead):
         super().__init__()
 
-        self.view_key = view_key
-
-        if backbone is None:
-            import torchvision
-            resnet = torchvision.models.resnet18()
-            backbone = nn.Sequential(*list(resnet.children())[:-1])
-
-        # instead of a resnet you can also use a vision transformer backbone as in the
-        # original paper (you might have to reduce the batch size in this case):
-        # backbone = torch.hub.load('facebookresearch/dino:main', 'dino_vits16', pretrained=False)
-        # input_dim = backbone.embed_dim
-
         self.student_backbone = backbone
-        self.student_head = DINOProjectionHead(
-            input_dim, hidden_dim, bottleneck_dim, output_dim, freeze_last_layer=1
-        )
+        self.student_head = head
+
         self.teacher_backbone = copy.deepcopy(backbone)
-        self.teacher_head = DINOProjectionHead(input_dim, hidden_dim, bottleneck_dim, output_dim)
+        self.teacher_head = copy.deepcopy(head)
+        self.teacher_head.freeze_last_layer = -1
         deactivate_requires_grad(self.teacher_backbone)
         deactivate_requires_grad(self.teacher_head)
 
+        output_dim = head.last_layer.out_features
         self.criterion = DINOLoss(output_dim=output_dim, warmup_teacher_temp_epochs=5)
 
     def forward(self, x):
