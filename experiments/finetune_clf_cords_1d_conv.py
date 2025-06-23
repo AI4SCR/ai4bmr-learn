@@ -1,5 +1,5 @@
 # %%
-
+from jsonargparse import auto_cli
 
 import json
 import pickle
@@ -372,28 +372,9 @@ dm = self = Cords2024(num_workers=12)
 dm.prepare_data()
 dm.setup()
 
-# for i in dm.train_set:
-#     if pd.isna(i['target']):
-#         print(i['sample_id'])
-
-# batch = next(iter(DataLoader(dm.train_set, batch_size=256)))
-
 # %% BACKBONE
 image_size = dm.train_set.image_size
 num_channels = dm.train_set.num_channels
-
-model_name = 'vit_small_patch16_224'
-backbone = MultiChannelVit.from_timm_vit(model_name=model_name,
-                                         image_size=image_size,
-                                         num_channels=num_channels,
-                                         pretrained=True,
-                                         freeze_encoder=True)
-
-from ai4bmr_learn.ssl.mae import MAE
-model = MAE.load_from_checkpoint(
-    backbone=backbone,
-    checkpoint_path="/work/FAC/FBM/DBC/mrapsoma/prometex/ckpt/mae-cords2024/hopeful-universe-8/epoch=714-val_loss=0.0000.ckpt")
-backbone = model.backbone
 
 # %% CLF
 import torch
@@ -401,16 +382,18 @@ import torch.nn as nn
 from ai4bmr_learn.metrics.classification import get_metric_collection
 
 class Classifier(L.LightningModule):
-    def __init__(self, backbone, head, pooling: str = 'cls'):
+    def __init__(self, backbone, head, pooling: str = 'cls', unfreeze_last_encoder_layers: bool = False):
         super().__init__()
         self.backbone = backbone
         self.head = head
         self.pooling = pooling
         self.criterion = nn.CrossEntropyLoss()
 
-        for block in model.backbone.blocks[-2:]:
-            for p in block.parameters():
-                p.requires_grad = True
+        self.unfreeze_last_encoder_layers = unfreeze_last_encoder_layers
+        if unfreeze_last_encoder_layers:
+            for block in backbone.encoder.model.blocks[-2:]:
+                for p in block.parameters():
+                    p.requires_grad = True
 
         self.train_metrics = get_metric_collection(num_classes=head.num_classes).clone('train/')
         self.val_metrics = get_metric_collection(num_classes=head.num_classes).clone('val/')
@@ -461,11 +444,14 @@ class Classifier(L.LightningModule):
         )
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam([
-            {'params': filter(lambda p: p.requires_grad, model.backbone.parameters()), 'lr': 1e-6},
-            {'params': filter(lambda p: p.requires_grad, model.head.parameters()), 'lr': 1e-4},
-        ])
-        return optimizer
+        if self.unfreeze_last_encoder_layers:
+            return torch.optim.Adam([
+                {'params': filter(lambda p: p.requires_grad, self.backbone.tokenizer.parameters()), 'lr': 1e-4},
+                {'params': filter(lambda p: p.requires_grad, self.backbone.encoder.parameters()), 'lr': 1e-5},
+                {'params': filter(lambda p: p.requires_grad, self.head.parameters()), 'lr': 1e-4},
+            ])
+
+        return torch.optim.Adam(self.parameters(), lr=1e-4)
 
     def pool(self, x):
         if self.pooling == 'cls':
@@ -488,72 +474,90 @@ class Head(nn.Module):
     def forward(self, x):
         return self.mlp(x)
 
-num_classes = dm.train_set.metadata.typ.nunique()
-head = Head(in_dim=backbone.encoder.model.norm.normalized_shape[0],
-            hidden_dim=256,
-            num_classes=num_classes)
-clf = Classifier(backbone=backbone, head=head)
+def main(unfreeze_last_encoder_layers: bool = False):
+    model_name = 'vit_small_patch16_224'
+    backbone = MultiChannelVit.from_timm_vit(model_name=model_name,
+                                             image_size=image_size,
+                                             num_channels=num_channels,
+                                             pretrained=True,
+                                             freeze_encoder=True)
 
-# LOGGER
-# TODO: split in tokenizer, encoder, proj, decoder, head
-model_stats_dict = {f'backbone_{k}': v for k, v in model_stats(clf.backbone).items()}
-model_stats_dict.update({f'head_{k}': v for k, v in model_stats(clf.head).items()})
 
-setup_wandb_auth()
+    from ai4bmr_learn.ssl.mae import MAE
+    model = MAE.load_from_checkpoint(
+        backbone=backbone,
+        checkpoint_path="/work/FAC/FBM/DBC/mrapsoma/prometex/ckpt/mae-cords2024/hopeful-universe-8/epoch=714-val_loss=0.0000.ckpt")
+    backbone = model.backbone
 
-# %% CONFIGURATIONS
-project_cfg = ProjectConfig(name="clf-cords2024")
-trainer_cfg = TrainerConfig(max_epochs=1000,
-                            accumulate_grad_batches=32,
-                            # precision=16,
-                            gradient_clip_val=1,
-                            fast_dev_run=False)
-training_cfg = TrainingConfig()
-wandb_cfg = WandbInitConfig(project=project_cfg.name)
+    num_classes = dm.train_set.metadata.typ.nunique()
+    head = Head(in_dim=backbone.encoder.model.norm.normalized_shape[0],
+                hidden_dim=256,
+                num_classes=num_classes)
+    clf = Classifier(backbone=backbone, head=head, unfreeze_last_encoder_layers=unfreeze_last_encoder_layers)
 
-metadata = {}
-if not trainer_cfg.fast_dev_run:
-    import wandb
+    # LOGGER
+    # TODO: split in tokenizer, encoder, proj, decoder, head
+    model_stats_dict = {f'backbone_{k}': v for k, v in model_stats(clf.backbone).items()}
+    model_stats_dict.update({f'head_{k}': v for k, v in model_stats(clf.head).items()})
 
-    wandb.init(**asdict(wandb_cfg))
-    ckpt_dir = project_cfg.ckpt_dir / wandb.run.name
-    metadata["ckpt_dir"] = ckpt_dir
-    wandb.config.update(metadata)
-else:
-    ckpt_dir = None
+    setup_wandb_auth()
 
-wandb_logger = WandbLogger(project=project_cfg.name, log_model=False, save_dir=project_cfg.log_dir)
+    # %% CONFIGURATIONS
+    project_cfg = ProjectConfig(name="clf-cords2024")
+    trainer_cfg = TrainerConfig(max_epochs=1000,
+                                accumulate_grad_batches=32,
+                                # precision=16,
+                                gradient_clip_val=1,
+                                fast_dev_run=False)
+    training_cfg = TrainingConfig()
+    wandb_cfg = WandbInitConfig(project=project_cfg.name)
 
-# CALLBACKS
-monitor_metric_name = "val_loss_epoch"
-filename = "{epoch:02d}-{val_loss:.4f}"
-model_ckpt = ModelCheckpoint(
-    dirpath=ckpt_dir,
-    monitor=monitor_metric_name,
-    mode="min",
-    save_top_k=1,
-    filename=filename,
-)
-lr_monitor = LearningRateMonitor(logging_interval="epoch")
-# early_stop = EarlyStopping(monitor=monitor_metric_name, mode='min', patience=50)
+    metadata = {**model_stats_dict, 'unfreeze_last_encoder_layers': unfreeze_last_encoder_layers}
+    if not trainer_cfg.fast_dev_run:
+        import wandb
 
-# TRAINER
-torch.set_float32_matmul_precision('medium')
-trainer = L.Trainer(
-    logger=wandb_logger,
-    # callbacks=[model_ckpt, lr_monitor, early_stop, run_info],
-    callbacks=[model_ckpt, lr_monitor],
-    **asdict(trainer_cfg),
-)
+        wandb.init(**asdict(wandb_cfg))
+        ckpt_dir = project_cfg.ckpt_dir / wandb.run.name
+        metadata["ckpt_dir"] = ckpt_dir
+        wandb.config.update(metadata)
+    else:
+        ckpt_dir = None
 
-# TRAIN
-ckpt_path = training_cfg.ckpt_path  # resume from checkpoint
-seed_everything(42, workers=True)
-trainer.fit(model=clf, datamodule=dm, ckpt_path=ckpt_path)
+    wandb_logger = WandbLogger(project=project_cfg.name, log_model=False, save_dir=project_cfg.log_dir)
 
-# Finish the wandb run
-wandb.finish()
+    # CALLBACKS
+    monitor_metric_name = "val_loss_epoch"
+    filename = "{epoch:02d}-{val_loss:.4f}"
+    model_ckpt = ModelCheckpoint(
+        dirpath=ckpt_dir,
+        monitor=monitor_metric_name,
+        mode="min",
+        save_top_k=1,
+        filename=filename,
+    )
+    lr_monitor = LearningRateMonitor(logging_interval="epoch")
+    # early_stop = EarlyStopping(monitor=monitor_metric_name, mode='min', patience=50)
+
+    # TRAINER
+    torch.set_float32_matmul_precision('medium')
+    trainer = L.Trainer(
+        logger=wandb_logger,
+        # callbacks=[model_ckpt, lr_monitor, early_stop, run_info],
+        callbacks=[model_ckpt, lr_monitor],
+        **asdict(trainer_cfg),
+    )
+
+    # TRAIN
+    ckpt_path = training_cfg.ckpt_path  # resume from checkpoint
+    seed_everything(42, workers=True)
+    trainer.fit(model=clf, datamodule=dm, ckpt_path=ckpt_path)
+
+    # Finish the wandb run
+    wandb.finish()
 # exit(0)
+
+if __name__ == '__main__':
+    auto_cli(main, as_positional=False)
 
 # %%
 # model = Classifier.load_from_checkpoint(
