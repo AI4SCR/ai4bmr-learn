@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=train-mae
+#SBATCH --job-name=finetune-on-cords2024
 #SBATCH --output=/users/amarti51/logs/finetune-cords2024-%j.log
 #SBATCH --error=/users/amarti51/logs/finetune-cords2024-%j.err
 
