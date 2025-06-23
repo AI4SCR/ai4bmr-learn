@@ -13,46 +13,47 @@ from lightly.loss import DINOLoss
 from lightly.models.modules import DINOProjectionHead
 from lightly.models.utils import deactivate_requires_grad, update_momentum
 from lightly.utils.scheduler import cosine_schedule
-from torch import nn
 from ai4bmr_learn.models.backbones.base_backbone import BaseBackbone
 
 
-def head_from_backbone(backbone: BaseBackbone, hidden_dim: int = 512, bottleneck_dim: int = 64, output_dim: int = 2048):
-    DINOProjectionHead(
-        backbone.tokenizer., hidden_dim, bottleneck_dim, output_dim, freeze_last_layer=1
-    )
-    return
-
-
 class DINOv1(L.LightningModule):
-    def __init__(self, backbone: BaseBackbone, head: DINOProjectionHead):
+    def __init__(self, backbone: BaseBackbone, student_head: DINOProjectionHead, teacher_head: DINOProjectionHead, pooling: str = 'cls'):
         super().__init__()
 
+        self.pooling = pooling
+
         self.student_backbone = backbone
-        self.student_head = head
+        self.student_head = student_head
 
         self.teacher_backbone = copy.deepcopy(backbone)
-        self.teacher_head = copy.deepcopy(head)
-        self.teacher_head.freeze_last_layer = -1
+        self.teacher_head = teacher_head
         deactivate_requires_grad(self.teacher_backbone)
         deactivate_requires_grad(self.teacher_head)
 
-        output_dim = head.last_layer.out_features
+        output_dim = student_head.last_layer.out_features
         self.criterion = DINOLoss(output_dim=output_dim, warmup_teacher_temp_epochs=5)
 
-    def forward(self, x):
-        y = self.student_backbone(x).flatten(start_dim=1)
-        z = self.student_head(y)
-        return z
+    def pool(self, x):
+        if self.pooling == 'cls':
+            return x[:, 0]
+        else:
+            raise NotImplementedError(f'{self.pooling} is not implemented.')
+
+    def forward_student(self, x):
+        x = self.student_backbone(x)
+        x = self.pool(x)
+        x = self.student_head(x)
+        return x
 
     def forward_teacher(self, x):
-        y = self.teacher_backbone(x).flatten(start_dim=1)
-        z = self.teacher_head(y)
-        return z
+        x = self.teacher_backbone(x)
+        x = self.pool(x)
+        x = self.teacher_head(x)
+        return x
 
     def training_step(self, batch, batch_idx):
         views = batch['views']
-        batch_size = len(views[0][self.view_key])
+        batch_size = len(views[0]['image'])
 
         global_views = views[:2]
         local_views = views[2:]
@@ -61,21 +62,17 @@ class DINOv1(L.LightningModule):
         update_momentum(self.student_backbone, self.teacher_backbone, m=momentum)
         update_momentum(self.student_head, self.teacher_head, m=momentum)
 
-        global_views = [view[self.view_key].to(self.device) for view in global_views]
-        local_views = [view[self.view_key].to(self.device) for view in local_views]
+        global_views = [view['image'].to(self.device) for view in global_views]
+        local_views = [view['image'].to(self.device) for view in local_views]
 
         assert all(torch.isfinite(out).all() for out in global_views)
         assert all(torch.isfinite(out).all() for out in local_views)
 
-        view = global_views[0]
         teacher_out = [self.forward_teacher(view) for view in global_views]
-        student_out = [self.forward(view) for view in local_views]
+        student_out = [self.forward_student(view) for view in local_views]
 
         assert all(torch.isfinite(out).all() for out in student_out)
         assert all(torch.isfinite(out).all() for out in teacher_out)
-
-        assert not any(torch.isnan(out).any() for out in student_out)
-        assert not any(torch.isnan(out).any() for out in teacher_out)
 
         loss = self.criterion(teacher_out, student_out, epoch=self.current_epoch)
 
@@ -91,6 +88,41 @@ class DINOv1(L.LightningModule):
         )
 
         return loss
+
+    def validation_step(self, batch, batch_idx):
+        with torch.no_grad():
+
+            global_views = batch['global_views']
+            local_views = batch['local_views']
+
+            batch_size = len(local_views[0]['image'])
+
+            global_views = [view['image'].to(self.device) for view in global_views]
+            local_views = [view['image'].to(self.device) for view in local_views]
+
+            assert all(torch.isfinite(out).all() for out in global_views)
+            assert all(torch.isfinite(out).all() for out in local_views)
+
+            teacher_out = [self.forward_teacher(view) for view in global_views]
+            student_out = [self.forward_student(view) for view in local_views]
+
+            assert all(torch.isfinite(out).all() for out in student_out)
+            assert all(torch.isfinite(out).all() for out in teacher_out)
+
+            loss = self.criterion(teacher_out, student_out, epoch=self.current_epoch)
+
+            assert not torch.isnan(loss).any()
+            assert torch.isfinite(loss).all()
+
+            self.log(
+                "val_loss_epoch",
+                loss,
+                on_step=False,
+                on_epoch=True,
+                batch_size=batch_size,
+            )
+
+            return loss
 
     def predict_step(self, batch, batch_idx):
         x = batch['image']

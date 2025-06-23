@@ -1,35 +1,30 @@
 # %%
-from ai4bmr_learn.ssl.mae import MAE
-from ai4bmr_learn.utils.utils import setup_wandb_auth
-from ai4bmr_learn.utils.stats import model_stats
-import torch
+
+
 import json
+import pickle
+from dataclasses import asdict
 from pathlib import Path
+import torch
+import lightning as L
 import numpy as np
 import pandas as pd
-from torch.utils.data import Dataset
+import wandb
+from ai4bmr_core.utils.saving import save_zarr
+from dotenv import load_dotenv
+from lightning import seed_everything
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
+from lightning.pytorch.loggers import WandbLogger
+from loguru import logger
+from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
 from torchvision.tv_tensors import Image
-from dataclasses import asdict
+
 from ai4bmr_learn.data_models.Coordinate import RandomCoordinate
 from ai4bmr_learn.data_models.lightning_training import ProjectConfig, TrainerConfig, TrainingConfig, WandbInitConfig
-import lightning as L
-from ai4bmr_learn.models.backbones.base_backbone import BaseBackbone
 from ai4bmr_learn.models.backbones.multi_to_rgb_vit import MultiChannelVit
-import torch
-import wandb
-from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
-from lightning.pytorch.loggers import WandbLogger
-from lightning import seed_everything
-import lightning as L
-from pathlib import Path
-from loguru import logger
-from ai4bmr_core.utils.saving import save_zarr
-import pickle
-from torch.utils.data import DataLoader
-from dotenv import load_dotenv
-
-from experiments.pca_on_Cords2024 import nrows
+from ai4bmr_learn.utils.stats import model_stats
+from ai4bmr_learn.utils.utils import setup_wandb_auth
 
 load_dotenv()
 
@@ -185,6 +180,7 @@ class Patches(Dataset):
 
         channel_names = self.panel.target.to_list()
         data = {'image': patch, 'channel_names': channel_names, **asdict(coord)}
+        data['target'] = self.metadata.loc[coord.sample_id]['typ'].item()
 
         # sample_id = coord.sample_id
         # metadata = self.metadata.loc[sample_id].dropna().to_dict()
@@ -193,7 +189,6 @@ class Patches(Dataset):
         data = self.transform(data)
 
         return data
-
 
 # %% DATAMODULE
 class Cords2024(L.LightningDataModule):
@@ -230,7 +225,7 @@ class Cords2024(L.LightningDataModule):
 
         self.coords_version = coords_version
         self.coords_dir = self.dataset_dir / 'coords' / coords_version
-        self.splits_dir = self.dataset_dir / 'splits' / coords_version
+        self.splits_dir = self.dataset_dir / 'splits' / 'clf'
         self.metadata_path = self.dataset_dir / "metadata.parquet"
 
         self.train_set, self.val_set, self.test_set = None, None, None
@@ -243,11 +238,11 @@ class Cords2024(L.LightningDataModule):
             metadata_path=self.metadata_path,
         )
 
-        self.test_set = Patches(
-            images_dir=self.images_dir,
-            coords_path=self.splits_dir / 'test.json',
-            metadata_path=self.metadata_path,
-        )
+        # self.test_set = Patches(
+        #     images_dir=self.images_dir,
+        #     coords_path=self.splits_dir / 'test.json',
+        #     metadata_path=self.metadata_path,
+        # )
 
         self.val_set = Patches(
             images_dir=self.images_dir,
@@ -309,6 +304,7 @@ class Cords2024(L.LightningDataModule):
 
     def prepare_splits(self):
         from ai4bmr_learn.data.splits import generate_splits, Split
+        from sklearn.preprocessing import LabelEncoder
         import json
         import pandas as pd
 
@@ -317,12 +313,29 @@ class Cords2024(L.LightningDataModule):
             with open(coords_file, "r") as f:
                 sample_coords = json.load(f)
                 coords.extend(sample_coords)
+
+        target_column_name = 'typ'
+        clinical = pd.read_parquet(self.metadata_path)[target_column_name]
+        filter_ = clinical.notna()
+        clinical = clinical[filter_]
+
+        counts = clinical.value_counts()
+        types = counts[counts >= 60].index
+        filter_ = clinical.isin(types)
+        clinical = clinical[filter_]
+
+        clinical.loc[:] = LabelEncoder().fit_transform(clinical)
+
         metadata = pd.DataFrame.from_records(coords)
-        splits = generate_splits(metadata, val_size=0.05, test_size=0.25, random_state=0)
+        metadata = metadata.merge(clinical, on='sample_id', how='inner')
+
+        splits = generate_splits(metadata, val_size=0.25, random_state=0, stratify=True, target_column_name=target_column_name)
         self.splits_dir.mkdir(exist_ok=True, parents=True)
         splits.to_parquet(self.splits_dir / "splits.parquet")
+
         for split, split_data in splits.groupby(Split.COLUMN_NAME, observed=True):
-            split_coords = [coords[i] for i in split_data.index.values]
+            split_ids = set(split_data.uuid)
+            split_coords = list(filter(lambda coord: coord['uuid'] in split_ids, coords))
             with open(self.splits_dir / f"{split}.json", "w") as f:
                 json.dump(split_coords, f)
 
@@ -359,6 +372,12 @@ dm = self = Cords2024(num_workers=12)
 dm.prepare_data()
 dm.setup()
 
+# for i in dm.train_set:
+#     if pd.isna(i['target']):
+#         print(i['sample_id'])
+
+# batch = next(iter(DataLoader(dm.train_set, batch_size=256)))
+
 # %% BACKBONE
 image_size = dm.train_set.image_size
 num_channels = dm.train_set.num_channels
@@ -370,11 +389,120 @@ backbone = MultiChannelVit.from_timm_vit(model_name=model_name,
                                          pretrained=True,
                                          freeze_encoder=True)
 
-# inp = torch.randn(1, 43, 224, 224)
-# out = backbone(inp)
+from ai4bmr_learn.ssl.mae import MAE
+model = MAE.load_from_checkpoint(
+    backbone=backbone,
+    checkpoint_path="/work/FAC/FBM/DBC/mrapsoma/prometex/ckpt/mae-cords2024/hopeful-universe-8/epoch=714-val_loss=0.0000.ckpt")
+backbone = model.backbone
+
+# %% CLF
+import torch
+import torch.nn as nn
+from ai4bmr_learn.metrics.classification import get_metric_collection
+
+class Classifier(L.LightningModule):
+    def __init__(self, backbone, head, pooling: str = 'cls'):
+        super().__init__()
+        self.backbone = backbone
+        self.head = head
+        self.pooling = pooling
+        self.criterion = nn.CrossEntropyLoss()
+
+        for block in model.backbone.blocks[-2:]:
+            for p in block.parameters():
+                p.requires_grad = True
+
+        self.train_metrics = get_metric_collection(num_classes=head.num_classes).clone('train/')
+        self.val_metrics = get_metric_collection(num_classes=head.num_classes).clone('val/')
+
+    def _shared_step(self, batch):
+        images = batch["image"]
+        targets = batch["target"].long()
+
+        x = self.backbone(images)
+        x = self.pool(x)
+        logits = self.head(x)
+
+        loss = self.criterion(logits, targets)
+
+        return logits, targets, loss
+
+    def training_step(self, batch, batch_idx):
+        logits, targets, loss = self._shared_step(batch)
+        batch_size = targets.shape[0]
+
+        # metrics
+        self.train_metrics(logits, targets)
+        self.log_dict(self.train_metrics, on_epoch=True, on_step=False)
+
+        self.log(
+            "train_loss_epoch",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            batch_size=batch_size,
+        )
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        logits, targets, loss = self._shared_step(batch)
+        batch_size = targets.shape[0]
+
+        # metrics
+        self.val_metrics(logits, targets)
+        self.log_dict(self.val_metrics, on_epoch=True, on_step=False)
+
+        self.log(
+            "val_loss_epoch",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            batch_size=batch_size,
+        )
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam([
+            {'params': filter(lambda p: p.requires_grad, model.backbone.parameters()), 'lr': 1e-6},
+            {'params': filter(lambda p: p.requires_grad, model.head.parameters()), 'lr': 1e-4},
+        ])
+        return optimizer
+
+    def pool(self, x):
+        if self.pooling == 'cls':
+            return x[:, 0]
+        else:
+            raise NotImplementedError(f"Pooling type '{self.pooling}' not implemented.")
+
+class Head(nn.Module):
+
+    def __init__(self, in_dim: int, hidden_dim: int, num_classes: int):
+        super().__init__()
+        self.num_classes = num_classes
+        self.mlp = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(p=0.1),
+            nn.Linear(hidden_dim, num_classes)
+        )
+
+    def forward(self, x):
+        return self.mlp(x)
+
+num_classes = dm.train_set.metadata.typ.nunique()
+head = Head(in_dim=backbone.encoder.model.norm.normalized_shape[0],
+            hidden_dim=256,
+            num_classes=num_classes)
+clf = Classifier(backbone=backbone, head=head)
+
+# LOGGER
+# TODO: split in tokenizer, encoder, proj, decoder, head
+model_stats_dict = {f'backbone_{k}': v for k, v in model_stats(clf.backbone).items()}
+model_stats_dict.update({f'head_{k}': v for k, v in model_stats(clf.head).items()})
+
+setup_wandb_auth()
 
 # %% CONFIGURATIONS
-project_cfg = ProjectConfig(name="mae-cords2024")
+project_cfg = ProjectConfig(name="clf-cords2024")
 trainer_cfg = TrainerConfig(max_epochs=1000,
                             accumulate_grad_batches=32,
                             # precision=16,
@@ -382,18 +510,6 @@ trainer_cfg = TrainerConfig(max_epochs=1000,
                             fast_dev_run=False)
 training_cfg = TrainingConfig()
 wandb_cfg = WandbInitConfig(project=project_cfg.name)
-
-# %% SSL
-decoder_kwargs = {'num_layers': 8, 'num_heads': 8, 'dim': 192}
-ssl = MAE(backbone=backbone, decoder_kwargs=decoder_kwargs,
-          batch_size=dm.batch_size, accumulate_grad_batches=trainer_cfg.accumulate_grad_batches)
-
-# LOGGER
-# TODO: split in tokenizer, encoder, proj, decoder, head
-model_stats_dict = {f'backbone_{k}': v for k, v in model_stats(ssl.backbone).items()}
-model_stats_dict.update({f'decoder_{k}': v for k, v in model_stats(ssl.decoder).items()})
-
-setup_wandb_auth()
 
 metadata = {}
 if not trainer_cfg.fast_dev_run:
@@ -433,53 +549,53 @@ trainer = L.Trainer(
 # TRAIN
 ckpt_path = training_cfg.ckpt_path  # resume from checkpoint
 seed_everything(42, workers=True)
-trainer.fit(model=ssl, datamodule=dm, ckpt_path=ckpt_path)
+trainer.fit(model=clf, datamodule=dm, ckpt_path=ckpt_path)
 
 # Finish the wandb run
 wandb.finish()
 # exit(0)
 
 # %%
-model = MAE.load_from_checkpoint(
-    backbone=backbone,
-    checkpoint_path="/work/FAC/FBM/DBC/mrapsoma/prometex/ckpt/mae-cords2024/hopeful-universe-8/epoch=714-val_loss=0.0000.ckpt")
-
-from ai4bmr_learn.utils.device import batch_to_device
-batch = next(iter(dm.train_dataloader()))
-model.to('cuda')
-batch = batch_to_device(batch, device='cuda')
-out = model.predict_step(batch, batch_idx=0)
-
-out.shape
-cls_token = out[:, 0, ...]
-
-# %%
-from matplotlib import pyplot as plt
-from torchvision.utils import make_grid
-from ai4bmr_core.utils.plotting import get_grid_dims
-from sklearn.decomposition import PCA
-
-img = batch['image'][[0]]
-channel_names = [i[0] for i in batch['channel_names']]
-
-img_3d = model.tokenizer.model[0](img).detach().cpu()
-img_pca = PCA(n_components=3).fit_transform(img[0].flatten(1).T.detach().cpu())
-img_pca = img_pca.T.reshape(3, 224, 224)
-img_pca = torch.from_numpy(img_pca)
-
-img_norm = make_grid(img[0], normalize=True, scale_each=True)
-img_3d = make_grid(img_3d, normalize=True, scale_each=True)
-img_pca = make_grid(img_pca, normalize=True, scale_each=True)
-
-channel_names = ['pca', '3d-proj'] + channel_names
-nrows, ncols = get_grid_dims(len(img_norm) + 2)
-fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(4 * ncols, 4 * nrows))
-for channel_name, i, ax in zip(channel_names, [img_pca, img_3d, *[layer for layer in img_norm]], axs.flat):
-    i = i.detach().cpu().permute(1,2,0) if i.shape[0] == 3 else i.detach().cpu()
-    ax.imshow(i)
-    ax.set_title(channel_name)
-    ax.set_axis_off()
-
-fig.tight_layout()
-fig.savefig('/work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn/experiments/layers.png', dpi=300)
-fig.show()
+# model = Classifier.load_from_checkpoint(
+#     backbone=backbone,
+#     checkpoint_path="/work/FAC/FBM/DBC/mrapsoma/prometex/ckpt/mae-cords2024/hopeful-universe-8/epoch=714-val_loss=0.0000.ckpt")
+#
+# from ai4bmr_learn.utils.device import batch_to_device
+# batch = next(iter(dm.train_dataloader()))
+# model.to('cuda')
+# batch = batch_to_device(batch, device='cuda')
+# out = model.predict_step(batch, batch_idx=0)
+#
+# out.shape
+# cls_token = out[:, 0, ...]
+#
+# # %%
+# from matplotlib import pyplot as plt
+# from torchvision.utils import make_grid
+# from ai4bmr_core.utils.plotting import get_grid_dims
+# from sklearn.decomposition import PCA
+#
+# img = batch['image'][[0]]
+# channel_names = [i[0] for i in batch['channel_names']]
+#
+# img_3d = model.tokenizer.model[0](img).detach().cpu()
+# img_pca = PCA(n_components=3).fit_transform(img[0].flatten(1).T.detach().cpu())
+# img_pca = img_pca.T.reshape(3, 224, 224)
+# img_pca = torch.from_numpy(img_pca)
+#
+# img_norm = make_grid(img[0], normalize=True, scale_each=True)
+# img_3d = make_grid(img_3d, normalize=True, scale_each=True)
+# img_pca = make_grid(img_pca, normalize=True, scale_each=True)
+#
+# channel_names = ['pca', '3d-proj'] + channel_names
+# nrows, ncols = get_grid_dims(len(img_norm) + 2)
+# fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(4 * ncols, 4 * nrows))
+# for channel_name, i, ax in zip(channel_names, [img_pca, img_3d, *[layer for layer in img_norm]], axs.flat):
+#     i = i.detach().cpu().permute(1,2,0) if i.shape[0] == 3 else i.detach().cpu()
+#     ax.imshow(i)
+#     ax.set_title(channel_name)
+#     ax.set_axis_off()
+#
+# fig.tight_layout()
+# fig.savefig('/work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn/experiments/layers.png', dpi=300)
+# fig.show()

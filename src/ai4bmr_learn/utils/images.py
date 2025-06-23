@@ -184,6 +184,7 @@ def get_points(coord):
 
     scale_factor = getattr(coord, 'scale_factor', 1)
 
+    # check option: use_arrwo=True, not supported for gpkg
     points = gpd.read_file(coord.points_path, bbox=bbox)
 
     points['geometry'] = points['geometry'].map(

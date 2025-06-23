@@ -1,6 +1,6 @@
 import lightning as L
 import torch
-from ai4bmr_datasets.datasets.CIFAR10 import CIFAR10
+from ai4bmr_datasets.datasets.cifar10 import CIFAR10
 from lightly.transforms.utils import IMAGENET_NORMALIZE
 from matplotlib import pyplot as plt
 from torchvision.transforms import v2

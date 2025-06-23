@@ -1,5 +1,7 @@
 import torchvision
 from pathlib import Path
+from torchvision.tv_tensors import Image
+import torch
 
 class CIFAR10(torchvision.datasets.CIFAR10):
 
@@ -11,7 +13,10 @@ class CIFAR10(torchvision.datasets.CIFAR10):
     def setup(self, *args, **kwargs):
         pass
 
-    def __getitem__(self, item):
-        image, target = super().__getitem__(item)
-        return {'image': image, 'target': target}
+    def __getitem__(self, idx):
+        image, target = self.data[idx], self.targets[idx]
+        item = {'image': image, 'target': target}
+        if self.transform is not None:
+            item = self.transform(item)
+        return item
 

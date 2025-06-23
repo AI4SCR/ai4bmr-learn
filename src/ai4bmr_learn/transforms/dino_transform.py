@@ -132,7 +132,6 @@ class DINOTransform(nn.Module):
             kernel_size=kernel_size,
             sigmas=sigmas,
             solarization_prob=0,
-            normalize=normalize,
         )
 
         # second global crop
@@ -153,7 +152,6 @@ class DINOTransform(nn.Module):
             kernel_size=kernel_size,
             sigmas=sigmas,
             solarization_prob=solarization_prob,
-            normalize=normalize,
         )
 
         # transformation for the local small crops
@@ -175,16 +173,15 @@ class DINOTransform(nn.Module):
             kernel_size=kernel_size,
             sigmas=sigmas,
             solarization_prob=0,
-            normalize=normalize,
         )
         self.local_transforms = [local_transform] * n_local_views
         self.global_transforms = [global_transform_0, global_transform_1]
 
     def forward(self, item: dict):
-        image = item["image"]
+        image = item.pop('image')
 
-        local_views = [transform(image) for transform in self.local_transforms]
-        global_views = [transform(image) for transform in self.global_transforms]
+        local_views = [{'image': transform(image)} for transform in self.local_transforms]
+        global_views = [{'image': transform(image)} for transform in self.global_transforms]
 
         item['local_views'] = local_views
         item['global_views'] = global_views
@@ -212,13 +209,12 @@ class DINOViewTransform(nn.Module):
             kernel_size: int = 5,
             sigmas: Tuple[float, float] = (0.1, 2),
             solarization_prob: float = 0.2,
-            normalize: Union[None, Dict[str, List[float]]] = IMAGENET_NORMALIZE,
     ):
         super().__init__()
 
         transform = [
             # v2.ToImage(), # note: we already expect images in the accepted dict
-            v2.ToDtype(torch.float32, scale=True),
+            # v2.ToDtype(torch.float32, scale=True),
             v2.RandomResizedCrop(
                 size=crop_size,
                 scale=crop_scale,
@@ -265,8 +261,6 @@ class DINOViewTransform(nn.Module):
             # T.ToTensor(),
         ]
 
-        if normalize:
-            transform += [v2.Normalize(mean=normalize["mean"], std=normalize["std"])]
         self.transform = v2.Compose(transform)
 
     def forward(self, item: dict) -> Tensor:
@@ -284,11 +278,7 @@ class DINOTransformLightly:
         from PIL import Image
         img = item['image']
 
-        if isinstance(img, Tensor):
-            img = Image.fromarray(img.permute(1, 2, 0).numpy())
-
         views = [{**item, 'image': view} for view in self.transform(img)]
-        result = {'views': views, 'item': item}
 
-        return result
+        return {'views': views}
 
