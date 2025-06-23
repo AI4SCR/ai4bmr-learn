@@ -22,7 +22,8 @@ class BaseBackbone(nn.Module):
         return x
 
     @classmethod
-    def from_timm_vit(cls, image_size: int, num_channels: int, model_name: str = 'vit_base_patch16_224', pretrained: bool = False):
+    def from_timm_vit(cls, image_size: int, num_channels: int, model_name: str = 'vit_base_patch16_224',
+                      pretrained: bool = False, dynamic_img_size: bool = False):
         """Create a backbone from a timm ViT model."""
         from ai4bmr_learn.models.encoder.timm import Tokenizer, MaskedEncoder
         from timm import create_model
@@ -33,6 +34,7 @@ class BaseBackbone(nn.Module):
             num_classes=0,
             global_pool="",
             img_size=image_size,
+            dynamic_img_size=dynamic_img_size,
             in_chans=num_channels
         )
 

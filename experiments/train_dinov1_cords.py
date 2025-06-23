@@ -24,9 +24,6 @@ from ai4bmr_core.utils.saving import save_zarr
 import pickle
 from torch.utils.data import DataLoader
 
-from ai4bmr_learn.utils.device import batch_to_device
-
-
 # %% HELPER
 def normalize(img, censoring=0.99, cofactor=1, exclude_zeros=True):
     img = np.arcsinh(img / cofactor)
@@ -238,7 +235,7 @@ class Cords2024(L.LightningDataModule):
 
         self.test_set = Patches(
             images_dir=self.images_dir,
-            coords_path=self.splits_dir / self.coords_version /'test.json',
+            coords_path=self.splits_dir / self.coords_version / 'test.json',
             metadata_path=self.metadata_path,
         )
 
@@ -361,28 +358,46 @@ model_name = 'vit_small_patch16_224'
 backbone = BaseBackbone.from_timm_vit(model_name=model_name, image_size=image_size, num_channels=num_channels)
 
 # %% CONFIGURATIONS
-project_cfg = ProjectConfig(name="mae-cords2024")
+project_cfg = ProjectConfig(name="dinov1-cords2024")
 trainer_cfg = TrainerConfig(max_epochs=1000,
                             accumulate_grad_batches=32,
                             # precision=16,
                             gradient_clip_val=1,
-                            fast_dev_run=False)
+                            fast_dev_run=True)
 training_cfg = TrainingConfig()
 wandb_cfg = WandbInitConfig(project=project_cfg.name)
 
 # %% SSL
-from ai4bmr_learn.ssl.dinov1 import DINOv1, head_from_backbone
+from ai4bmr_learn.ssl.dinov1 import DINOv1
+from lightly.models.modules import DINOProjectionHead
 
-head = head_from_backbone(backbone=backbone)
-ssl = DINOv1(backbone=backbone, head=head)
+hidden_dim: int = 512
+bottleneck_dim: int = 64
+output_dim: int = 2048
+student_head = DINOProjectionHead(
+    input_dim=backbone.tokenizer.dim,
+    hidden_dim=hidden_dim,
+    bottleneck_dim=bottleneck_dim,
+    output_dim=output_dim, freeze_last_layer=1
+)
+teacher_head = DINOProjectionHead(
+    input_dim=backbone.tokenizer.dim,
+    hidden_dim=hidden_dim,
+    bottleneck_dim=bottleneck_dim,
+    output_dim=output_dim,
+)
+ssl = DINOv1(backbone=backbone, teacher_head=teacher_head, student_head=student_head)
+batch = {'views': [{'image':torch.randn(1, 43, 224, 224)}] * 6}
+ssl.training_step(batch, batch_idx=0)
 
 # LOGGER
 from ai4bmr_learn.utils.utils import setup_wandb_auth
 from ai4bmr_learn.utils.stats import model_stats
 
-model_stats_dict = {f'student_backbone{k}': v for k, v in model_stats(ssl.student_backbone).items()}
-model_stats_dict = {f'teacher_backbone{k}': v for k, v in model_stats(ssl.teacher_backbone).items()}
-model_stats_dict.update({f'head_{k}': v for k, v in model_stats(ssl.head).items()})
+model_stats_dict = {f'student_backbone_{k}': v for k, v in model_stats(ssl.student_backbone).items()}
+model_stats_dict.update({f'student_head_{k}': v for k, v in model_stats(ssl.student_head).items()})
+model_stats_dict.update({f'teacher_backbone_{k}': v for k, v in model_stats(ssl.teacher_backbone).items()})
+model_stats_dict.update({f'teacher_head_{k}': v for k, v in model_stats(ssl.teacher_head).items()})
 
 setup_wandb_auth()
 

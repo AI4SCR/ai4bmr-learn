@@ -10,7 +10,7 @@ base_dir = Path('/work/FAC/FBM/DBC/mrapsoma/prometex/data/benchmark')
 base_dir.mkdir(parents=True, exist_ok=True)
 
 # Bounding boxes within 1000x1000 coordinate space
-h, w = 100_000, 100_000
+h, w = 1000, 1000
 bboxs = []
 for size in [256, 512]:
     xmin = np.random.uniform(0, w - size)
@@ -25,7 +25,7 @@ test_path_gpkg = base_dir / 'with_bbox.gpkg'
 test_path_feather = base_dir / 'with_bbox.feather'
 
 # Generate dummy data: 10 million random points
-N = 10_000_000
+N = 10_000_00
 np.random.seed(42)
 x = np.random.uniform(0, 1000, N)
 y = np.random.uniform(0, 1000, N)
@@ -34,7 +34,7 @@ geometries = [Point(x_, y_) for x_, y_ in zip(x, y)]
 df = gpd.GeoDataFrame(pd.DataFrame({'id': range(N)}), geometry=geometries, crs="EPSG:4326")
 
 # Export to different formats
-df.to_parquet(test_path_parquet, geometry_encoding='geoarrow')
+df.to_parquet(test_path_parquet, geometry_encoding='geoarrow', write_covering_bbox=True)
 df.to_file(test_path_gpkg, driver='GPKG')
 # df.to_feather(test_path_feather)
 
@@ -51,9 +51,9 @@ for i, (xmin, ymin, xmax, ymax) in enumerate(bboxs):
     print(f"\n--- Bounding Box {i+1}: ({xmin}, {ymin}, {xmax}, {ymax}) ---")
 
     # Full load and filter in memory
-    benchmark("Full load + in-memory filter", lambda: df[
-        df.geometry.x.between(xmin, xmax) & df.geometry.y.between(ymin, ymax)
-    ])
+    # benchmark("Full load + in-memory filter", lambda: df[
+    #     df.geometry.x.between(xmin, xmax) & df.geometry.y.between(ymin, ymax)
+    # ])
 
     # Parquet + geoarrow (lazy spatial filter)
     benchmark("GeoArrow Parquet + BBOX", lambda: gpd.read_parquet(
@@ -64,6 +64,11 @@ for i, (xmin, ymin, xmax, ymax) in enumerate(bboxs):
     benchmark("GeoPackage (GPKG) + BBOX", lambda: gpd.read_file(
         test_path_gpkg, bbox=(xmin, ymin, xmax, ymax))
     )
+
+    # GPKG + bbox + use_arrow=True
+    benchmark("GeoPackage (GPKG) + BBOX + use_arrow", lambda: gpd.read_file(
+        test_path_gpkg, bbox=(xmin, ymin, xmax, ymax), use_arrow=True)
+              )
 
     # Feather (entire file in memory + in-memory filter)
     # benchmark("Feather + in-memory filter", lambda: gpd.read_feather(
