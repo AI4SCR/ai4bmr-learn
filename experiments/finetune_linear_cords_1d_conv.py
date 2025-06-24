@@ -451,7 +451,7 @@ class Classifier(L.LightningModule):
         if self.unfreeze_last_encoder_layers:
             return torch.optim.Adam([
                 {'params': filter(lambda p: p.requires_grad, self.backbone.tokenizer.parameters()), 'lr': 1e-4},
-                {'params': filter(lambda p: p.requires_grad, self.backbone.encoder.parameters()), 'lr': 1e-5},
+                {'params': filter(lambda p: p.requires_grad, self.backbone.encoder.parameters()), 'lr': 1e-6},
                 {'params': filter(lambda p: p.requires_grad, self.head.parameters()), 'lr': 1e-4},
             ])
 
@@ -465,15 +465,10 @@ class Classifier(L.LightningModule):
 
 class Head(nn.Module):
 
-    def __init__(self, in_dim: int, hidden_dim: int, num_classes: int):
+    def __init__(self, in_dim: int, num_classes: int):
         super().__init__()
         self.num_classes = num_classes
-        self.mlp = nn.Sequential(
-            nn.Linear(in_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(p=0.1),
-            nn.Linear(hidden_dim, num_classes)
-        )
+        self.mlp = nn.Linear(in_dim, num_classes)
 
     def forward(self, x):
         return self.mlp(x)
@@ -495,7 +490,6 @@ def main(unfreeze_last_encoder_layers: bool = False):
 
     num_classes = dm.train_set.metadata.typ.nunique()
     head = Head(in_dim=backbone.encoder.model.norm.normalized_shape[0],
-                hidden_dim=256,
                 num_classes=num_classes)
     clf = Classifier(backbone=backbone, head=head, unfreeze_last_encoder_layers=unfreeze_last_encoder_layers)
 
@@ -516,7 +510,7 @@ def main(unfreeze_last_encoder_layers: bool = False):
     training_cfg = TrainingConfig()
     wandb_cfg = WandbInitConfig(project=project_cfg.name)
 
-    metadata = {**model_stats_dict, 'unfreeze_last_encoder_layers': unfreeze_last_encoder_layers}
+    metadata = {**model_stats_dict, 'unfreeze_last_encoder_layers': unfreeze_last_encoder_layers, 'head': 'linear'}
     if not trainer_cfg.fast_dev_run:
         import wandb
 
@@ -558,10 +552,10 @@ def main(unfreeze_last_encoder_layers: bool = False):
 
     # Finish the wandb run
     wandb.finish()
-# exit(0)
 
 if __name__ == '__main__':
-    auto_cli(main, as_positional=False)
+    # auto_cli(main, as_positional=False)
+    main()
 
 # %%
 # import copy
