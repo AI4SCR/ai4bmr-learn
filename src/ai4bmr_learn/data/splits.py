@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from loguru import logger
-from sklearn.model_selection import ShuffleSplit, StratifiedShuffleSplit
+from sklearn.model_selection import StratifiedGroupKFold
 from torch.utils.data import Dataset
 
 
@@ -16,15 +16,18 @@ class Split(str, Enum):
 
 
 def generate_splits(
-    metadata: pd.DataFrame,
-    target_column_name: str = "target",
-    test_size: float | None = None,
-    val_size: float | None = None,
-    stratify: bool = False,
-    random_state: int | None = None,
-    verbose: int = 1,
+        metadata: pd.DataFrame,
+        target_column_name: str = "target",
+        test_size: float | None = None,
+        val_size: float | None = None,
+        stratify: bool = False,
+        group_column_name: str | None = None,
+        random_state: int | None = None,
+        verbose: int = 1,
 ):
     assert test_size or val_size, "Either `test_size` or `val_size` must be provided"
+    num_test_splits = round(1 / test_size) if test_size is not None else None
+    num_val_splits = round(1 / val_size) if val_size is not None else None
 
     # TODO: support Grouped Split for multi-samples per patient cases
     # TODO: should we allow for re-splitting, i.e. check if `split_column_name` already exists in metadata?
@@ -34,13 +37,18 @@ def generate_splits(
     assert metadata.index.has_duplicates == False
     num_samples = len(metadata)
 
+    if group_column_name is not None:
+        groups = metadata[group_column_name].values
+    else:
+        groups = None
+
     # split into train, test
     if test_size:
-        splitter = StratifiedShuffleSplit if stratify else ShuffleSplit
-        splitter = splitter(n_splits=1, test_size=test_size, random_state=random_state)
+        splitter = StratifiedGroupKFold
+        splitter = splitter(n_splits=num_test_splits, shuffle=True, random_state=random_state)
 
         y = metadata[target_column_name] if stratify else None
-        train_indices, test_indices = next(splitter.split(np.zeros(num_samples), y=y))
+        train_indices, test_indices = next(splitter.split(np.zeros(num_samples), y=y, groups=groups))
 
         train_indices = metadata.index[train_indices]
         test_indices = metadata.index[test_indices]
@@ -56,11 +64,11 @@ def generate_splits(
         )
         num_train_samples = len(train_metadata)
 
-        val_splitter = StratifiedShuffleSplit if stratify else ShuffleSplit
-        val_splitter = val_splitter(n_splits=1, test_size=val_size, random_state=random_state)
+        val_splitter = StratifiedGroupKFold
+        val_splitter = val_splitter(n_splits=num_val_splits, shuffle=True, random_state=random_state)
 
         y = train_metadata[target_column_name] if stratify else None
-        train_indices, val_indices = next(val_splitter.split(np.zeros(num_train_samples), y=y))
+        train_indices, val_indices = next(val_splitter.split(np.zeros(num_train_samples), y=y, groups=groups))
 
         train_indices = train_metadata.index[train_indices]
         val_indices = train_metadata.index[val_indices]
@@ -91,15 +99,15 @@ def generate_splits(
 
 
 def create_nested_cv_datasets(
-    *,
-    metadata: pd.DataFrame,
-    num_outer_cv: int = 5,
-    num_inner_cv: int = 5,
-    target_column_name: str = "target",
-    test_size: float | None = None,
-    val_size: float | None = None,
-    stratify: bool = False,
-    save_dir: Path,
+        *,
+        metadata: pd.DataFrame,
+        num_outer_cv: int = 5,
+        num_inner_cv: int = 5,
+        target_column_name: str = "target",
+        test_size: float | None = None,
+        val_size: float | None = None,
+        stratify: bool = False,
+        save_dir: Path,
 ):
     save_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Creating folds in {save_dir}")
