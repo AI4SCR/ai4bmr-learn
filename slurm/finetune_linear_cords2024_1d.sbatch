@@ -24,4 +24,4 @@ cd "$PROJECT_DIR" || exit
 
 /work/FAC/FBM/DBC/mrapsoma/prometex/envs/adrianom/rapids/bin/python3.12 \
 /work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn/experiments/finetune_linear_cords_1d_conv.py \
---unfreeze_last_encoder_layers=true
+--unfreeze_last_encoder_layers=false

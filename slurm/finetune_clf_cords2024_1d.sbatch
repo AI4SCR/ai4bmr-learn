@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=finetune-on-cords2024
-#SBATCH --output=/users/amarti51/logs/finetune-cords2024-%j.log
-#SBATCH --error=/users/amarti51/logs/finetune-cords2024-%j.err
+#SBATCH --job-name=finetune-clf-cords2024
+#SBATCH --output=/users/amarti51/logs/finetune-clf-cords2024-%j.log
+#SBATCH --error=/users/amarti51/logs/finetune-clf-cords2024-%j.err
 
 #SBATCH --account=mrapsoma_prometex
 #SBATCH --mail-type BEGIN,END,FAIL
@@ -24,4 +24,4 @@ cd "$PROJECT_DIR" || exit
 
 /work/FAC/FBM/DBC/mrapsoma/prometex/envs/adrianom/rapids/bin/python3.12 \
 /work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn/experiments/finetune_clf_cords_1d_conv.py \
---unfreeze_last_encoder_layers=true
+--unfreeze_last_encoder_layers=false
