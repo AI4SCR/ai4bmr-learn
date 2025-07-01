@@ -16,7 +16,7 @@ from ai4bmr_learn.models.backbones.base_backbone import BaseBackbone
 from ai4bmr_learn.transforms.dino_transform import DINOTransform
 from lightly.transforms.utils import IMAGENET_NORMALIZE
 
-# %% TRANSFORMS
+# TRANSFORMS
 transform = v2.Compose([
     v2.ToImage(),
     v2.ToDtype(torch.float32, scale=True),
@@ -31,11 +31,15 @@ dino_transform = v2.Compose([
     v2.Normalize(mean=IMAGENET_NORMALIZE['mean'], std=IMAGENET_NORMALIZE['std'])
 ])
 
-# %% DATA
+# DATA
 random_indices = torch.randperm(50000)[:5000]
 ds_test = Subset(CIFAR10(transform=transform), indices=random_indices)
 ds_train = Subset(CIFAR10(transform=dino_transform), indices=random_indices)
-# i = ds_train[0]
+
+i = ds_test[0]
+i['image'].min()
+j = ds_train[0]
+j['local_views'][0]['image'].min()
 
 # %%
 dl_train = torch.utils.data.DataLoader(

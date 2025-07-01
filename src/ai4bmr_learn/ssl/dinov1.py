@@ -52,24 +52,17 @@ class DINOv1(L.LightningModule):
         return x
 
     def training_step(self, batch, batch_idx):
-        views = batch['views']
-        batch_size = len(views[0]['image'])
+        global_views = batch['global_views']
+        local_views = batch['local_views']
 
-        global_views = views[:2]
-        local_views = views[2:]
+        batch_size = len(local_views[0]['image'])
 
         momentum = cosine_schedule(self.current_epoch, 10, 0.996, 1)
         update_momentum(self.student_backbone, self.teacher_backbone, m=momentum)
         update_momentum(self.student_head, self.teacher_head, m=momentum)
 
-        global_views = [view['image'].to(self.device) for view in global_views]
-        local_views = [view['image'].to(self.device) for view in local_views]
-
-        assert all(torch.isfinite(out).all() for out in global_views)
-        assert all(torch.isfinite(out).all() for out in local_views)
-
-        teacher_out = [self.forward_teacher(view) for view in global_views]
-        student_out = [self.forward_student(view) for view in local_views]
+        teacher_out = [self.forward_teacher(view['image']) for view in global_views]
+        student_out = [self.forward_student(view['image']) for view in local_views]
 
         assert all(torch.isfinite(out).all() for out in student_out)
         assert all(torch.isfinite(out).all() for out in teacher_out)
@@ -97,17 +90,11 @@ class DINOv1(L.LightningModule):
 
             batch_size = len(local_views[0]['image'])
 
-            global_views = [view['image'].to(self.device) for view in global_views]
-            local_views = [view['image'].to(self.device) for view in local_views]
+            teacher_out = [self.forward_teacher(view['image']) for view in global_views]
+            student_out = [self.forward_student(view['image']) for view in local_views]
 
-            assert all(torch.isfinite(out).all() for out in global_views)
-            assert all(torch.isfinite(out).all() for out in local_views)
-
-            teacher_out = [self.forward_teacher(view) for view in global_views]
-            student_out = [self.forward_student(view) for view in local_views]
-
-            assert all(torch.isfinite(out).all() for out in student_out)
             assert all(torch.isfinite(out).all() for out in teacher_out)
+            assert all(torch.isfinite(out).all() for out in student_out)
 
             loss = self.criterion(teacher_out, student_out, epoch=self.current_epoch)
 
@@ -125,8 +112,7 @@ class DINOv1(L.LightningModule):
             return loss
 
     def predict_step(self, batch, batch_idx):
-        x = batch['image']
-        x = self.student_backbone(x)
+        x = self.student_backbone(batch)
         batch['embedding'] = x
         return batch
 
