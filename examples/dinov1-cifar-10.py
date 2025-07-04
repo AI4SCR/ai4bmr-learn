@@ -34,7 +34,7 @@ dino_transform = v2.Compose([
     v2.Normalize(mean=IMAGENET_NORMALIZE['mean'], std=IMAGENET_NORMALIZE['std'])
 ])
 
-dino_transform_lightly = DINOTransformLightly(local_crop_scale=(0.25, 0.33),
+dino_transform_lightly = DINOTransformLightly(local_crop_scale=(0.15, 0.25),
                                               # cj_prob=0.4,
                                               # cj_strength=0.0,
                                               # cj_bright=0.0,
@@ -48,35 +48,16 @@ dino_transform_lightly = DINOTransformLightly(local_crop_scale=(0.25, 0.33),
 # DATA
 random_indices = torch.randperm(50000)[:15000]
 
-ds = CIFAR10(transform=None)
-# item = ds[torch.tensor(5507)]
-# for _ in range(1000):
-#     tmp = dino_transform_lightly(item)
-#     for view in tmp['local_views'] + tmp['global_views']:
-#         if view['image'].isnan().any():
-#             print('IsNaN')
-#             break
 
 ds_test = Subset(CIFAR10(transform=transform), indices=random_indices)
 ds_train = Subset(CIFAR10(transform=dino_transform_lightly), indices=random_indices[:12000])
 ds_val = Subset(CIFAR10(transform=dino_transform_lightly), indices=random_indices[12000:])
 
-i = ds_test[0]
-i['image'].shape
-i['image'].min()
-i['image'].max()
-
-j = ds_train[0]
-j['global_views'][0]['image'].shape
-j['local_views'][0]['image'].shape
-j['local_views'][0]['image'].min()
-j['local_views'][1]['image'].min()
-j['local_views'][0]['image'].max()
-j['local_views'][1]['image'].max()
 
 from matplotlib import pyplot as plt
 from torchvision.utils import make_grid
 
+ds = CIFAR10(transform=None)
 item = ds[0]
 plt.imshow(torch.tensor(item['image'])).figure.show()
 grid = make_grid([i['image'] for i in dino_transform_lightly(item)['local_views']])
@@ -88,15 +69,13 @@ plt.imshow(grid.permute((1, 2, 0))).figure.show()
 # DATA LOADERS
 num_workers = 14
 batch_size = 64
+
 dl_train = torch.utils.data.DataLoader(
     ds_train,
     batch_size=batch_size,
     shuffle=False,
     num_workers=num_workers,
 )
-
-item = ds_train[0]
-batch = next(iter(dl_train))
 
 dl_val = torch.utils.data.DataLoader(
     ds_val,
@@ -117,18 +96,16 @@ image_size = 224
 num_channels = 3
 
 model_name = 'vit_small_patch16_224'
+# model_name = 'vit_base_patch16_224'
 backbone = BaseBackbone.from_timm_vit(model_name=model_name, image_size=image_size, num_channels=num_channels,
                                       dynamic_img_size=True)
 
-backbone(i['image'].unsqueeze(0)).shape
-backbone(batch['local_views'][0]['image']).shape
-
 # CONFIGURATIONS
 project_cfg = ProjectConfig(name="dinov1-cifar10")
-trainer_cfg = TrainerConfig(max_epochs=1000,
+trainer_cfg = TrainerConfig(max_epochs=300,
                             accumulate_grad_batches= 512 // batch_size,
                             # precision='16-mixed',
-                            gradient_clip_val=1.0,
+                            gradient_clip_val=3.0,
                             fast_dev_run=False)
 training_cfg = TrainingConfig()
 wandb_cfg = WandbInitConfig(project=project_cfg.name)
@@ -137,14 +114,15 @@ wandb_cfg = WandbInitConfig(project=project_cfg.name)
 from ai4bmr_learn.ssl.dinov1 import DINOv1
 from lightly.models.modules import DINOProjectionHead
 
-hidden_dim: int = 512
-bottleneck_dim: int = 64
-output_dim: int = 2048
+hidden_dim, = backbone.encoder.model.norm.normalized_shape
+bottleneck_dim: int = 64 * 2
+output_dim: int = 2048 * 2
 student_head = DINOProjectionHead(
     input_dim=backbone.tokenizer.dim,
     hidden_dim=hidden_dim,
     bottleneck_dim=bottleneck_dim,
-    output_dim=output_dim, freeze_last_layer=1
+    output_dim=output_dim,
+    freeze_last_layer=3
 )
 teacher_head = DINOProjectionHead(
     input_dim=backbone.tokenizer.dim,
@@ -152,12 +130,13 @@ teacher_head = DINOProjectionHead(
     bottleneck_dim=bottleneck_dim,
     output_dim=output_dim,
 )
-ssl = DINOv1(backbone=backbone, teacher_head=teacher_head, student_head=student_head)
-batch = {
-    'global_views': [{'image': torch.randn(1, 3, 224, 224)}] * 2,
-    'local_views': [{'image': torch.randn(1, 3, 96, 96)}] * 6,
-}
-ssl.training_step(batch, batch_idx=0)
+ssl = DINOv1(backbone=backbone,
+             teacher_head=teacher_head,
+             student_head=student_head,
+             batch_size=batch_size,
+             accumulate_grad_batches=trainer_cfg.accumulate_grad_batches,
+             epochs=trainer_cfg.max_epochs
+             )
 
 # LOGGER
 from ai4bmr_learn.utils.utils import setup_wandb_auth
