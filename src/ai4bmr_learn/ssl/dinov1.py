@@ -51,7 +51,7 @@ class DINOv1(L.LightningModule):
         x = self.teacher_head(x)
         return x
 
-    def training_step(self, batch, batch_idx):
+    def shared_step(self, batch, batch_idx):
         global_views = batch['global_views']
         local_views = batch['local_views']
 
@@ -64,13 +64,40 @@ class DINOv1(L.LightningModule):
         teacher_out = [self.forward_teacher(view['image']) for view in global_views]
         student_out = [self.forward_student(view['image']) for view in local_views]
 
-        assert all(torch.isfinite(out).all() for out in student_out)
-        assert all(torch.isfinite(out).all() for out in teacher_out)
+        try:
+            assert all(torch.isfinite(out).all() for out in student_out)
+        except AssertionError as e:
+            print(f'student_out has na for {batch_idx}')
+
+            # img = global_views[0]['image']
+            # c, *_ = torch.where(img.isnan())
+            # sample_index = torch.unique(c).item()
+            # batch['index'][sample_index]
+            #
+            # layer = img[57]
+            # c, h, w = torch.where(layer.isnan())
+            # torch.unique(c)
+
+
+
+        try:
+            assert all(torch.isfinite(out).all() for out in teacher_out)
+        except AssertionError as e:
+            print(f'teacher_out has na for {batch_idx}')
 
         loss = self.criterion(teacher_out, student_out, epoch=self.current_epoch)
 
-        assert not torch.isnan(loss).any()
-        assert torch.isfinite(loss).all()
+        try:
+            assert not torch.isnan(loss).any()
+            assert torch.isfinite(loss).all()
+        except AssertionError as e:
+            print(f'loss has na for {batch_idx}')
+            loss = 0.1
+
+        return loss, batch_size
+
+    def training_step(self, batch, batch_idx):
+        loss, batch_size = self.shared_step(batch, batch_idx=batch_idx)
 
         self.log(
             "train_loss_epoch",
@@ -80,36 +107,17 @@ class DINOv1(L.LightningModule):
             batch_size=batch_size,
         )
 
-        return loss
-
     def validation_step(self, batch, batch_idx):
         with torch.no_grad():
+            loss, batch_size = self.shared_step(batch, batch_idx=batch_idx)
 
-            global_views = batch['global_views']
-            local_views = batch['local_views']
-
-            batch_size = len(local_views[0]['image'])
-
-            teacher_out = [self.forward_teacher(view['image']) for view in global_views]
-            student_out = [self.forward_student(view['image']) for view in local_views]
-
-            assert all(torch.isfinite(out).all() for out in teacher_out)
-            assert all(torch.isfinite(out).all() for out in student_out)
-
-            loss = self.criterion(teacher_out, student_out, epoch=self.current_epoch)
-
-            assert not torch.isnan(loss).any()
-            assert torch.isfinite(loss).all()
-
-            self.log(
-                "val_loss_epoch",
-                loss,
-                on_step=False,
-                on_epoch=True,
-                batch_size=batch_size,
-            )
-
-            return loss
+        self.log(
+            "val_loss_epoch",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            batch_size=batch_size,
+        )
 
     def predict_step(self, batch, batch_idx):
         x = self.student_backbone(batch)

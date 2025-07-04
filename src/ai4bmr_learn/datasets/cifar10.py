@@ -15,7 +15,8 @@ class CIFAR10(torchvision.datasets.CIFAR10):
 
     def __getitem__(self, idx):
         image, target = self.data[idx], self.targets[idx]
-        item = {'image': image, 'target': target}
+
+        item = {'image': image, 'target': target, 'index': int(idx)}
         if self.transform is not None:
             item = self.transform(item)
         return item

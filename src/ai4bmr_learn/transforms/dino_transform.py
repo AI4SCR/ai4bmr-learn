@@ -275,10 +275,11 @@ class DINOTransformLightly:
         self.transform = DINOTransform(**kwargs)
 
     def __call__(self, item: dict):
-        from PIL import Image
+        from torchvision.transforms.functional import to_pil_image
         img = item['image']
+        img = to_pil_image(img)
 
         views = [{**item, 'image': view} for view in self.transform(img)]
 
-        return {'views': views}
+        return {'global_views': views[:2], 'local_views': views[2:]}
 

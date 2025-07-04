@@ -1,5 +1,8 @@
 # %%
 from dataclasses import asdict
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import lightning as L
 import torch
@@ -13,7 +16,7 @@ from ai4bmr_learn.data_models.lightning_training import ProjectConfig, TrainerCo
 from ai4bmr_learn.datasets.cifar10 import CIFAR10
 from torchvision.transforms import v2
 from ai4bmr_learn.models.backbones.base_backbone import BaseBackbone
-from ai4bmr_learn.transforms.dino_transform import DINOTransform
+from ai4bmr_learn.transforms.dino_transform import DINOTransform, DINOTransformLightly
 from lightly.transforms.utils import IMAGENET_NORMALIZE
 
 # TRANSFORMS
@@ -31,52 +34,102 @@ dino_transform = v2.Compose([
     v2.Normalize(mean=IMAGENET_NORMALIZE['mean'], std=IMAGENET_NORMALIZE['std'])
 ])
 
+dino_transform_lightly = DINOTransformLightly(local_crop_scale=(0.25, 0.33),
+                                              # cj_prob=0.4,
+                                              # cj_strength=0.0,
+                                              # cj_bright=0.0,
+                                              # cj_contrast=0.0,
+                                              # cj_sat=0.,
+                                              # cj_hue=0.,
+                                              # solarization_prob=0,
+                                              normalize=None
+                                              )
+
 # DATA
-random_indices = torch.randperm(50000)[:5000]
+random_indices = torch.randperm(50000)[:15000]
+
+ds = CIFAR10(transform=None)
+# item = ds[torch.tensor(5507)]
+# for _ in range(1000):
+#     tmp = dino_transform_lightly(item)
+#     for view in tmp['local_views'] + tmp['global_views']:
+#         if view['image'].isnan().any():
+#             print('IsNaN')
+#             break
+
 ds_test = Subset(CIFAR10(transform=transform), indices=random_indices)
-ds_train = Subset(CIFAR10(transform=dino_transform), indices=random_indices)
+ds_train = Subset(CIFAR10(transform=dino_transform_lightly), indices=random_indices[:12000])
+ds_val = Subset(CIFAR10(transform=dino_transform_lightly), indices=random_indices[12000:])
 
 i = ds_test[0]
+i['image'].shape
 i['image'].min()
-j = ds_train[0]
-j['local_views'][0]['image'].min()
+i['image'].max()
 
-# %%
+j = ds_train[0]
+j['global_views'][0]['image'].shape
+j['local_views'][0]['image'].shape
+j['local_views'][0]['image'].min()
+j['local_views'][1]['image'].min()
+j['local_views'][0]['image'].max()
+j['local_views'][1]['image'].max()
+
+from matplotlib import pyplot as plt
+from torchvision.utils import make_grid
+
+item = ds[0]
+plt.imshow(torch.tensor(item['image'])).figure.show()
+grid = make_grid([i['image'] for i in dino_transform_lightly(item)['local_views']])
+plt.imshow(grid.permute((1, 2, 0))).figure.show()
+
+grid = make_grid([i['image'] for i in dino_transform_lightly(item)['global_views']])
+plt.imshow(grid.permute((1, 2, 0))).figure.show()
+
+# DATA LOADERS
+num_workers = 14
+batch_size = 64
 dl_train = torch.utils.data.DataLoader(
     ds_train,
-    batch_size=64,
-    shuffle=True,
-    drop_last=True,
-    num_workers=8,
+    batch_size=batch_size,
+    shuffle=False,
+    num_workers=num_workers,
 )
 
 item = ds_train[0]
 batch = next(iter(dl_train))
 
-dl_test = torch.utils.data.DataLoader(
-    ds_test,
-    batch_size=64,
-    shuffle=True,
-    drop_last=True,
-    num_workers=8,
+dl_val = torch.utils.data.DataLoader(
+    ds_val,
+    batch_size=batch_size,
+    shuffle=False,
+    num_workers=num_workers,
 )
 
-# %% BACKBONE
+dl_test = torch.utils.data.DataLoader(
+    ds_test,
+    batch_size=batch_size,
+    shuffle=False,
+    num_workers=num_workers,
+)
+
+# BACKBONE
 image_size = 224
 num_channels = 3
 
 model_name = 'vit_small_patch16_224'
-backbone = BaseBackbone.from_timm_vit(model_name=model_name, image_size=image_size, num_channels=num_channels, dynamic_img_size=True)
+backbone = BaseBackbone.from_timm_vit(model_name=model_name, image_size=image_size, num_channels=num_channels,
+                                      dynamic_img_size=True)
 
-backbone(batch['local_views'][0]['image'])
+backbone(i['image'].unsqueeze(0)).shape
+backbone(batch['local_views'][0]['image']).shape
 
-# %% CONFIGURATIONS
-project_cfg = ProjectConfig(name="dinov1-cords2024")
+# CONFIGURATIONS
+project_cfg = ProjectConfig(name="dinov1-cifar10")
 trainer_cfg = TrainerConfig(max_epochs=1000,
-                            accumulate_grad_batches=32,
-                            # precision=16,
-                            gradient_clip_val=1,
-                            fast_dev_run=True)
+                            accumulate_grad_batches= 512 // batch_size,
+                            # precision='16-mixed',
+                            gradient_clip_val=1.0,
+                            fast_dev_run=False)
 training_cfg = TrainingConfig()
 wandb_cfg = WandbInitConfig(project=project_cfg.name)
 
@@ -100,7 +153,10 @@ teacher_head = DINOProjectionHead(
     output_dim=output_dim,
 )
 ssl = DINOv1(backbone=backbone, teacher_head=teacher_head, student_head=student_head)
-batch = {'views': [{'image':torch.randn(1, 43, 224, 224)}] * 6}
+batch = {
+    'global_views': [{'image': torch.randn(1, 3, 224, 224)}] * 2,
+    'local_views': [{'image': torch.randn(1, 3, 96, 96)}] * 6,
+}
 ssl.training_step(batch, batch_idx=0)
 
 # LOGGER
@@ -152,7 +208,9 @@ trainer = L.Trainer(
 # TRAIN
 ckpt_path = training_cfg.ckpt_path  # resume from checkpoint
 seed_everything(42, workers=True)
-trainer.fit(model=ssl, datamodule=dm, ckpt_path=ckpt_path)
+trainer.fit(model=ssl, train_dataloaders=dl_train, ckpt_path=ckpt_path)
 
 # Finish the wandb run
 wandb.finish()
+
+# %%
