@@ -17,7 +17,21 @@ from ai4bmr_learn.models.backbones.base_backbone import BaseBackbone
 
 
 class DINOv1(L.LightningModule):
-    def __init__(self, backbone: BaseBackbone, student_head: DINOProjectionHead, teacher_head: DINOProjectionHead, pooling: str = 'cls'):
+    def __init__(self,
+                 backbone: BaseBackbone,
+                 student_head: DINOProjectionHead,
+                 teacher_head: DINOProjectionHead,
+                 pooling: str = 'cls',
+                 batch_size: int = 64,
+                 accumulate_grad_batches: int = 8,
+                 base_learning_rate=5e-4,
+                 weight_decay: float = 0.1,
+                 warmup_epochs: int = 10,
+                 epochs: int = 300,
+                 warmup_teacher_temp_epochs=30,
+                 warmup_teacher_temp=0.04,
+                 teacher_temp=0.06,
+                 ):
         super().__init__()
 
         self.pooling = pooling
@@ -31,7 +45,21 @@ class DINOv1(L.LightningModule):
         deactivate_requires_grad(self.teacher_head)
 
         output_dim = student_head.last_layer.out_features
-        self.criterion = DINOLoss(output_dim=output_dim, warmup_teacher_temp_epochs=5)
+        self.criterion = DINOLoss(output_dim=output_dim,
+                                  warmup_teacher_temp=warmup_teacher_temp,
+                                  warmup_teacher_temp_epochs=warmup_teacher_temp_epochs,
+                                  teacher_temp=teacher_temp)
+
+        # optimizer
+        self.batch_size = batch_size
+        self.accumulate_grad_batches = accumulate_grad_batches
+        self.effective_batch_size = batch_size * accumulate_grad_batches
+        self.base_learning_rate = base_learning_rate
+        self.weight_decay = weight_decay
+        self.warmup_epochs = warmup_epochs
+        self.epochs = epochs
+
+        self.save_hyperparameters(ignore=['backbone', 'student_head', 'teacher_head'])
 
     def pool(self, x):
         if self.pooling == 'cls':
@@ -57,7 +85,7 @@ class DINOv1(L.LightningModule):
 
         batch_size = len(local_views[0]['image'])
 
-        momentum = cosine_schedule(self.current_epoch, 10, 0.996, 1)
+        momentum = cosine_schedule(self.current_epoch, self.epochs, 0.996, 1)
         update_momentum(self.student_backbone, self.teacher_backbone, m=momentum)
         update_momentum(self.student_head, self.teacher_head, m=momentum)
 
@@ -128,5 +156,25 @@ class DINOv1(L.LightningModule):
         self.student_head.cancel_last_layer_gradients(current_epoch=self.current_epoch)
 
     def configure_optimizers(self):
-        optim = torch.optim.Adam(self.parameters(), lr=0.001)
-        return optim
+        import math
+
+        # https://github.com/facebookresearch/mae/blob/main/PRETRAIN.md
+        optim = torch.optim.AdamW(
+            self.parameters(),
+            lr=self.base_learning_rate * self.effective_batch_size / 256,
+            betas=(0.9, 0.95),
+            weight_decay=self.weight_decay,
+        )
+        lr_func = lambda epoch: min(
+            (epoch + 1) / (self.warmup_epochs + 1e-8),
+            0.5 * (math.cos(epoch / self.epochs * math.pi) + 1),
+        )
+        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optim, lr_lambda=lr_func)
+        return {
+            "optimizer": optim,
+            "lr_scheduler": {
+                "scheduler": lr_scheduler,
+                "interval": "epoch",
+                "frequency": 1,
+            },
+        }
