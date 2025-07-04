@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from loguru import logger
-from sklearn.model_selection import StratifiedGroupKFold
+from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold, KFold, GroupKFold, StratifiedShuffleSplit
 from torch.utils.data import Dataset
 
 
@@ -42,13 +42,21 @@ def generate_splits(
     else:
         groups = None
 
+    if stratify and group_column_name is not None:
+        splitter = StratifiedGroupKFold
+    elif stratify and group_column_name is None:
+        splitter = StratifiedKFold
+    elif not stratify and group_column_name is not None:
+        splitter = GroupKFold
+    else:
+        splitter = KFold
+
     # split into train, test
     if test_size:
-        splitter = StratifiedGroupKFold
-        splitter = splitter(n_splits=num_test_splits, shuffle=True, random_state=random_state)
+        split = splitter(n_splits=num_test_splits, shuffle=True, random_state=random_state)
 
         y = metadata[target_column_name] if stratify else None
-        train_indices, test_indices = next(splitter.split(np.zeros(num_samples), y=y, groups=groups))
+        train_indices, test_indices = next(split.split(np.zeros(num_samples), y=y, groups=groups))
 
         train_indices = metadata.index[train_indices]
         test_indices = metadata.index[test_indices]
@@ -64,11 +72,10 @@ def generate_splits(
         )
         num_train_samples = len(train_metadata)
 
-        val_splitter = StratifiedGroupKFold
-        val_splitter = val_splitter(n_splits=num_val_splits, shuffle=True, random_state=random_state)
+        split = splitter(n_splits=num_val_splits, shuffle=True, random_state=random_state)
 
         y = train_metadata[target_column_name] if stratify else None
-        train_indices, val_indices = next(val_splitter.split(np.zeros(num_train_samples), y=y, groups=groups))
+        train_indices, val_indices = next(split.split(np.zeros(num_train_samples), y=y, groups=groups))
 
         train_indices = train_metadata.index[train_indices]
         val_indices = train_metadata.index[val_indices]

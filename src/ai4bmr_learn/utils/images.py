@@ -130,6 +130,22 @@ def filter_coords(coords: list[SlideCoordinate | XeniumCoordinate], *, contours:
 
     return filtered
 
+    records = []
+    for coord in coords:
+        box = coord_to_bbox(coord)
+        records.append({
+            'uuid': coord.uuid,
+            'geometry': box,
+        })
+
+    bboxes = gpd.GeoDataFrame(records, crs=contours.crs)
+    bboxes.sindex   # builds the spatial index
+    contours.sindex
+
+    joined = gpd.sjoin(bboxes, contours[['geometry']], how='inner', predicate='intersects')
+    joined = gpd.sjoin(bboxes, contours, how='inner', predicate='intersects')
+
+
 
 def get_patch(coord, as_tensor: bool = True):
     import openslide

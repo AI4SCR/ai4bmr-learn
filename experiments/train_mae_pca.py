@@ -220,7 +220,7 @@ class PCa2025(L.LightningDataModule):
 
         self.coords_version = coords_version
         self.coords_dir = self.dataset_dir / 'coords' / coords_version
-        self.splits_dir = self.dataset_dir / 'splits'
+        self.splits_dir = self.dataset_dir / 'splits' / coords_version
         self.metadata_path = self.dataset_dir / "metadata.parquet"
 
         self.train_set, self.val_set, self.test_set = None, None, None
@@ -229,19 +229,19 @@ class PCa2025(L.LightningDataModule):
 
         self.train_set = Patches(
             images_dir=self.images_dir,
-            coords_path=self.splits_dir / self.coords_version / 'train.json',
+            coords_path=self.splits_dir / 'train.json',
             metadata_path=self.metadata_path,
         )
 
         self.test_set = Patches(
             images_dir=self.images_dir,
-            coords_path=self.splits_dir / self.coords_version / 'test.json',
+            coords_path=self.splits_dir / 'test.json',
             metadata_path=self.metadata_path,
         )
 
         self.val_set = Patches(
             images_dir=self.images_dir,
-            coords_path=self.splits_dir / self.coords_version / 'val.json',
+            coords_path=self.splits_dir / 'val.json',
             metadata_path=self.metadata_path,
         )
 
@@ -353,7 +353,7 @@ class PCa2025(L.LightningDataModule):
 
         for split, split_data in splits.groupby(Split.COLUMN_NAME, observed=True):
             split_ids = split_data.index.to_list()
-            split_coords = list(filter(lambda i: i.sample_id in split_ids, coords))
+            split_coords = list(filter(lambda i: i['sample_id'] in split_ids, coords))
 
             with open(self.splits_dir / f"{split}.json", "w") as f:
                 json.dump(split_coords, f)
@@ -386,10 +386,8 @@ class PCa2025(L.LightningDataModule):
             pin_memory=self.pin_memory,
         )
 
-
 dm = self = PCa2025(num_workers=0)
-# dm.prepare_coords()
-dm.prepare_data()
+# dm.prepare_data()
 dm.setup()
 
 # %% BACKBONE
@@ -400,7 +398,7 @@ model_name = 'vit_small_patch16_224'
 backbone = BaseBackbone.from_timm_vit(model_name=model_name, image_size=image_size, num_channels=num_channels)
 
 # %% CONFIGURATIONS
-project_cfg = ProjectConfig(name="mae-cords2024")
+project_cfg = ProjectConfig(name="mae-pca2025")
 trainer_cfg = TrainerConfig(max_epochs=1000,
                             accumulate_grad_batches=32,
                             # precision=16,
@@ -415,20 +413,6 @@ from ai4bmr_learn.ssl.mae import MAE
 decoder_kwargs = {'num_layers': 8, 'num_heads': 8, 'dim': 192}
 ssl = MAE(backbone=backbone, decoder_kwargs=decoder_kwargs,
           batch_size=dm.batch_size, accumulate_grad_batches=trainer_cfg.accumulate_grad_batches)
-
-model = MAE.load_from_checkpoint(
-    backbone=backbone,
-    checkpoint_path='/work/FAC/FBM/DBC/mrapsoma/prometex/ckpt/mae-cords2024/solar-blaze-4/epoch=639-val_loss=0.0000.ckpt')
-
-from ai4bmr_learn.utils.device import batch_to_device
-
-batch = next(iter(dm.train_dataloader()))
-model.to('cuda')
-batch = batch_to_device(batch, device='cuda')
-out = model.predict_step(batch, batch_idx=0)
-
-out.shape
-cls_token = out[:, 0, ...]
 
 # LOGGER
 from ai4bmr_learn.utils.utils import setup_wandb_auth
@@ -455,12 +439,12 @@ wandb_logger = WandbLogger(project=project_cfg.name, log_model=False, save_dir=p
 
 # CALLBACKS
 monitor_metric_name = "val_loss_epoch"
-filename = "{epoch:02d}-{val_loss:.4f}"
+filename = "{epoch:02d}-{val_loss_epoch:.4f}"
 model_ckpt = ModelCheckpoint(
     dirpath=ckpt_dir,
     monitor=monitor_metric_name,
     mode="min",
-    save_top_k=3,
+    save_top_k=1,
     filename=filename,
 )
 lr_monitor = LearningRateMonitor(logging_interval="epoch")

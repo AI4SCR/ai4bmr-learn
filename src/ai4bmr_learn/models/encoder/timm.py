@@ -48,7 +48,7 @@ class MaskedEncoder(BaseMaskedEncoder):
         self.model = model
 
         # remove unused layers
-        del self.model.patch_embed
+        # del self.model.patch_embed  # needed for dynamic_image_size = True
         del self.model.fc_norm
         del self.model.head_drop
         del self.model.head

@@ -72,7 +72,7 @@ def set_at_mask(tokens, *, mask, value):
 def get_at_index(tokens, *, index):
     idx_keep_expanded = repeat(index, "b k -> b k d", d=tokens.shape[-1])
     unmasked_tokens = torch.gather(tokens, 1, idx_keep_expanded)
-    return unmasked_tokens
+    return unmasked_tokensv
 
 
 def get_at_mask(tokens, *, mask):
