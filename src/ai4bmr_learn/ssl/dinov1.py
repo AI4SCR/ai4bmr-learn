@@ -1,35 +1,22 @@
-# This example requires the following dependencies to be installed:
-# pip install lightly
-
-# Note: The model and training settings do not follow the reference settings
-# from the paper. The settings are chosen such that the example can easily be
-# run on a small dataset with a single GPU.
-
 import copy
 
 import lightning as L
 import torch
+import torch.nn as nn
 from lightly.loss import DINOLoss
 from lightly.models.modules import DINOProjectionHead
 from lightly.models.utils import deactivate_requires_grad, update_momentum
 from lightly.utils.scheduler import cosine_schedule
-from ai4bmr_learn.models.backbones.base_backbone import BaseBackbone
-import torchvision
-import torch.nn as nn
+
 
 class DINOv1(L.LightningModule):
 
 
-    def __init__(self, max_epochs: int):
+    def __init__(self, backbone: nn.Module, input_dim: int, max_epochs: int):
         super().__init__()
-        resnet = torchvision.models.resnet18()
-        backbone = nn.Sequential(*list(resnet.children())[:-1])
-        input_dim = 512
 
-        # instead of a resnet you can also use a vision transformer backbone as in the
-        # original paper (you might have to reduce the batch size in this case):
-        # backbone = torch.hub.load('facebookresearch/dino:main', 'dino_vits16', pretrained=False)
-        # input_dim = backbone.embed_dim
+        self.backbone = backbone
+        self.input_dim = 512
         self.max_epochs = max_epochs
 
         self.student_backbone = backbone
@@ -164,9 +151,20 @@ class DINOv1(L.LightningModule):
 
         return loss
 
+    def validation_step(self, batch, batch_idx):
+        y = self.student_backbone(batch['image']).flatten(start_dim=1).cpu()
+        batch['loss'] = 0
+        batch['embedding'] = y
+        return batch
+
     def on_after_backward(self):
         self.student_head.cancel_last_layer_gradients(current_epoch=self.current_epoch)
 
     def configure_optimizers(self):
         optim = torch.optim.Adam(self.parameters(), lr=0.001)
         return optim
+
+    def predict_step(self, batch, batch_idx):
+        y = self.student_backbone(batch['image']).flatten(start_dim=1)
+        batch['embedding'] = y
+        return batch
