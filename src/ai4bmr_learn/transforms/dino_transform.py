@@ -277,7 +277,9 @@ class DINOTransformLightly:
     def __call__(self, item: dict):
         from torchvision.transforms.functional import to_pil_image
         img = item['image']
-        img = to_pil_image(img)
+
+        if not isinstance(img, PIL.Image.Image):
+            img = to_pil_image(img)
 
         views = [{**item, 'image': view} for view in self.transform(img)]
 
