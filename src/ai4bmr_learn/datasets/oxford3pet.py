@@ -3,14 +3,14 @@ from pathlib import Path
 from torchvision.transforms import v2
 from torch.utils.data import Dataset
 
-class VOCDetection(Dataset):
+class Oxford3Pet(Dataset):
 
     def __init__(self, base_dir: Path | None = None, transform = None, **kwargs):
         super().__init__()
 
-        base_dir = base_dir or Path('/work/FAC/FBM/DBC/mrapsoma/prometex/data/datasets/VOCDetection')
+        base_dir = base_dir or Path('/work/FAC/FBM/DBC/mrapsoma/prometex/data/datasets/oxford3pet')
         base_dir = base_dir.resolve()
-        self.dataset = torchvision.datasets.VOCDetection(root=base_dir, **kwargs)
+        self.dataset = torchvision.datasets.OxfordIIITPet(root=base_dir, **kwargs)
         self.to_image = v2.ToImage()
         self.transform = transform
 
