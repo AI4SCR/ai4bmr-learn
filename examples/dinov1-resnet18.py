@@ -114,15 +114,17 @@ wandb_logger = WandbLogger(project='dinov1',
 # CALLBACKS
 from ai4bmr_learn.callbacks.ImageSamples import DINOImageSamples
 from ai4bmr_learn.callbacks.UMAP import UMAP
+from ai4bmr_learn.callbacks.LinearProbing import LinearProbing
 lr_monitor = LearningRateMonitor(logging_interval="epoch")
 image_samples = DINOImageSamples(num_samples=5)
 umap = UMAP(label_key='target', log_before_train=True, log_every_num_epochs=10)
+linear_probing = LinearProbing(target_key='target')
 
 # TRAINER
 trainer = L.Trainer(
     max_epochs=max_epochs,
     logger=wandb_logger,
-    callbacks=[lr_monitor, image_samples, umap],
+    callbacks=[linear_probing, image_samples, umap, lr_monitor],
     fast_dev_run=fast_dev_run,
 )
 

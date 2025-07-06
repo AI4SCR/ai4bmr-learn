@@ -12,23 +12,39 @@ from lightly.utils.scheduler import cosine_schedule
 class DINOv1(L.LightningModule):
 
 
-    def __init__(self, backbone: nn.Module, input_dim: int, max_epochs: int):
+    def __init__(self,
+                 backbone: nn.Module,
+                 input_dim: int,
+                 max_epochs: int,
+                 warmup_teacher_temp_epochs: int = 3,
+                 teacher_temp: float = 0.04,
+                 momentum: float = 0.996,
+                 momentum_end: float = 1,
+                 freeze_last_layer: int = 1,
+                 norm_last_layer: bool = True
+                 ):
         super().__init__()
 
         self.backbone = backbone
         self.input_dim = 512
         self.max_epochs = max_epochs
+        self.momentum = momentum
+        self.momentum_end = momentum_end
 
         self.student_backbone = backbone
         self.student_head = DINOProjectionHead(
-            input_dim, 512, 64, 2048, freeze_last_layer=1
+            input_dim, 512, 64, 2048,
+            freeze_last_layer=freeze_last_layer, norm_last_layer=norm_last_layer
         )
         self.teacher_backbone = copy.deepcopy(backbone)
         self.teacher_head = DINOProjectionHead(input_dim, 512, 64, 2048)
         deactivate_requires_grad(self.teacher_backbone)
         deactivate_requires_grad(self.teacher_head)
 
-        self.criterion = DINOLoss(output_dim=2048, warmup_teacher_temp_epochs=5)
+        self.criterion = DINOLoss(output_dim=2048,
+                                  warmup_teacher_temp_epochs=warmup_teacher_temp_epochs,
+                                  teacher_temp=teacher_temp,
+                                  )
 
         self.save_hyperparameters(ignore=['backbone', 'student_head', 'teacher_head'])
 
@@ -135,7 +151,7 @@ class DINOv1(L.LightningModule):
         return z
 
     def training_step(self, batch, batch_idx):
-        momentum = cosine_schedule(self.current_epoch, self.max_epochs, 0.996, 1)
+        momentum = cosine_schedule(self.current_epoch, self.max_epochs, self.momentum, self.momentum_end)
         update_momentum(self.student_backbone, self.teacher_backbone, m=momentum)
         update_momentum(self.student_head, self.teacher_head, m=momentum)
 
