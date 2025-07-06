@@ -21,7 +21,11 @@ conda activate beat
 PROJECT_DIR=/work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn
 cd "$PROJECT_DIR" || exit
 
-BATCH_SIZES = 32, 64, 128, 256
+# higher teacher temp 0.04 -> 0.07
+# higher teacher momentum 0.996 -> 0.999
+# norm_last_layer True -> False
+# freeze_last_layer 1 -> 3
+# batch_size 64 -> 128
 
 
 python /work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn/clis/dinov1.py fit --config configs/dinov1-vit.yaml
