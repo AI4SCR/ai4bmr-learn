@@ -118,8 +118,10 @@ class LinearProbing(Callback):
         if trainer.current_epoch == 0 and self.run_before_train:
             return False
 
-        if trainer.current_epoch % self.run_every_num_epochs > 0:
-            return False
+        if trainer.current_epoch % self.run_every_num_epochs == 0:
+            return True
+
+        return False
 
     def reset(self):
         self.embeddings = self.targets = None
