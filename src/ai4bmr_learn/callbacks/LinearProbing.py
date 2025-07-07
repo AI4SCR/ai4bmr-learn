@@ -5,7 +5,9 @@ import torch
 from ai4bmr_learn.utils.device import batch_to_device
 import numpy as np
 from sklearn.model_selection import StratifiedShuffleSplit, cross_validate
+from sklearn.preprocessing import LabelEncoder
 from sklearn.linear_model import LogisticRegression
+from glom import glom
 
 class LinearProbing(Callback):
 
@@ -59,7 +61,8 @@ class LinearProbing(Callback):
         clf = LogisticRegression(max_iter=1000)
 
         x = self.embeddings[:self.num_samples].numpy() if self.num_samples else self.embeddings.numpy()
-        y = self.targets[:self.num_samples] if self.num_samples else self.targets
+        targets = self.targets[:self.num_samples] if self.num_samples else self.targets
+        y = LabelEncoder().fit_transform(targets)
         scores = cross_validate(estimator=clf, X=x, y=y, cv=cv, scoring=self.scoring, n_jobs=-1)
         scores = {k: v.mean() for k,v in scores.items()}
 
@@ -72,10 +75,10 @@ class LinearProbing(Callback):
 
         if accumulate and self.embeddings is None:
             self.embeddings = outputs['embedding']
-            self.targets = outputs[self.target_key].tolist()
+            self.targets = glom(outputs, self.target_key).tolist()
         elif accumulate:
             self.embeddings = torch.vstack((self.embeddings, outputs['embedding']))
-            self.targets.extend(outputs[self.target_key].tolist())
+            self.targets.extend(glom(outputs, self.target_key).tolist())
         else:
             return True
         return False
