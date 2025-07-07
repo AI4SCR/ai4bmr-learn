@@ -6,6 +6,7 @@ import torch
 from ai4bmr_learn.utils.device import batch_to_device
 import numpy as np
 from torch.utils.data import DataLoader
+from glom import glom
 
 class UMAP(Callback):
 
@@ -74,15 +75,15 @@ class UMAP(Callback):
         if accumulate and self.embeddings is None:
             self.embeddings = outputs['embedding']
             if self.label_key is not None:
-                self.labels = outputs[self.label_key].tolist()
+                self.labels = glom(outputs, self.label_key).tolist()
             if self.value_key is not None:
-                self.values = outputs[self.value_key].tolist()
+                self.values = glom(outputs, self.value_key).tolist()
         else:
             self.embeddings = torch.vstack((self.embeddings, outputs['embedding']))
             if self.label_key is not None:
-                self.labels.extend(outputs[self.label_key].tolist())
+                self.labels.extend(glom(outputs, self.label_key).tolist())
             if self.value_key is not None:
-                self.values.extend(outputs[self.value_key].tolist())
+                self.values.extend(glom(outputs, self.value_key).tolist())
 
         if is_last_batch:
             logger.info(f'Computing UMAP [num_samples={len(self.embeddings)}, epoch={trainer.current_epoch}, batch_idx={batch_idx}]')
