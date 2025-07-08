@@ -15,6 +15,7 @@ class LinearProbing(Callback):
     def __init__(self,
                  target_key: str,
                  run_before_train: bool = True,
+                 run_after_train: bool = True,
                  run_every_num_epochs: int = 10,
                  num_samples: int | None = None,
                  num_splits: int = 5,
@@ -23,6 +24,7 @@ class LinearProbing(Callback):
                  ):
 
         self.run_before_train = run_before_train
+        self.run_after_train = run_after_train
         self.run_every_num_epochs = run_every_num_epochs
         self.num_samples = num_samples
         self.target_key = target_key
@@ -76,10 +78,14 @@ class LinearProbing(Callback):
 
         if accumulate and self.embeddings is None:
             self.embeddings = outputs['embedding']
-            self.targets = glom(outputs, self.target_key).tolist()
+            targets = glom(outputs, self.target_key)
+            targets = targets.tolist() if isinstance(targets, torch.Tensor) else targets
+            self.targets = targets
         elif accumulate:
             self.embeddings = torch.vstack((self.embeddings, outputs['embedding']))
-            self.targets.extend(glom(outputs, self.target_key).tolist())
+            targets = glom(outputs, self.target_key)
+            targets = targets.tolist() if isinstance(targets, torch.Tensor) else targets
+            self.targets.extend(targets)
         else:
             return True
         return False
@@ -99,18 +105,20 @@ class LinearProbing(Callback):
         return outputs, batch_idx
 
     def on_train_start(self, trainer, pl_module):
-        logger.info(f'Linear probing on_train_start')
-        outputs, batch_idx = self.get_outputs(trainer, pl_module)
-        self.accumulate(outputs)
-        self.run_evaluation(trainer=trainer)
-        self.reset()
+        if self.run_before_train:
+            logger.info(f'Linear probing on_train_start')
+            outputs, batch_idx = self.get_outputs(trainer, pl_module)
+            self.accumulate(outputs)
+            self.run_evaluation(trainer=trainer)
+            self.reset()
 
     def on_train_end(self, trainer, pl_module):
-        logger.info(f'Linear probing on_train_end')
-        outputs, batch_idx = self.get_outputs(trainer, pl_module)
-        self.accumulate(outputs)
-        self.run_evaluation(trainer=trainer)
-        self.reset()
+        if self.run_after_train:
+            logger.info(f'Linear probing on_train_end')
+            outputs, batch_idx = self.get_outputs(trainer, pl_module)
+            self.accumulate(outputs)
+            self.run_evaluation(trainer=trainer)
+            self.reset()
 
     def should_run(self, trainer, force):
         if trainer.sanity_checking:

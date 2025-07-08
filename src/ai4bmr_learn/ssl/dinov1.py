@@ -19,7 +19,7 @@ def get_params_with_gradient(model: nn.Module):
 
 
 class DINOv1(L.LightningModule):
-
+    name: str = 'DINOv1'
 
     def __init__(self,
                  backbone: nn.Module,
@@ -28,7 +28,7 @@ class DINOv1(L.LightningModule):
                  global_batch_size: int = 64,
                  max_epochs: int = 150,
                  warmup_lr_epochs: int = 5,
-                 weight_decay: float = 0.02,  # 0.01-0.02 for small, default: 0.04
+                 weight_decay: float = 0.04,  # 0.01-0.02 for small, default: 0.04
                  betas: tuple[float, float] = (0.9, 0.999),  # (0.9, 0.95)
                  teacher_temp: float = 0.04,  # 0.06 – 0.07
                  warmup_teacher_temp_epochs: int = 3,

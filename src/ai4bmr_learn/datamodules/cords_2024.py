@@ -141,10 +141,11 @@ class Cords2024(L.LightningDataModule):
             normalize,
         ])
 
+        # TODO: convert to square image first and center crop
         val_transform = v2.Compose([
             v2.ToDtype(torch.float32, scale=False),
-            v2.RandomCrop(224, pad_if_needed=True),
-            # v2.Resize((224, 224)),
+            # v2.RandomCrop(224, pad_if_needed=True),
+            v2.Resize((224, 224)),
             normalize
         ])
 
