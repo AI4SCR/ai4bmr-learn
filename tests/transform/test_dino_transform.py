@@ -1,4 +1,4 @@
-from ai4bmr_learn.transforms.dino_transformv2 import DINOTransform
+from ai4bmr_learn.transforms.dino_transform import DINOTransform
 import numpy as np
 from tqdm import tqdm
 

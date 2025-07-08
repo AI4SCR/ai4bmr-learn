@@ -1,3 +1,5 @@
+# https://github.com/google-research/vision_transformer?tab=readme-ov-file
+# https://arxiv.org/abs/2106.10270
 import copy
 
 import lightning as L
@@ -95,7 +97,7 @@ class DINOv1(L.LightningModule):
         return z
 
     def training_step(self, batch, batch_idx):
-        batch_size = batch['global_views'][0].shape[0]
+        batch_size = batch['global_views'][0]['image'].shape[0]
 
         momentum = cosine_schedule(self.current_epoch, self.max_epochs, self.momentum, self.momentum_end)
         update_momentum(self.student_backbone, self.teacher_backbone, m=momentum)
@@ -137,6 +139,8 @@ class DINOv1(L.LightningModule):
             lr=self.lr,
             betas=self.betas,
             weight_decay=self.weight_decay,
+            # https://towardsdatascience.com/weight-decay-and-its-peculiar-effects-66e0aee3e7b8/
+            # eps=1e-3
         )
 
         # 1) Warm up from lr*1e-6 → lr over warmup_lr_epochs
