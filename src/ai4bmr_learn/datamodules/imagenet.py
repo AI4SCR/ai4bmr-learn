@@ -7,9 +7,24 @@ from torch.utils.data import Subset
 from torchvision.transforms import v2
 from lightly.transforms.dino_transform import IMAGENET_NORMALIZE
 
+# TRANSFORMS
+train_transform = v2.Compose([
+    v2.ToDtype(torch.float32, scale=True),
+    DINOTransform(),
+    v2.Normalize(mean=IMAGENET_NORMALIZE['mean'], std=IMAGENET_NORMALIZE['std'])
+])
+
+val_transform = v2.Compose([
+    v2.ToDtype(torch.float32, scale=True),
+    v2.Resize((224, 224)),
+    v2.Normalize(mean=IMAGENET_NORMALIZE['mean'], std=IMAGENET_NORMALIZE['std'])
+])
+
 class ImageNet(L.LightningDataModule):
 
     def __init__(self,
+                 train_transform: v2.Compose = train_transform,
+                 val_transform: v2.Compose = val_transform,
                  batch_size: int = 64,
                  num_workers: int = None,
                  persistent_workers: bool = True,
@@ -39,17 +54,8 @@ class ImageNet(L.LightningDataModule):
         self.train_set = self.val_set = self.test_set = None
 
         # TRANSFORMS
-        self.train_transform = v2.Compose([
-            v2.ToDtype(torch.float32, scale=True),
-            DINOTransform(),
-            v2.Normalize(mean=IMAGENET_NORMALIZE['mean'], std=IMAGENET_NORMALIZE['std'])
-        ])
-
-        self.val_transform = v2.Compose([
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Resize((224, 224)),
-            v2.Normalize(mean=IMAGENET_NORMALIZE['mean'], std=IMAGENET_NORMALIZE['std'])
-        ])
+        self.train_transform = train_transform
+        self.val_transform = val_transform
 
         self.save_hyperparameters()
 

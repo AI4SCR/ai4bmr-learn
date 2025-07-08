@@ -1,0 +1,9 @@
+# lightning.pytorch==2.5.1.post0
+data:
+  class_path: ai4bmr_learn.datamodules.imagenet.ImageNet
+  init_args:
+    batch_size: &batch_size 64
+    num_workers: 64
+    persistent_workers: true
+    shuffle: true
+    pin_memory: true

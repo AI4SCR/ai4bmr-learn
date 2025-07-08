@@ -1,8 +1,8 @@
 # check: resample_abs_pos_embed in timm
 import torch
-from timm.models.vision_transformer import VisionTransformer
 from ai4bmr_learn.models.tokenizer.base import BaseTokenizer
 from ai4bmr_learn.models.encoder.masked_encoder import BaseMaskedEncoder
+
 
 from ai4bmr_learn.models.utils import get_at_index
 
@@ -71,68 +71,28 @@ class MaskedEncoder(BaseMaskedEncoder):
         x = self.forward_encoder(x)
         return x
 
+import torch.nn as nn
+import timm
+class Backbone(nn.Module):
 
-def get_timm_backbones(
-        # tokenizer
-        image_size: int = 224,
-        num_channels: int = 3,
-        kernel_size: int = 16,
-        token_dim: int = 768,
-        # encoder
-        encoder_layers: int = 12,
-        encoder_heads: int = 3,
-        # decoder
-        decoder_dim: int = 768,
-        decoder_layers: int = 4,
-        decoder_heads: int = 3,
-        # pretrained
-        model_name: str = None,  # 'vit_base_patch16_224', 'vit_base_patch8_224', 'vit_relpos_base_patch16_224'
-        pretrained: bool = True,
-        strict: bool = True,  # this will not use the default kwargs of TimmModel when creating the model
-    ):
+    def __init__(self,
+                 model_name: str = 'vit_small_patch16_224',
+                 num_classes: int = 0,
+                 global_pool: str = "token",
+                 image_size: int = 224,
+                 dynamic_img_size: bool = True,
+                 num_channels: int = 3,
+                 pretrained: bool = False
+                 ):
+        super().__init__()
 
-        timm_kwargs = dict(
-            img_size=image_size,
-            patch_size=kernel_size,
-            in_chans=num_channels,
-            embed_dim=token_dim,
-            depth=encoder_layers,
-            num_heads=encoder_heads,
-        )
-        # timm.list_models('vit*')
-        if model_name is not None:
-            import timm
+        model = timm.create_model(model_name=model_name,
+                                     num_classes=num_classes,
+                                     global_pool=global_pool,
+                                     img_size=image_size,
+                                     dynamic_img_size=dynamic_img_size,
+                                     in_chans=num_channels,
+                                     pretrained=pretrained)
 
-            if strict:
-                print(f"Loading model '{model_name}' strictly from timm")
-                model = timm.create_model(model_name, pretrained=False)
-                assert image_size == get_image_size_from_name(model_name)
-            else:
-                print(f"Loading model '{model_name}' from timm")
-                model = timm.create_model(model_name, pretrained=False, **timm_kwargs)
-
-            if pretrained:
-                from timm.models import load_pretrained
-
-                print(f"Loading pretrained weights")
-                # NOTE: we use the sequence of pretrained=False and load_pretrained to enable strict or partial loading of
-                #   pretrained weights. This still does not enforce completely matching the original model architecture.
-                #   For example, we can load a Vit with different num_heads from pretrained weights with strict=True
-                load_pretrained(model, strict=strict)
-        else:
-            print(f"Create new ViT model")
-            model = VisionTransformer(**timm_kwargs)
-
-        tokenizer = Tokenizer(model=model, image_size=image_size)
-        encoder = MaskedEncoder(model=model, num_patches=tokenizer.num_patches)
-        decoder = Masked(
-            num_tokens=encoder.num_tokens,
-            dim=decoder_dim,
-            num_layers=decoder_layers,
-            num_heads=decoder_heads,
-        )
-
-def get_image_size_from_name(model_name: str):
-    return int(model_name.split("_")[-1])
-
-# TimmModel()
+        tokenizer = Tokenizer(model, image_size=image_size)
+        encoder = MaskedEncoder(model, num_patches=tokenizer.num_tokens)

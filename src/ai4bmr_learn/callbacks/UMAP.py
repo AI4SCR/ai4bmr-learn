@@ -13,8 +13,9 @@ from ai4bmr_learn.utils.device import batch_to_device
 class UMAP(Callback):
 
     def __init__(self,
-                 log_before_train: bool = True,
-                 log_every_num_epochs=10,
+                 run_before_train: bool = True,
+                 run_after_train: bool = True,
+                 run_every_num_epochs=1,
                  num_samples: int | None = None,
                  label_key: str | None = None,
                  value_key: str | None = None,
@@ -26,8 +27,9 @@ class UMAP(Callback):
                  show_legend: bool = True,
                  **kwargs):
 
-        self.log_before_train = self.run_before_train = log_before_train
-        self.log_every_num_epochs = self.run_every_num_epochs = log_every_num_epochs
+        self.run_before_train = run_before_train
+        self.run_after_train = run_after_train
+        self.run_every_num_epochs = run_every_num_epochs
         self.num_samples = num_samples
         self.label_key = label_key
         self.value_key = value_key
@@ -78,15 +80,23 @@ class UMAP(Callback):
         if accumulate and self.embeddings is None:
             self.embeddings = outputs['embedding']
             if self.label_key is not None:
-                self.labels = glom(outputs, self.label_key).tolist()
+                labels = glom(outputs, self.label_key)
+                labels = labels.tolist() if isinstance(labels, torch.Tensor) else labels
+                self.labels = labels
             if self.value_key is not None:
-                self.values = glom(outputs, self.value_key).tolist()
+                values = glom(outputs, self.label_key)
+                values = values.tolist() if isinstance(values, torch.Tensor) else values
+                self.values = values
         elif accumulate:
             self.embeddings = torch.vstack((self.embeddings, outputs['embedding']))
             if self.label_key is not None:
-                self.labels.extend(glom(outputs, self.label_key).tolist())
+                labels = glom(outputs, self.label_key)
+                labels = labels.tolist() if isinstance(labels, torch.Tensor) else labels
+                self.labels.extend(labels)
             if self.value_key is not None:
-                self.values.extend(glom(outputs, self.value_key).tolist())
+                values = glom(outputs, self.label_key)
+                values = values.tolist() if isinstance(values, torch.Tensor) else values
+                self.values.extend(values)
         else:
             return True
         return False
@@ -106,18 +116,20 @@ class UMAP(Callback):
         return outputs, batch_idx
 
     def on_train_start(self, trainer, pl_module):
-        logger.info(f'UMAP on_train_start')
-        outputs, batch_idx = self.get_outputs(trainer, pl_module)
-        self.accumulate(outputs)
-        self.run_umap(trainer=trainer)
-        self.reset()
+        if self.run_before_train:
+            logger.info(f'UMAP on_train_start')
+            outputs, batch_idx = self.get_outputs(trainer, pl_module)
+            self.accumulate(outputs)
+            self.run_umap(trainer=trainer)
+            self.reset()
 
     def on_train_end(self, trainer, pl_module):
-        logger.info(f'UMAP on_train_end')
-        outputs, batch_idx = self.get_outputs(trainer, pl_module)
-        self.accumulate(outputs)
-        self.run_umap(trainer=trainer)
-        self.reset()
+        if self.run_after_train:
+            logger.info(f'UMAP on_train_end')
+            outputs, batch_idx = self.get_outputs(trainer, pl_module)
+            self.accumulate(outputs)
+            self.run_umap(trainer=trainer)
+            self.reset()
 
     def should_run(self, trainer, force):
         if trainer.sanity_checking:

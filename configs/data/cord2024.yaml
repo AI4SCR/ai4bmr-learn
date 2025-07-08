@@ -1,0 +1,8 @@
+data:
+  class_path: ai4bmr_learn.datamodules.cords_2024.Cords2024
+  init_args:
+    batch_size: &batch_size 64
+    num_workers: 64
+    persistent_workers: false
+    shuffle: true
+    pin_memory: false
