@@ -13,7 +13,7 @@
 #SBATCH --mem=64G
 #SBATCH --time=2:00:00
 
-# Sweep 32 combinations → array indices 0..23
+# Sweep 47 combinations → array indices 0..47
 #SBATCH --array=0-47
 
 # ------------------------------------------------------------------------------
@@ -26,10 +26,11 @@ cd /work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn || exit
 # ------------------------------------------------------------------------------
 # 1) Define value‐lists for each hyperparameter
 # ------------------------------------------------------------------------------
-LR=(0.00015 0.0005 0.003)   # lr
-WD=(0.04 0.02)              # weight_decay
-BS=(64 128)                 # data.batch_size
-AB=(1 8)                    # accumulate_grad_batches
+LR=(0.00015 0.0005 0.003)            # learning rate
+WD=(0.04 0.02)                       # weight decay
+BETAS=("[0.9,0.999]" "[0.95,0.999]") # betas as comma-separated strings
+BS=(64 128)                          # batch size
+AB=(1 8)                             # accumulate_grad_batches
 
 # ------------------------------------------------------------------------------
 # 2) Build an OVERRIDES array of full CLI‐strings
@@ -37,14 +38,17 @@ AB=(1 8)                    # accumulate_grad_batches
 OVERRIDES=()
 for lr in "${LR[@]}"; do
   for wd in "${WD[@]}"; do
-    for bs in "${BS[@]}"; do
-      for ab in "${AB[@]}"; do
-        OVERRIDES+=(
-          "--model.lr=${lr} \
+    for betas in "${BETAS[@]}"; do
+      for bs in "${BS[@]}"; do
+        for ab in "${AB[@]}"; do
+          OVERRIDES+=(
+            "--model.lr=${lr} \
 --model.weight_decay=${wd} \
+--optimizer.betas=${betas} \
 --data.batch_size=${bs} \
 --trainer.accumulate_grad_batches=${ab}"
-        )
+          )
+        done
       done
     done
   done
@@ -56,10 +60,10 @@ done
 echo "===== All override combos (total ${#OVERRIDES[@]}) ====="
 for i in "${!OVERRIDES[@]}"; do
   echo "[$i] ${OVERRIDES[$i]}"
-  #python clis/dinov1.py fit \
-  #--config configs/dinov1-vit.yaml \
-  #$ARGS \
-  #--print_config
+  python clis/maev1.py fit \
+  --config configs/maev1-imagenet-vit.yaml \
+  $ARGS \
+  --print_config
 done
 echo "=============================================="
 
