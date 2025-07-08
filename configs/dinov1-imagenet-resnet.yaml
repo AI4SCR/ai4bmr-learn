@@ -9,12 +9,11 @@ trainer:
   logger:
     - class_path: lightning.pytorch.loggers.WandbLogger
       init_args:
-        project: dinov1
+        project: dinov1-sweep
         save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/logs
         log_model: false
         tags: ['dinov1', 'resnet']
   callbacks:
-#    - class_path: ai4bmr_learn.callbacks.RunValidationOnTrainStart.RunValidationOnTrainStart
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: epoch
@@ -41,7 +40,7 @@ trainer:
   fast_dev_run: false
   max_epochs: &max_epochs 150
   min_epochs: null
-  max_time: 00:01:55:00
+  max_time: 00:02:55:00
   limit_train_batches: null
   limit_val_batches: null
   limit_test_batches: null
@@ -70,6 +69,8 @@ data:
               dtype: torch.float32
               scale: true
           - class_path: ai4bmr_learn.transforms.dino_transform.DINOTransform
+            init_args:
+              global_crop_size: &image_size 224
           - class_path: torchvision.transforms.v2.Normalize
             init_args:
               mean: &mean [0.485, 0.456, 0.406]
@@ -82,9 +83,10 @@ data:
             init_args:
               dtype: torch.float32
               scale: true
-          - class_path: torchvision.transforms.v2.Resize
+          - class_path: torchvision.transforms.v2.RandomResizedCrop
             init_args:
-              size: 224
+              size: *image_size
+              scale: [0.8, 1]
           - class_path: torchvision.transforms.v2.Normalize
             init_args:
               mean: *mean
@@ -100,13 +102,13 @@ model:
   lr: 3e-3
   global_batch_size: *batch_size
   warmup_lr_epochs: 5
-  weight_decay: 0.04  # 0.01-0.02 for small, default: 0.04
-  betas: [0.9, 0.999]  # (0.9, 0.95)
-  teacher_temp: 0.04  # 0.06 – 0.07
+  weight_decay: 0.04
+  betas: [0.9, 0.999]
+  teacher_temp: 0.04
   warmup_teacher_temp_epochs: 3
-  momentum: 0.996  # 0.999
+  momentum: 0.996
   momentum_end: 1
-  freeze_last_layer: 1  # 3
+  freeze_last_layer: 1
   norm_last_layer: true
   pooling: flatten
 optimizer: null

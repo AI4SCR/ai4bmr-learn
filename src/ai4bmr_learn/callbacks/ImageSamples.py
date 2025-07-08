@@ -73,9 +73,9 @@ class DINOImageSamples(Callback):
         global_grid = make_grid(global_views, nrow=num_global_views, normalize=True, padding=self.padding)
         local_grid = make_grid(local_views, nrow=num_local_views, normalize=True, padding=self.padding)
 
-        trainer.logger.log_image(key="image_samples",
+        trainer.logger.log_image(key="image_samples/global_views",
                                  images=[global_grid],
                                  caption=["global_views"])
-        trainer.logger.log_image(key="image_samples",
+        trainer.logger.log_image(key="image_samples/local_views",
                                  images=[local_grid],
                                  caption=["local_views"])

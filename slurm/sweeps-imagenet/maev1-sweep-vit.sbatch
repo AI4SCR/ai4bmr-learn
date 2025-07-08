@@ -11,9 +11,9 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
-#SBATCH --time=2:00:00
+#SBATCH --time=2:59:59
 
-# Sweep 47 combinations → array indices 0..47
+# Sweep 48 combinations → array indices 0..47
 #SBATCH --array=0-47
 
 # ------------------------------------------------------------------------------
@@ -42,10 +42,10 @@ for lr in "${LR[@]}"; do
       for bs in "${BS[@]}"; do
         for ab in "${AB[@]}"; do
           OVERRIDES+=(
-            "--model.lr=${lr} \
+"--model.lr=${lr} \
 --model.weight_decay=${wd} \
---optimizer.betas=${betas} \
---data.batch_size=${bs} \
+--model.betas=${betas} \
+--data.init_args.batch_size=${bs} \
 --trainer.accumulate_grad_batches=${ab}"
           )
         done
@@ -60,10 +60,10 @@ done
 echo "===== All override combos (total ${#OVERRIDES[@]}) ====="
 for i in "${!OVERRIDES[@]}"; do
   echo "[$i] ${OVERRIDES[$i]}"
-  python clis/maev1.py fit \
-  --config configs/maev1-imagenet-vit.yaml \
-  $ARGS \
-  --print_config
+  #python clis/maev1.py fit \
+  #--config configs/maev1-imagenet-vit.yaml \
+  #$ARGS \
+  #--print_config
 done
 echo "=============================================="
 
@@ -78,6 +78,6 @@ echo "[$(date)] Task \$IDX=$IDX → $ARGS"
 # ------------------------------------------------------------------------------
 # 4) Launch with the chosen overrides
 # ------------------------------------------------------------------------------
-python clis/dinov1.py fit \
-  --config configs/dinov1-vit.yaml \
+python clis/maev1.py fit \
+  --config /work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn/configs/maev1-imagenet-vit.yaml \
   $ARGS
