@@ -71,7 +71,8 @@ class UMAP(Callback):
                        umap_kwargs=self.umap_kwargs)
 
         image = wandb.Image(ax)
-        trainer.logger.experiment.log({"umap": image, "epoch": trainer.current_epoch})
+        trainer.logger.experiment.log({"umap/": image,
+                                       "epoch": trainer.current_epoch, "trainer/global_step": trainer.global_step})
         self.embeddings = self.labels = self.values = None
 
     def accumulate(self, outputs) -> bool:

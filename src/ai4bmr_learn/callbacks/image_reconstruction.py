@@ -33,6 +33,13 @@ class ImageReconstruction(Callback):
     def accumulate(self, outputs) -> bool:
         accumulate = (self.num_samples is None) or self.images is None or (len(self.images) < self.num_samples)
 
+        # a = outputs['mae']['prediction']
+        # b = outputs['mae']['prediction_masked']
+        # c = outputs['image']
+        # (a == b).any()
+        # (a == c).any()
+        # (b == c).any()
+
         if accumulate:
             if self.images is None:
                 self.images = glom(outputs, self.image_key)
@@ -42,12 +49,12 @@ class ImageReconstruction(Callback):
             if self.predictions is None:
                 self.predictions = glom(outputs, self.prediction_key)
             else:
-                self.predictions = torch.vstack((self.images, glom(outputs, self.prediction_key)))
+                self.predictions = torch.vstack((self.predictions, glom(outputs, self.prediction_key)))
 
             if self.masks is None:
                 self.masks = glom(outputs, self.masks_key)
             else:
-                self.masks = torch.vstack((self.images, glom(outputs, self.masks_key)))
+                self.masks = torch.vstack((self.masks, glom(outputs, self.masks_key)))
         else:
             return True
         return False

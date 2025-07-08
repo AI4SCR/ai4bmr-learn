@@ -186,8 +186,9 @@ class MAEv1(L.LightningModule):
         )
         self.log("val_loss_epoch", loss, on_step=False, on_epoch=True, batch_size=batch_size)
 
-        batch['loss'] = loss
-        batch['loss_masked'] = loss_masked
+        batch['loss'] = loss.item()
+        batch['loss_masked'] = loss_masked.item()
+        batch["image"] = images.detach().cpu()
         batch['embedding'] = self.pool(z).detach().cpu()
         batch['mae'] = {'prediction': predictions.detach().cpu(),
                         'prediction_masked': predictions_masked.detach().cpu(),
