@@ -38,7 +38,8 @@ class Wrapper(Dataset):
 
         self.ds = Cords2024(base_dir=base_dir)
         self.ds.setup(image_version='published', mask_version='published')
-        self.ds.sample_ids = sorted(self.ds.sample_ids)
+        self.ds.clinical = self.ds.clinical[['dx_name']].fillna('NaN')
+        self.ds.sample_ids = sorted(filter(lambda x: x in self.ds.images and x in self.ds.masks, self.ds.sample_ids))
 
         self.transform = transform
 
@@ -47,14 +48,20 @@ class Wrapper(Dataset):
 
         image = self.ds.images[sample_id].data
         image = normalize(image)
+        image = torch.tensor(image).detach().clone()
         image = tv_tensors.Image(image)
 
+        # avoid: RuntimeError: Trying to resize storage that is not resizable
         mask = self.ds.masks[sample_id].data
+        mask = torch.as_tensor(mask, dtype=torch.uint16)
+        # mask = torch.randn((300, 300)).long()
         mask = tv_tensors.Mask(mask)
 
-        clinical = self.ds.clinical.loc[sample_id].dropna().to_dict()
+        clinical = self.ds.clinical.loc[sample_id].to_dict()
 
-        item = {'image': image, 'mask': mask, 'clinical': clinical}
+        # FIXME: including masks triggers: RuntimeError: Trying to resize storage that is not resizable
+        # item = {'image': image, 'mask': mask, 'clinical': clinical}
+        item = {'image': image, 'clinical': clinical}
         if self.transform is not None:
             item = self.transform(item)
 
@@ -110,14 +117,18 @@ class Cords2024(L.LightningDataModule):
             return v2.Identity()
 
     def prepare_data(self) -> None:
-        ds = Wrapper(base_dir=self.base_dir, transform=None)
-        sr = StatsRecorder()
-        for i, item in enumerate(ds, start=1):
-            logger.info(f"Processing {i}/{len(ds)}")
-            sr.update(item['image'].numpy())
+        if self.stats_path.exists():
+            logger.info(f'Loading stats from {self.stats_path}')
+        else:
+            logger.info(f'Computing dataset stats...')
+            ds = Wrapper(base_dir=self.base_dir, transform=None)
+            sr = StatsRecorder()
+            for i, item in enumerate(ds, start=1):
+                logger.info(f"Processing {i}/{len(ds)}")
+                sr.update(item['image'].numpy())
 
-        with open(self.stats_path, 'wb') as f:
-            pickle.dump(sr, f)
+            with open(self.stats_path, 'wb') as f:
+                pickle.dump(sr, f)
 
     def setup(self, stage):
         from sklearn.model_selection import train_test_split
@@ -176,7 +187,7 @@ class Cords2024(L.LightningDataModule):
         )
 
 
-dm = self = Cords2024()
+# dm = self = Cords2024()
 # dm.prepare_data()
 # dm.setup(stage=None)
 # dm.train_set[0]

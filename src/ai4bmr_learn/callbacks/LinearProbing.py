@@ -1,13 +1,14 @@
+import torch
+from glom import glom
 from lightning.pytorch.callbacks import Callback
 from loguru import logger
-import wandb
-import torch
-from ai4bmr_learn.utils.device import batch_to_device
-import numpy as np
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedShuffleSplit, cross_validate
 from sklearn.preprocessing import LabelEncoder
-from sklearn.linear_model import LogisticRegression
-from glom import glom
+from tqdm import tqdm
+
+from ai4bmr_learn.utils.device import batch_to_device
+
 
 class LinearProbing(Callback):
 
@@ -87,12 +88,12 @@ class LinearProbing(Callback):
         dl = trainer.val_dataloaders
         assert pl_module.device.type == 'cuda'
         with torch.no_grad():
-            for batch_idx, batch in enumerate(dl):
+            for batch_idx, batch in tqdm(enumerate(dl), desc='collecting outputs'):
                 batch = batch_to_device(batch, pl_module.device)
                 outputs = pl_module.validation_step(batch=batch, batch_idx=batch_idx)
                 is_accumulated = self.accumulate(outputs)
 
-                if is_accumulated:
+                if is_accumulated or trainer.fast_dev_run:
                     break
 
         return outputs, batch_idx

@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=dinov1-sweep
-#SBATCH --output=/users/amarti51/logs/ssl=dinov1-sweep-%A_%a.log
-#SBATCH --error=/users/amarti51/logs/ssl=dinov1-sweep-%A_%a.err
+#SBATCH --job-name=dinov1-sweep-v2
+#SBATCH --output=/users/amarti51/logs/ssl=dinov1-sweep-v2-%A_%a.log
+#SBATCH --error=/users/amarti51/logs/ssl=dinov1-sweep-v2-%A_%a.err
 
 #SBATCH --account=mrapsoma_prometex
 #SBATCH --partition=gpu
@@ -14,7 +14,7 @@
 #SBATCH --time=2:00:00
 
 # Sweep 32 combinations → array indices 0..31
-#SBATCH --array=0-31
+#SBATCH --array=0-47
 
 # ------------------------------------------------------------------------------
 # 0) Environment setup
@@ -26,28 +26,36 @@ cd /work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn || exit
 # ------------------------------------------------------------------------------
 # 1) Define value‐lists for each hyperparameter
 # ------------------------------------------------------------------------------
-TT=(0.05 0.06)         # teacher_temp
-MOM=(0.997 0.998)      # momentum
-NOR=(True False)       # norm_last_layer
-FRZ=(1 5)              # freeze_last_layer
-BS=(64 128)            # data.batch_size
+LR=(0.003 0.0005 0.0001) # lr
+WD=(0.04 0.02)           # weight_decay
+TT=(0.04 0.06)           # teacher_temp
+MOM=(0.996 0.998)        # momentum
+NOR=(True)               # norm_last_layer
+FRZ=(3)                  # freeze_last_layer
+BS=(64, 128)             # data.batch_size
 
 # ------------------------------------------------------------------------------
 # 2) Build an OVERRIDES array of full CLI‐strings
 # ------------------------------------------------------------------------------
 OVERRIDES=()
-for tt in "${TT[@]}"; do
-  for mom in "${MOM[@]}"; do
-    for nor in "${NOR[@]}"; do
-      for frz in "${FRZ[@]}"; do
-        for bs in "${BS[@]}"; do
-          OVERRIDES+=(
-            "--model.teacher_temp=${tt} \
+for lr in "${LR[@]}"; do
+  for wd in "${WD[@]}"; do
+    for tt in "${TT[@]}"; do
+      for mom in "${MOM[@]}"; do
+        for nor in "${NOR[@]}"; do
+          for frz in "${FRZ[@]}"; do
+            for bs in "${BS[@]}"; do
+              OVERRIDES+=(
+              "--model.lr=${lr} \
+--model.weight_decay=${wd} \
+--model.teacher_temp=${tt} \
 --model.momentum=${mom} \
 --model.norm_last_layer=${nor} \
 --model.freeze_last_layer=${frz} \
 --data.batch_size=${bs}"
           )
+            done
+          done
         done
       done
     done
