@@ -12,6 +12,7 @@ trainer:
         project: maev1
         save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/maev1/logs
         log_model: false
+        tags: ['maev1', 'vit']
   callbacks:
 #    - class_path: ai4bmr_learn.callbacks.RunValidationOnTrainStart.RunValidationOnTrainStart
 #    - class_path: ai4bmr_learn.callbacks.debug.Debug
