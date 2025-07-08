@@ -3,6 +3,45 @@ import numpy as np
 from torchvision.utils import make_grid
 from loguru import logger
 
+class ImageSamples(Callback):
+
+    def __init__(self, from_train: bool = True, from_val: bool = True,
+                 num_samples: int = 5, seed: int = 0, padding: int = 2):
+
+        self.from_train = from_train
+        self.from_val = from_val
+        self.num_samples = num_samples
+        self.padding = padding
+        self.rng = np.random.default_rng(seed=seed)
+
+    def on_train_start(self, trainer, pl_module):
+        if trainer.sanity_checking:
+            return
+
+        logger.info(f'Logging image samples [num_samples={self.num_samples}]')
+
+        ds_train = trainer.train_dataloader.dataset
+        ds_val = trainer.val_dataloaders.dataset
+
+        dataloaders = []
+        if self.from_train:
+            dataloaders.append(('train', ds_train))
+        if self.from_val:
+            dataloaders.append(('val', ds_val))
+
+        for name, ds in dataloaders:
+            # random indices
+            idc = np.arange(len(ds_train))
+            self.rng.shuffle(idc)
+            idc = idc[:self.num_samples]
+
+            items = [ds[i] for i in idc]
+            images = [i['image'] for i in items]
+
+            grid = make_grid(images, normalize=True, padding=self.padding)
+
+            trainer.logger.log_image(key=f"image_samples/{name}", images=[grid], epoch=trainer.current_epoch)
+
 class DINOImageSamples(Callback):
 
     def __init__(self, num_samples: int = 5, seed: int = 0, padding: int = 2):

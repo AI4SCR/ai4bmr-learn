@@ -22,6 +22,11 @@ trainer:
         # monitor: 'linear_probing/balanced_accuracy'  # problem, we need to log this every epoch to be available
         monitor: 'train_loss_epoch'  # problem, we need to log this every epoch to be available
         save_last: true
+    - class_path: ai4bmr_learn.callbacks.ImageSamples.ImageSamples
+      init_args:
+        from_train: true
+        from_val: true
+        num_samples: 5
   fast_dev_run: false
   max_epochs: null
   min_epochs: null
@@ -38,12 +43,12 @@ trainer:
   num_sanity_val_steps: null
   log_every_n_steps: null
   enable_checkpointing: null
-  accumulate_grad_batches: 1
+  accumulate_grad_batches: 8
   gradient_clip_val: null
 data:
   class_path: ai4bmr_learn.datamodules.imagenet.ImageNet
   init_args:
-    batch_size: 512
+    batch_size: 64
     num_workers: 16
     persistent_workers: true
     shuffle: true
@@ -90,7 +95,7 @@ model:
   decoder_kwargs: null
   mask_ratio: 0.75
   lr: 0.00015
-  global_batch_size: 4096
+  global_batch_size: 512
   weight_decay: 0.04
   betas: [0.9, 0.95]
   warmup_lr_epochs: 200
