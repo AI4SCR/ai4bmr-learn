@@ -75,7 +75,7 @@ class UMAP(Callback):
         self.embeddings = self.labels = self.values = None
 
     def accumulate(self, outputs) -> bool:
-        accumulate = (self.num_samples is None) or (len(self.embeddings) < self.num_samples)
+        accumulate = (self.num_samples is None) or self.embeddings is None or (len(self.embeddings) < self.num_samples)
 
         if accumulate and self.embeddings is None:
             self.embeddings = outputs['embedding']

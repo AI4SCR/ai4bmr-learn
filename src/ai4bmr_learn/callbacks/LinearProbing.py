@@ -45,9 +45,9 @@ class LinearProbing(Callback):
 
         self.embeddings = self.targets = None
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0, force: bool = False):
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
 
-        if not self.should_run(trainer=trainer, force=force):
+        if not self.should_run(trainer=trainer):
             return
 
         is_accumulated = self.accumulate(outputs)
@@ -74,7 +74,7 @@ class LinearProbing(Callback):
         trainer.logger.experiment.log(scores)
 
     def accumulate(self, outputs) -> bool:
-        accumulate = (self.num_samples is None) or (len(self.embeddings) < self.num_samples)
+        accumulate = (self.num_samples is None) or self.embeddings is None or (len(self.embeddings) < self.num_samples)
 
         if accumulate and self.embeddings is None:
             self.embeddings = outputs['embedding']
@@ -120,7 +120,7 @@ class LinearProbing(Callback):
             self.run_evaluation(trainer=trainer)
             self.reset()
 
-    def should_run(self, trainer, force):
+    def should_run(self, trainer, force: bool = False):
         if trainer.sanity_checking:
             return False
 

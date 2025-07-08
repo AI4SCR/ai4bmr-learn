@@ -124,3 +124,8 @@ class MaskedAutoEncoder(nn.Module):
 
         self.tokenizer = Tokenizer(model, image_size=image_size)
         self.encoder = MaskedEncoder(model, num_patches=self.tokenizer.num_tokens)
+
+    def forward(self, x):
+        x = self.tokenizer(x)
+        x = self.encoder(x)
+        return x

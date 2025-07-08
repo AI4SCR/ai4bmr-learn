@@ -23,7 +23,7 @@ class MAEv1(L.LightningModule):
             betas: tuple[float, float] = (0.9, 0.95),
             warmup_lr_epochs: int = 200,
             max_epochs: int = 150,
-            pooling: str | None = 'flatten',
+            pooling: str | None = 'cls',
     ):
         super().__init__()
 
@@ -160,21 +160,39 @@ class MAEv1(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         images = batch["image"]
-        predictions, masks = self._shared_step(images)
-        loss = self.compute_loss(images, predictions, masks)
+
+        # UNMASKED PREDICTIONS
+        z = self.backbone(images)
+        x = self.proj(z)
+        x = self.decoder.forward(x)
+        x = x[:, 1:]
+        x = self.head(x)
+        predictions = self.tokenizer.tokens2img(x)
+        loss = self.compute_loss(img=images, predicted_img=predictions, mask=1)
+
+        # MASKED PREDICTIONS
+        predictions_masked, masks = self._shared_step(images)
+        loss_masked = self.compute_loss(img=images, predicted_img=predictions_masked, mask=masks)
 
         batch_size = num_samples_batch = images.shape[0]
 
         self.logger.experiment.log(
             {
                 "val/mae_loss_batch": loss.item(),
+                "val/mae_loss_masked_batch": loss_masked.item(),
                 "val/num_samples_batch": num_samples_batch,
                 "trainer/global_step": self.trainer.global_step,
             }
         )
-        self.log(
-            "val_loss_epoch", loss, on_step=False, on_epoch=True, batch_size=batch_size
-        )
+        self.log("val_loss_epoch", loss, on_step=False, on_epoch=True, batch_size=batch_size)
+
+        batch['loss'] = loss
+        batch['loss_masked'] = loss_masked
+        batch['embedding'] = self.pool(z).detach().cpu()
+        batch['mae'] = {'prediction': predictions.detach().cpu(),
+                        'prediction_masked': predictions_masked.detach().cpu(),
+                        'masks': masks.detach().cpu()}
+        return batch
 
     def compute_loss(self, img, predicted_img, mask):
         loss = torch.mean((predicted_img - img) ** 2 * mask) / self.mask_ratio  # L2
