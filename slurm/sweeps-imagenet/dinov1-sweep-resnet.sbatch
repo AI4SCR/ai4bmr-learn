@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=dinov1-sweep
-#SBATCH --output=/users/amarti51/logs/ssl=dinov1-sweep-%A_%a.log
-#SBATCH --error=/users/amarti51/logs/ssl=dinov1-sweep-%A_%a.err
+#SBATCH --output=/users/amarti51/logs/ssl=dinov1-%A-%a.log
+#SBATCH --error=/users/amarti51/logs/ssl=dinov1-%A-%a.err
 
 #SBATCH --account=mrapsoma_prometex
 #SBATCH --partition=gpu
@@ -11,10 +11,10 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
-#SBATCH --time=2:30:00
+#SBATCH --time=2:59:59
 
-# Sweep 32 combinations → array indices 0..31
-#SBATCH --array=0-31
+# Update this based on number of combinations
+#SBATCH --array=0-287
 
 # ------------------------------------------------------------------------------
 # 0) Environment setup
@@ -26,28 +26,40 @@ cd /work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn || exit
 # ------------------------------------------------------------------------------
 # 1) Define value‐lists for each hyperparameter
 # ------------------------------------------------------------------------------
-TT=(0.04 0.07)         # teacher_temp
-MOM=(0.996 0.999)      # momentum
-NOR=(True False)       # norm_last_layer
-FRZ=(1 3)              # freeze_last_layer
-BS=(64 128)            # data.batch_size
+LR=(0.005 0.003 0.0005)    # learning rate
+WD=(0.04 0.02)             # weight decay
+TT=(0.04 0.06 0.08)        # teacher_temp
+MOM=(0.996 0.998)          # momentum
+NOR=(True False)           # norm_last_layer
+FRZ=(1 3)                  # freeze_last_layer
+BS=(64 128)                # batch size
+AB=(1)                     # accumulate_grad_batches
 
 # ------------------------------------------------------------------------------
 # 2) Build an OVERRIDES array of full CLI‐strings
 # ------------------------------------------------------------------------------
 OVERRIDES=()
-for tt in "${TT[@]}"; do
-  for mom in "${MOM[@]}"; do
-    for nor in "${NOR[@]}"; do
-      for frz in "${FRZ[@]}"; do
-        for bs in "${BS[@]}"; do
-          OVERRIDES+=(
-            "--model.teacher_temp=${tt} \
+for lr in "${LR[@]}"; do
+  for wd in "${WD[@]}"; do
+    for tt in "${TT[@]}"; do
+      for mom in "${MOM[@]}"; do
+        for nor in "${NOR[@]}"; do
+          for frz in "${FRZ[@]}"; do
+            for bs in "${BS[@]}"; do
+              for ab in "${AB[@]}"; do
+                OVERRIDES+=(
+                  "--model.lr=${lr} \
+--model.weight_decay=${wd} \
+--model.teacher_temp=${tt} \
 --model.momentum=${mom} \
 --model.norm_last_layer=${nor} \
 --model.freeze_last_layer=${frz} \
---data.batch_size=${bs}"
-          )
+--data.init_args.batch_size=${bs} \
+--trainer.accumulate_grad_batches=${ab}"
+                )
+              done
+            done
+          done
         done
       done
     done
@@ -55,15 +67,11 @@ for tt in "${TT[@]}"; do
 done
 
 # ------------------------------------------------------------------------------
-# PRINT ALL OVERRIDES AND CHECK THAT ALL CONFIGS ARE VALID
+# PRINT ALL OVERRIDES AND DETERMINE ARRAY SIZE
 # ------------------------------------------------------------------------------
 echo "===== All override combos (total ${#OVERRIDES[@]}) ====="
 for i in "${!OVERRIDES[@]}"; do
   echo "[$i] ${OVERRIDES[$i]}"
-  #python clis/dinov1.py fit \
-  #--config configs/dinov1-vit.yaml \
-  #$ARGS \
-  #--print_config
 done
 echo "=============================================="
 
@@ -79,5 +87,5 @@ echo "[$(date)] Task \$IDX=$IDX → $ARGS"
 # 4) Launch with the chosen overrides
 # ------------------------------------------------------------------------------
 python clis/dinov1.py fit \
-  --config configs/dinov1-vit.yaml \
+  --config configs/dinov1-imagenet-resnet.yaml \
   $ARGS

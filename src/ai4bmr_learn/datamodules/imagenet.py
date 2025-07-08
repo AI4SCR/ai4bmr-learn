@@ -2,29 +2,30 @@ import lightning as L
 from torch.utils.data import DataLoader
 from torch import get_num_threads
 import torch
-from ai4bmr_learn.transforms.dino_transform import DINOTransform
 from torch.utils.data import Subset
 from torchvision.transforms import v2
-from lightly.transforms.dino_transform import IMAGENET_NORMALIZE
 
 # TRANSFORMS
-train_transform = v2.Compose([
-    v2.ToDtype(torch.float32, scale=True),
-    DINOTransform(),
-    v2.Normalize(mean=IMAGENET_NORMALIZE['mean'], std=IMAGENET_NORMALIZE['std'])
-])
-
-val_transform = v2.Compose([
-    v2.ToDtype(torch.float32, scale=True),
-    v2.Resize((224, 224)),
-    v2.Normalize(mean=IMAGENET_NORMALIZE['mean'], std=IMAGENET_NORMALIZE['std'])
-])
+# from lightly.transforms.dino_transform import IMAGENET_NORMALIZE
+# from ai4bmr_learn.transforms.dino_transform import DINOTransform
+#
+# train_transform = v2.Compose([
+#     v2.ToDtype(torch.float32, scale=True),
+#     DINOTransform(),
+#     v2.Normalize(mean=IMAGENET_NORMALIZE['mean'], std=IMAGENET_NORMALIZE['std'])
+# ])
+#
+# val_transform = v2.Compose([
+#     v2.ToDtype(torch.float32, scale=True),
+#     v2.Resize((224, 224)),
+#     v2.Normalize(mean=IMAGENET_NORMALIZE['mean'], std=IMAGENET_NORMALIZE['std'])
+# ])
 
 class ImageNet(L.LightningDataModule):
 
     def __init__(self,
-                 train_transform: v2.Compose = train_transform,
-                 val_transform: v2.Compose = val_transform,
+                 train_transform: v2.Compose,
+                 val_transform: v2.Compose,
                  batch_size: int = 64,
                  num_workers: int = None,
                  persistent_workers: bool = True,
