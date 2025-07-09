@@ -31,12 +31,12 @@ def get_thumbnail(*, slide: openslide.OpenSlide = None, image: np.ndarray = None
         return cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA), scale_factor
 
 
-def get_slide_patcher_params(slide, patch_size: int, patch_stride: int, target_mpp: float, source_mpp: float | None = None):
+def get_slide_patcher_params(slide, patch_size: int, patch_stride: int, target_mpp: float):
     from ai4bmr_learn.utils.slides import get_mpp_and_resolution
     width, height = slide.dimensions
     image_path = str(slide._filename)
 
-    mpp = source_mpp or get_mpp_and_resolution(slide)[0]
+    mpp, res = get_mpp_and_resolution(slide)
     scale_factor = target_mpp / mpp
 
     kernel_size = round(patch_size * scale_factor)
@@ -118,6 +118,22 @@ def coord_to_bbox(coord: BaseCoordinate | SlideCoordinate | XeniumCoordinate):
     bbox = box(*bbox_coords)
     return bbox
 
+def coords_to_bboxs(coords: list[BaseCoordinate]):
+    import numpy as np
+    import shapely
+
+    x = np.array([c.x for c in coords])
+    y = np.array([c.y for c in coords])
+    k = coords[0].kernel_size
+
+    xmin = x
+    ymin = y
+    xmax = x + k
+    ymax = y + k
+
+    bboxes = shapely.box(xmin, ymin, xmax, ymax)
+    return bboxes
+
 import geopandas as gpd
 def filter_coords(coords: list[SlideCoordinate | XeniumCoordinate], *, contours: gpd.GeoDataFrame, overlap: float = 0.25):
     filtered = []
@@ -129,22 +145,6 @@ def filter_coords(coords: list[SlideCoordinate | XeniumCoordinate], *, contours:
             filtered.append(coord)
 
     return filtered
-
-    records = []
-    for coord in coords:
-        box = coord_to_bbox(coord)
-        records.append({
-            'uuid': coord.uuid,
-            'geometry': box,
-        })
-
-    bboxes = gpd.GeoDataFrame(records, crs=contours.crs)
-    bboxes.sindex   # builds the spatial index
-    contours.sindex
-
-    joined = gpd.sjoin(bboxes, contours[['geometry']], how='inner', predicate='intersects')
-    joined = gpd.sjoin(bboxes, contours, how='inner', predicate='intersects')
-
 
 
 def get_patch(coord, as_tensor: bool = True):
@@ -168,8 +168,6 @@ def get_patch(coord, as_tensor: bool = True):
 
     # MORPHOLOGY
     patch = slide.read_region((x, y), 0, (kernel_width, kernel_height))
-    slide.close()
-
     # TODO: is this more efficient than [...,:3]?
     patch = patch.convert("RGB")  # remove alpha channel
 
@@ -200,7 +198,6 @@ def get_points(coord):
 
     scale_factor = getattr(coord, 'scale_factor', 1)
 
-    # check option: use_arrwo=True, not supported for gpkg
     points = gpd.read_file(coord.points_path, bbox=bbox)
 
     points['geometry'] = points['geometry'].map(
