@@ -118,6 +118,22 @@ def coord_to_bbox(coord: BaseCoordinate | SlideCoordinate | XeniumCoordinate):
     bbox = box(*bbox_coords)
     return bbox
 
+def coords_to_bboxs(coords: list[BaseCoordinate]):
+    import numpy as np
+    import shapely
+
+    x = np.array([c.x for c in coords])
+    y = np.array([c.y for c in coords])
+    k = coords[0].kernel_size
+
+    xmin = x
+    ymin = y
+    xmax = x + k
+    ymax = y + k
+
+    bboxes = shapely.box(xmin, ymin, xmax, ymax)
+    return bboxes
+
 import geopandas as gpd
 def filter_coords(coords: list[SlideCoordinate | XeniumCoordinate], *, contours: gpd.GeoDataFrame, overlap: float = 0.25):
     filtered = []
