@@ -1,17 +1,18 @@
+import json
 from pathlib import Path
+
 import lightning as L
 import numpy as np
+import pandas as pd
 import torch
+from ai4bmr_core.utils.saving import save_image, save_mask
+from ai4bmr_core.utils.stats import StatsRecorder
 from loguru import logger
 from torch import get_num_threads
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 from torchvision.transforms import v2
-from torchvision import tv_tensors
-from torch.utils.data import Dataset
 
-import pickle
-
-from ai4bmr_core.utils.stats import StatsRecorder
+from ai4bmr_learn.datasets.dataset_folder import DatasetFolder
 from ai4bmr_learn.transforms.dino_transform import DINOTransform
 
 
@@ -29,52 +30,13 @@ def normalize(img, censoring=0.999, cofactor=1, exclude_zeros=True):
 
     return img
 
-
-class Wrapper(Dataset):
-
-    def __init__(self, base_dir: Path, transform=None):
-        from ai4bmr_datasets.datasets.Cords2024 import Cords2024
-        super().__init__()
-
-        self.ds = Cords2024(base_dir=base_dir)
-        self.ds.setup(image_version='published', mask_version='published')
-        self.ds.clinical = self.ds.clinical[['dx_name']].fillna('NaN')
-        self.ds.sample_ids = sorted(filter(lambda x: x in self.ds.images and x in self.ds.masks, self.ds.sample_ids))
-
-        self.transform = transform
-
-    def __getitem__(self, idx):
-        sample_id = self.ds.sample_ids[idx]
-
-        image = self.ds.images[sample_id].data
-        image = normalize(image)
-        image = torch.tensor(image).detach().clone()
-        image = tv_tensors.Image(image)
-
-        # avoid: RuntimeError: Trying to resize storage that is not resizable
-        mask = self.ds.masks[sample_id].data
-        mask = torch.as_tensor(mask, dtype=torch.uint16)
-        # mask = torch.randn((300, 300)).long()
-        mask = tv_tensors.Mask(mask)
-
-        clinical = self.ds.clinical.loc[sample_id].to_dict()
-
-        # FIXME: including masks triggers: RuntimeError: Trying to resize storage that is not resizable
-        # item = {'image': image, 'mask': mask, 'clinical': clinical}
-        item = {'image': image, 'clinical': clinical}
-        if self.transform is not None:
-            item = self.transform(item)
-
-        return item
-
-    def __len__(self):
-        return len(self.ds)
-
-
-#
 class Cords2024(L.LightningDataModule):
 
     def __init__(self,
+                 dataset,
+                 save_dir: Path,
+                 target_name: str,
+                 force: bool = False,
                  batch_size: int = 64,
                  num_workers: int = None,
                  persistent_workers: bool = True,
@@ -91,16 +53,25 @@ class Cords2024(L.LightningDataModule):
         self.pin_memory = pin_memory
 
         # DATASET
-        self.base_dir = Path('/work/FAC/FBM/DBC/mrapsoma/prometex/data/datasets/Cords2024')
-        self.base_dir = self.base_dir.resolve()
-        assert self.base_dir.exists()
+        self.force = force
+        self.dataset = dataset
+        self.save_dir = save_dir.resolve() / dataset.name
 
+        self.target_name = target_name
+        self.image_version = 'default'
+        self.images_dir = self.save_dir / 'images' / self.image_version
+        self.images_dir.mkdir(parents=True, exist_ok=True)
+        self.masks_dir = self.save_dir / 'masks'
+        self.masks_dir.mkdir(parents=True, exist_ok=True)
+
+        self.set = None
         self.train_idc = self.val_idc = self.test_idc = None
-        self.train_set = self.val_set = self.test_set = None
+        self.train_sampler = self.val_sampler = self.test_sampler = None
+        self.train_transform = self.val_transform  = self.test_transform = None
 
         # STATS
         self.normalize = "dataset-level"
-        self.stats_path = Path('/work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/datasets/Cords2024/stats.pkl')
+        self.stats_path = self.images_dir / 'stats.json'
         self.stats_path.parent.mkdir(exist_ok=True, parents=True)
 
         self.save_hyperparameters()
@@ -108,87 +79,124 @@ class Cords2024(L.LightningDataModule):
     def get_normalize_transform(self):
         if self.normalize == "dataset-level":
             assert self.stats_path.exists(), f"No dataset level stats found at: {self.stats_path}"
-            with open(self.stats_path, "rb") as f:
-                sr = pickle.load(f)
-                return v2.Normalize(mean=sr.mean, std=sr.std)
+            with open(self.stats_path, "r") as f:
+                stats = json.load(f)
+                mean, std = stats['mean'], stats['std']
+                return v2.Normalize(mean=mean, std=std)
         elif self.normalize == "sample-level":
             raise NotImplementedError()
         else:
             return v2.Identity()
 
     def prepare_data(self) -> None:
-        if self.stats_path.exists():
+        if self.stats_path.exists() and not self.force:
             logger.info(f'Loading stats from {self.stats_path}')
         else:
-            logger.info(f'Computing dataset stats...')
-            ds = Wrapper(base_dir=self.base_dir, transform=None)
-            sr = StatsRecorder()
-            for i, item in enumerate(ds, start=1):
-                logger.info(f"Processing {i}/{len(ds)}")
-                sr.update(item['image'].numpy())
+            logger.info(f'Preparing dataset...')
 
-            with open(self.stats_path, 'wb') as f:
-                pickle.dump(sr, f)
+            ds = self.dataset
+            ds.setup(image_version='published', mask_version='published')
+            ds.clinical.to_parquet(self.save_dir / 'metadata.parquet', engine='fastparquet')
+
+            sample_ids = sorted(set(ds.images) & set(ds.masks))
+
+            sr = StatsRecorder()
+            for i, sample_id in enumerate(sample_ids, start=1):
+                logger.info(f"Processing {i}/{len(sample_ids)}")
+
+                mask = ds.masks[sample_id].data
+                image = ds.images[sample_id].data
+                image = normalize(image)
+                sr.update(image)
+
+                save_image(image, self.images_dir / f"{sample_id}.tiff")
+                save_mask(mask, self.masks_dir / f"{sample_id}.tiff")
+
+            pd.Series(sr.__dict__).to_json(self.stats_path)
+
 
     def setup(self, stage):
         from sklearn.model_selection import train_test_split
+        from torch.utils.data import SubsetRandomSampler
 
         # TRANSFORMS
         normalize = self.get_normalize_transform()
-        train_transform = v2.Compose([
+        self.train_transform = v2.Compose([
             v2.ToDtype(torch.float32, scale=False),
             DINOTransform(),
             normalize,
         ])
 
         # TODO: convert to square image first and center crop
-        val_transform = v2.Compose([
+        self.val_transform = v2.Compose([
             v2.ToDtype(torch.float32, scale=False),
             # v2.RandomCrop(224, pad_if_needed=True),
             v2.Resize((224, 224)),
             normalize
         ])
 
-        ds_train = Wrapper(base_dir=self.base_dir, transform=train_transform)
-        ds_val = Wrapper(base_dir=self.base_dir, transform=val_transform)
+        self.set = ds = DatasetFolder(dataset_dir=self.save_dir,
+                                      image_version=self.image_version,
+                                      transform=None)
 
         # SPLIT
-        metadata = ds_train.ds.clinical.loc[ds_train.ds.sample_ids]
+        indices_universe = torch.tensor(range(len(ds.sample_ids)))
+
+        metadata = ds.metadata
+        targets = metadata[self.target_name]
+
+        # select sample ids for which we have metadata
+        filter_ = targets.index.isin(ds.sample_ids)
+        filter_ = filter_ & targets.notna().values
+        targets = targets[filter_]
+
+        indices = torch.tensor([ds.sample_ids.index(i) for i in targets.index])
+
         # we validate on 'Adenocarcinoma', 'Squamous cell carcinoma' but keep the rest for train
-        filter_ = metadata.dx_name.isin(['Adenocarcinoma', 'Squamous cell carcinoma']).values
+        filter_ = targets.isin(['Adenocarcinoma', 'Squamous cell carcinoma']).values
+        targets, indices = targets[filter_], indices[filter_]
 
-        indices = torch.arange(len(ds_train))
-        train_idc_1 = indices[~filter_]
+        train_idc, self.val_idc = train_test_split(indices,
+                                                     stratify=targets,
+                                                     test_size=0.2,
+                                                     random_state=0)
 
-        metadata = metadata[filter_]
-        train_idc_2, val_idc = train_test_split(indices[filter_], stratify=metadata['dx_name'],
-                                                test_size=0.2, random_state=0)
-        train_idc = torch.hstack((train_idc_1, train_idc_2))
+        excl_idc = set(indices_universe.tolist()) - set(train_idc.tolist()) - set(self.val_idc.tolist())
+        excl_idc = torch.tensor(list(excl_idc), dtype=indices_universe.dtype)
+        self.train_idc = torch.hstack((train_idc, excl_idc))
+        assert len(self.train_idc) + len(self.val_idc) == len(ds.sample_ids)
 
-        self.train_set = Subset(ds_train, indices=train_idc)
-        self.val_set = Subset(ds_val, indices=val_idc)
+        self.train_sampler = SubsetRandomSampler(self.train_idc)
+        self.val_sampler = SubsetRandomSampler(self.val_idc)
 
     def train_dataloader(self):
         return DataLoader(
-            self.train_set,
+            self.set,
             batch_size=self.batch_size,
             shuffle=self.shuffle,
             num_workers=self.num_workers,
             persistent_workers=self.persistent_workers,
             pin_memory=self.pin_memory,
+            sampler=self.train_sampler,
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self.val_set,
+            self.set,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             persistent_workers=self.persistent_workers,
             pin_memory=self.pin_memory,
+            sampler=self.val_sampler,
         )
 
-
-# dm = self = Cords2024()
-# dm.prepare_data()
-# dm.setup(stage=None)
-# dm.train_set[0]
+import ai4bmr_datasets
+dm = self = Cords2024(
+    dataset=ai4bmr_datasets.Cords2024(),
+    target_name='dx_name',
+    save_dir=Path('/users/amarti51/prometex/data/dinov1/datasets'),
+    force=False,
+)
+dm.prepare_data()
+dm.setup(stage='')
+dm.set[0]

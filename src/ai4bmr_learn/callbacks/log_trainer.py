@@ -1,5 +1,4 @@
 from lightning.pytorch.callbacks import Callback
-from copy import deepcopy
 
 default_keys = [
         "accumulate_grad_batches",
