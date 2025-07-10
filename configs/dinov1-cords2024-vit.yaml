@@ -54,8 +54,12 @@ trainer:
   accumulate_grad_batches: 1
   gradient_clip_val: null
 data:
-  class_path: ai4bmr_learn.datamodules.cords_2024.Cords2024
+  class_path: ai4bmr_learn.datamodules.data_folder.DatasetFolder
   init_args:
+    dataset:
+      class_path: ai4bmr_datasets.Cords2024
+    target_name: dx_name
+    save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/datasets
     batch_size: &batch_size 64
     num_workers: 24
     persistent_workers: true

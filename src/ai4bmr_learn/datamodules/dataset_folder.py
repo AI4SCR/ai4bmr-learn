@@ -11,8 +11,6 @@ from loguru import logger
 from torch import get_num_threads
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2
-
-from ai4bmr_learn.datasets.dataset_folder import DatasetFolder
 from ai4bmr_learn.transforms.dino_transform import DINOTransform
 
 
@@ -30,7 +28,8 @@ def normalize(img, censoring=0.999, cofactor=1, exclude_zeros=True):
 
     return img
 
-class Cords2024(L.LightningDataModule):
+
+class DatasetFolder(L.LightningDataModule):
 
     def __init__(self,
                  dataset,
@@ -55,9 +54,9 @@ class Cords2024(L.LightningDataModule):
         # DATASET
         self.force = force
         self.dataset = dataset
+        self.target_name = target_name
         self.save_dir = save_dir.resolve() / dataset.name
 
-        self.target_name = target_name
         self.image_version = 'default'
         self.images_dir = self.save_dir / 'images' / self.image_version
         self.images_dir.mkdir(parents=True, exist_ok=True)
@@ -67,7 +66,7 @@ class Cords2024(L.LightningDataModule):
         self.set = None
         self.train_idc = self.val_idc = self.test_idc = None
         self.train_sampler = self.val_sampler = self.test_sampler = None
-        self.train_transform = self.val_transform  = self.test_transform = None
+        self.train_transform = self.val_transform = self.test_transform = None
 
         # STATS
         self.normalize = "dataset-level"
@@ -114,10 +113,10 @@ class Cords2024(L.LightningDataModule):
 
             pd.Series(sr.__dict__).to_json(self.stats_path)
 
-
     def setup(self, stage):
         from sklearn.model_selection import train_test_split
         from torch.utils.data import SubsetRandomSampler
+        from ai4bmr_learn.datasets.dataset_folder import DatasetFolder
 
         # TRANSFORMS
         normalize = self.get_normalize_transform()
@@ -136,14 +135,15 @@ class Cords2024(L.LightningDataModule):
         ])
 
         self.set = ds = DatasetFolder(dataset_dir=self.save_dir,
-                                      image_version=self.image_version,
-                                      transform=None)
+                           image_version=self.image_version,
+                           transform=None)
 
         # SPLIT
         indices_universe = torch.tensor(range(len(ds.sample_ids)))
 
+        target_name = self.target_name
         metadata = ds.metadata
-        targets = metadata[self.target_name]
+        targets = metadata[target_name]
 
         # select sample ids for which we have metadata
         filter_ = targets.index.isin(ds.sample_ids)
@@ -157,9 +157,9 @@ class Cords2024(L.LightningDataModule):
         targets, indices = targets[filter_], indices[filter_]
 
         train_idc, self.val_idc = train_test_split(indices,
-                                                     stratify=targets,
-                                                     test_size=0.2,
-                                                     random_state=0)
+                                                   stratify=targets,
+                                                   test_size=0.2,
+                                                   random_state=0)
 
         excl_idc = set(indices_universe.tolist()) - set(train_idc.tolist()) - set(self.val_idc.tolist())
         excl_idc = torch.tensor(list(excl_idc), dtype=indices_universe.dtype)
@@ -190,13 +190,15 @@ class Cords2024(L.LightningDataModule):
             sampler=self.val_sampler,
         )
 
-import ai4bmr_datasets
-dm = self = Cords2024(
-    dataset=ai4bmr_datasets.Cords2024(),
-    target_name='dx_name',
-    save_dir=Path('/users/amarti51/prometex/data/dinov1/datasets'),
-    force=False,
-)
-dm.prepare_data()
-dm.setup(stage='')
-dm.set[0]
+
+# import ai4bmr_datasets
+#
+# dm = self = DatasetFolder(
+#     dataset=ai4bmr_datasets.Cords2024(),
+#     target_name='dx_name',
+#     save_dir=Path('/users/amarti51/prometex/data/dinov1/datasets'),
+#     force=False,
+# )
+# dm.prepare_data()
+# dm.setup(stage='')
+# dm.set[0]
