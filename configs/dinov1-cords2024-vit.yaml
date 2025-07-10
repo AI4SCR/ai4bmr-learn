@@ -54,7 +54,7 @@ trainer:
   accumulate_grad_batches: 1
   gradient_clip_val: null
 data:
-  class_path: ai4bmr_learn.datamodules.data_folder.DatasetFolder
+  class_path: ai4bmr_learn.datamodules.dataset_folder.DatasetFolder
   init_args:
     dataset:
       class_path: ai4bmr_datasets.Cords2024
