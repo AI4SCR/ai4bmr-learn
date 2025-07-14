@@ -25,5 +25,6 @@ class LogTrainer(Callback):
         self.prefix = prefix
 
     def on_fit_start(self, trainer, pl_module):
-        trainer_state = {f'{self.prefix}{k}':trainer.__dict__[k] for k in self.keys}
-        trainer.logger.experiment.config.update(trainer_state)
+        if not trainer.fast_dev_run:
+            trainer_state = {f'{self.prefix}{k}':trainer.__dict__[k] for k in self.keys}
+            trainer.logger.experiment.config.update(trainer_state)

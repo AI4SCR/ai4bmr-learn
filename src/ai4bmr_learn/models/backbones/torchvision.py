@@ -14,6 +14,8 @@ class Backbone(nn.Module):
 
         self.layer_name: str = layer_name or self.get_default_layer_name(model_name)
         self.backbone = create_feature_extractor(model, {self.layer_name: 'features'})
+        # TODO: expose weight transforms
+        # self.transform = weights.transform
 
     @staticmethod
     def get_default_layer_name(model_name):
