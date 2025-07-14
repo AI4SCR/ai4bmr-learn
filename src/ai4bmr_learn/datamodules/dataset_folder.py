@@ -63,7 +63,7 @@ class DatasetFolder(L.LightningDataModule):
         self.masks_dir = self.save_dir / 'masks'
         self.masks_dir.mkdir(parents=True, exist_ok=True)
 
-        self.set = None
+        self.train_set = self.val_set = None
         self.train_idc = self.val_idc = self.test_idc = None
         self.train_sampler = self.val_sampler = self.test_sampler = None
         self.train_transform = self.val_transform = self.test_transform = None
@@ -134,9 +134,17 @@ class DatasetFolder(L.LightningDataModule):
             normalize
         ])
 
-        self.set = ds = DatasetFolder(dataset_dir=self.save_dir,
-                           image_version=self.image_version,
-                           transform=None)
+        self.train_set = ds = DatasetFolder(
+            dataset_dir=self.save_dir,
+            image_version=self.image_version,
+            transform=self.train_transform)
+
+        self.val_set = DatasetFolder(
+            dataset_dir=self.save_dir,
+            image_version=self.image_version,
+            transform=self.val_transform,
+            target_name=self.target_name
+        )
 
         # SPLIT
         indices_universe = torch.tensor(range(len(ds.sample_ids)))
@@ -171,9 +179,8 @@ class DatasetFolder(L.LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self.set,
+            self.train_set,
             batch_size=self.batch_size,
-            shuffle=self.shuffle,
             num_workers=self.num_workers,
             persistent_workers=self.persistent_workers,
             pin_memory=self.pin_memory,
@@ -182,23 +189,10 @@ class DatasetFolder(L.LightningDataModule):
 
     def val_dataloader(self):
         return DataLoader(
-            self.set,
+            self.val_set,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             persistent_workers=self.persistent_workers,
             pin_memory=self.pin_memory,
             sampler=self.val_sampler,
         )
-
-
-# import ai4bmr_datasets
-#
-# dm = self = DatasetFolder(
-#     dataset=ai4bmr_datasets.Cords2024(),
-#     target_name='dx_name',
-#     save_dir=Path('/users/amarti51/prometex/data/dinov1/datasets'),
-#     force=False,
-# )
-# dm.prepare_data()
-# dm.setup(stage='')
-# dm.set[0]

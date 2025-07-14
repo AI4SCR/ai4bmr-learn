@@ -9,7 +9,7 @@ import pandas as pd
 
 class DatasetFolder(Dataset):
 
-    def __init__(self, dataset_dir: Path, image_version: str, transform=None):
+    def __init__(self, dataset_dir: Path, image_version: str, transform=None, target_name: str = None):
         super().__init__()
 
         self.dataset_dir = dataset_dir.resolve()
@@ -28,13 +28,10 @@ class DatasetFolder(Dataset):
         self.metadata_path = self.dataset_dir / "metadata.parquet"
         metadata = pd.read_parquet(self.metadata_path)
         self.metadata = metadata
+        self.targets = self.metadata[target_name] if target_name else None
 
-        self.to_image = v2.Compose([
-            v2.ToImage(),
-            v2.ToDtype(torch.float32, scale=False),
-        ])
-
-        self.to_mask = lambda x: tv_tensors.Mask(x).long()
+        self.to_image = lambda x: tv_tensors.Image(torch.tensor(x).long())
+        self.to_mask = lambda x: tv_tensors.Mask(torch.tensor(x).double())
 
         self.transform = transform
 
@@ -46,16 +43,22 @@ class DatasetFolder(Dataset):
         image = self.to_image(image)
 
         # avoid: RuntimeError: Trying to resize storage that is not resizable
-        mask_path = self.mask_paths[sample_id]
-        mask = tifffile.imread(mask_path)
-        mask = self.to_mask(mask)
+        # mask_path = self.mask_paths[sample_id]
+        # mask = tifffile.imread(mask_path)
+        # mask = self.to_mask(mask)
         # mask = torch.randn((300, 300)).long()
-
-        metadata = self.metadata.loc[sample_id].fillna('NaN').to_dict()
-
         # FIXME: including masks triggers: RuntimeError: Trying to resize storage that is not resizable
         # item = {'image': image, 'mask': mask, 'clinical': clinical}
-        item = {'image': image, 'metadata': metadata}
+
+        # metadata = self.metadata.loc[sample_id, 'dx_name'].to_dict()
+        # item = {'image': image, 'metadata': metadata}
+
+        if self.targets is not None:
+            target = self.targets[sample_id]
+            item = {'image': image, 'target': target}
+        else:
+            item = {'image': image}
+
         if self.transform is not None:
             item = self.transform(item)
 

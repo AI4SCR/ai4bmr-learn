@@ -25,7 +25,7 @@ trainer:
         save_last: true
     - class_path: ai4bmr_learn.callbacks.LinearProbing.LinearProbing
       init_args:
-        target_key: clinical.dx_name
+        target_key: target
         run_before_train: true
         run_after_train: true
         run_every_num_epochs: 3
@@ -34,7 +34,7 @@ trainer:
 #        num_samples: 5
     - class_path: ai4bmr_learn.callbacks.UMAP.UMAP
       init_args:
-        label_key: clinical.dx_name
+        label_key: target
         run_before_train: true
         run_after_train: true
         run_every_num_epochs: 3
@@ -60,8 +60,8 @@ data:
       class_path: ai4bmr_datasets.Cords2024
     target_name: dx_name
     save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/datasets
-    batch_size: &batch_size 64
-    num_workers: 24
+    batch_size: &batch_size 8
+    num_workers: 8 # 24
     persistent_workers: true
     shuffle: true
     pin_memory: true
