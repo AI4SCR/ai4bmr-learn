@@ -82,13 +82,14 @@ model:
   backbone:
     class_path: ai4bmr_learn.models.backbones.timm.Backbone
     init_args:
-      model_name: resnet18
+      model_name: vit_small_patch16_224
       num_channels: 43
-      global_pool: avg
-      pretrained: false
+      global_pool: token
+      image_size: 224
+      dynamic_img_size: true
   input_dim: 512
-  num_classes: 10
-  freeze_backbone: true
+  num_classes: 2
+  freeze_backbone: false
   lr: 1e-3
   weight_decay: 0.04
   pooling: flatten
