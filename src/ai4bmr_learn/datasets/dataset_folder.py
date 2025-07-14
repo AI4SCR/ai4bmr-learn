@@ -2,14 +2,13 @@ from pathlib import Path
 from torch.utils.data import Dataset
 import tifffile
 import torch
-from torchvision.transforms import v2
 from torchvision import tv_tensors
 import pandas as pd
 
 
 class DatasetFolder(Dataset):
 
-    def __init__(self, dataset_dir: Path, image_version: str, transform=None, target_name: str = None):
+    def __init__(self, dataset_dir: Path, image_version: str, split_version: str, transform=None, target_name: str = None):
         super().__init__()
 
         self.dataset_dir = dataset_dir.resolve()
@@ -23,20 +22,24 @@ class DatasetFolder(Dataset):
 
         self.image_paths = {i.stem: i for i in self.image_dir.glob("*.tiff")}
         self.mask_paths = {i.stem: i for i in self.masks_dir.glob("*.tiff")}
-        self.sample_ids = sorted(set(self.image_paths) & set(self.mask_paths))
 
-        self.metadata_path = self.dataset_dir / "metadata.parquet"
-        metadata = pd.read_parquet(self.metadata_path)
-        self.metadata = metadata
+        # self.metadata_path = self.dataset_dir / "metadata.parquet"
+        self.split_path = self.dataset_dir / 'splits' / f"{split_version}.parquet"
+        self.metadata = pd.read_parquet(self.split_path)
+        # self.sample_ids = sorted(set(self.image_paths) & set(self.mask_paths))
+        self.sample_ids = self.metadata.index.tolist()
+        # assert set(self.sample_ids) <= set(self.image_paths) & set(self.mask_paths)
         self.targets = self.metadata[target_name] if target_name else None
 
         self.to_image = lambda x: tv_tensors.Image(torch.tensor(x).long())
         self.to_mask = lambda x: tv_tensors.Mask(torch.tensor(x).double())
-
         self.transform = transform
 
-    def __getitem__(self, idx):
-        sample_id = self.sample_ids[idx]
+    def __getitem__(self, key):
+        if isinstance(key, tuple):
+            idx, sample_id = key
+        else:
+            sample_id = self.sample_ids[key]
 
         image_path = self.image_paths[sample_id]
         image = tifffile.imread(image_path)
@@ -50,9 +53,6 @@ class DatasetFolder(Dataset):
         # FIXME: including masks triggers: RuntimeError: Trying to resize storage that is not resizable
         # item = {'image': image, 'mask': mask, 'clinical': clinical}
 
-        # metadata = self.metadata.loc[sample_id, 'dx_name'].to_dict()
-        # item = {'image': image, 'metadata': metadata}
-
         if self.targets is not None:
             target = self.targets[sample_id]
             item = {'image': image, 'target': target}
@@ -65,4 +65,4 @@ class DatasetFolder(Dataset):
         return item
 
     def __len__(self):
-        return len(self.sample_ids)
+        return len(self.metadata)

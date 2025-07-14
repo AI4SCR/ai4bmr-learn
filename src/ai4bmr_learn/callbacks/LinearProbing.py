@@ -69,13 +69,17 @@ class LinearProbing(Callback):
         scores = cross_validate(estimator=clf, X=x, y=y, cv=cv, scoring=self.scoring, n_jobs=-1)
         scores = {k: v.mean() for k,v in scores.items()}
 
-        scores["epoch"] = trainer.current_epoch
         scores = {f'linear_probing/{k}': v for k,v in scores.items()}
+        scores["epoch"] = trainer.current_epoch
         trainer.logger.experiment.log(scores)
+        self.reset()
 
     def accumulate(self, outputs) -> bool:
         accumulate = (self.num_samples is None) or self.embeddings is None or (len(self.embeddings) < self.num_samples)
 
+        len1 = len(self.embeddings) if self.embeddings is not None else 0
+        len2 = len(self.targets) if self.targets is not None else 0
+        # logger.info(f'Before embeddings={len1}, targets={len2}')
         if accumulate and self.embeddings is None:
             self.embeddings = outputs['embedding']
             targets = glom(outputs, self.target_key)
@@ -88,6 +92,15 @@ class LinearProbing(Callback):
             self.targets.extend(targets)
         else:
             return True
+
+        len1 = len(self.embeddings)
+        len2 = len(self.targets)
+        # logger.info(f'After embeddings={len1}, targets={len2}')
+        if len1 != len2:
+            logger.error('Lengths are not synced')
+            logger.info(self.targets)
+            logger.info(self.embeddings)
+
         return False
 
     def get_outputs(self, trainer, pl_module):
