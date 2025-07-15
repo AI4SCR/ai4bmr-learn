@@ -30,6 +30,7 @@ def test_dataset_folder():
         force=False,
     )
     dm.prepare_data()
+    # dm.generate_splits()
     dm.setup(stage='')
     assert dm.train_set.sample_ids == dm.val_set.sample_ids
     assert dm.train_set.sample_ids == dm.test_set.sample_ids
@@ -43,7 +44,11 @@ def test_dataset_folder():
     assert (img_idx == img_key).all()
 
     assert dm.train_set[idx]['global_views'][0]['image'].shape[0] == 43
+    assert dm.train_set[idx]['global_views'][0]['image'].shape[1] == 224
+    assert dm.train_set[idx]['global_views'][0]['image'].shape[2] == 224
     assert dm.val_set[idx]['image'].shape[0] == 43
+    assert dm.val_set[idx]['image'].shape[1] == 224
+    assert dm.val_set[idx]['image'].shape[2] == 224
 
     batch = next(iter(DataLoader(dm.train_set, batch_size=4)))
     batch = next(iter(DataLoader(dm.val_set, batch_size=4)))

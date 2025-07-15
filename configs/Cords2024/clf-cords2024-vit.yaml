@@ -12,9 +12,9 @@ trainer:
         project: clf-cords2024
         save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/logs
         log_model: false
-        tags: ['classification', 'resnet']
+        tags: ['classification', 'vit']
   callbacks:
-    - class_path: ai4bmr_learn.callbacks.log_trainer.LogTrainer
+
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: epoch
@@ -59,7 +59,7 @@ data:
     save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/datasets
     split_version: clf
     batch_size: &batch_size 32
-    num_workers: 8 # 24
+    num_workers: 24
     persistent_workers: true
     shuffle: true
     pin_memory: true
@@ -85,12 +85,14 @@ model:
       model_name: vit_small_patch16_224
       num_channels: 43
       global_pool: token
-      image_size: 224
+      pretrained: false
+    dict_kwargs:  # passed to **kwargs, not validated
+      img_size: 224
       dynamic_img_size: true
-  input_dim: 512
+  input_dim: 384
   num_classes: 2
   freeze_backbone: false
-  lr: 1e-3
+  lr: 1e-4
   weight_decay: 0.04
   pooling: flatten
 optimizer: null
