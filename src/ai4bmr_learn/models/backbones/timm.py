@@ -14,7 +14,7 @@ class Backbone(nn.Module):
                  pretrained: bool = False,
                  global_pool: str = "token",
                  # ViT
-                 # image_size: int = 224,
+                 # img_size: int = 224,
                  # dynamic_img_size: bool = True,
                  **kwargs
                  ):

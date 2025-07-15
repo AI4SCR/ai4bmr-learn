@@ -14,7 +14,7 @@ trainer:
         log_model: false
         tags: ['dinov1', 'vit']
   callbacks:
-    - class_path: ai4bmr_learn.callbacks.log_trainer.LogTrainer
+
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: epoch
@@ -98,7 +98,7 @@ model:
     init_args:
       model_name: vit_small_patch16_224
       num_channels: 3
-      image_size: 224
+      img_size: 224
       dynamic_img_size: true
   input_dim: 384
   max_epochs: *max_epochs

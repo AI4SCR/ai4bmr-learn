@@ -14,7 +14,7 @@ trainer:
         log_model: false
         tags: ['maev1', 'vit']
   callbacks:
-    - class_path: ai4bmr_learn.callbacks.log_trainer.LogTrainer
+
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: epoch
@@ -104,7 +104,7 @@ model:
     class_path: ai4bmr_learn.models.backbones.timm.MaskedAutoEncoder
     init_args:
       model_name: vit_small_patch16_224
-      image_size: 224
+      img_size: 224
       num_channels: 3
       dynamic_img_size: false
   decoder_kwargs: null

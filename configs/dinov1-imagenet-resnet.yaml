@@ -14,7 +14,7 @@ trainer:
         log_model: false
         tags: ['dinov1', 'resnet']
   callbacks:
-    - class_path: ai4bmr_learn.callbacks.log_trainer.LogTrainer
+
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: epoch

@@ -1,5 +1,4 @@
 import lightning as L
-import torch
 import torch.optim as optim
 import torch.nn as nn
 from ai4bmr_learn.metrics.classification import get_metric_collection
@@ -12,7 +11,9 @@ class Classifier(L.LightningModule):
                  lr: float = 1e-3,
                  weight_decay: float = 0.01,
                  freeze_backbone: bool = False,
-                 pooling: str = 'flatten'):
+                 pooling: str = 'flatten',
+                 batch_key: str = 'image',
+                 ):
         super().__init__()
 
         self.save_hyperparameters(ignore=["backbone"])
@@ -24,6 +25,7 @@ class Classifier(L.LightningModule):
 
         self.classifier = nn.Linear(input_dim, num_classes)
         self.pooling = pooling
+        self.batch_key = batch_key
 
         self.lr = lr
         self.weight_decay = weight_decay
@@ -38,8 +40,10 @@ class Classifier(L.LightningModule):
         self.test_metrics = metrics.clone(prefix="test/")
 
     def _shared_step(self, batch, batch_idx):
-        images = batch['image']
-        y = self.backbone(images)
+        data = batch[self.batch_key]
+        data.to(self.device)
+
+        y = self.backbone(data)
         y = self.pool(y)
         logits = self.classifier(y)
         targets = batch["target"].long()

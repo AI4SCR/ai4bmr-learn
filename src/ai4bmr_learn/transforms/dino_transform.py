@@ -2,6 +2,7 @@ import PIL
 import torch.nn as nn
 from torch import Tensor
 from torchvision.transforms import v2
+from torchvision import tv_tensors
 from torchvision.transforms.functional import InterpolationMode
 
 class DINOTransformLightly:
@@ -78,10 +79,13 @@ class DINOTransform(nn.Module):
         self.global_transforms = [global_transform_0, global_transform_1]
 
     def forward(self, item: dict):
-        image = item.pop('image')
+        # collect the items that need to undergo geometric transformations and remove original items
+        i = {k: v for k, v in item.items() if isinstance(v, (tv_tensors.Image, tv_tensors.Mask))}
+        for k in i:
+            del item[k]
 
-        local_views = [{'image': transform(image)} for transform in self.local_transforms]
-        global_views = [{'image': transform(image)} for transform in self.global_transforms]
+        local_views = [transform(i) for transform in self.local_transforms]
+        global_views = [transform(i) for transform in self.global_transforms]
 
         item['local_views'] = local_views
         item['global_views'] = global_views

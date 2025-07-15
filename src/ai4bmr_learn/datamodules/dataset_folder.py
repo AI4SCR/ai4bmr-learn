@@ -29,34 +29,35 @@ def normalize(img, censoring=0.999, cofactor=1, exclude_zeros=True):
     return img
 
 
-train_transform = v2.Compose([
-    v2.ToDtype(torch.float32, scale=False),
-    DINOTransform(),
-])
-
-# TODO: convert to square image first and center crop
-val_transform = v2.Compose([
-    v2.ToDtype(torch.float32, scale=False),
-    # v2.RandomCrop(224, pad_if_needed=True),
-    v2.Resize((224, 224)),
-])
+# train_transform = v2.Compose([
+#     v2.ToDtype(torch.float32, scale=False),
+#     DINOTransform(),
+# ])
+#
+# # TODO: convert to square image first and center crop
+# val_transform = v2.Compose([
+#     v2.ToDtype(torch.float32, scale=False),
+#     # v2.RandomCrop(224, pad_if_needed=True),
+#     v2.Resize((224, 224)),
+# ])
 
 
 class DatasetFolder(L.LightningDataModule):
 
     def __init__(self,
                  dataset,
-                 train_transform: v2.Compose,
-                 val_transform: v2.Compose,
                  save_dir: Path,
                  target_name: str,
                  split_version: str,
+                 val_transform: v2.Compose | None = None,
+                 train_transform: v2.Compose | None = None,
                  force: bool = False,
                  batch_size: int = 64,
                  num_workers: int = None,
                  persistent_workers: bool = True,
                  shuffle: bool = True,
-                 pin_memory: bool = True
+                 pin_memory: bool = True,
+                 collate_fn = None
                  ):
         super().__init__()
 
@@ -66,6 +67,7 @@ class DatasetFolder(L.LightningDataModule):
         self.persistent_workers = persistent_workers if self.num_workers > 0 else False
         self.shuffle = shuffle
         self.pin_memory = pin_memory
+        self.collate_fn = collate_fn
 
         # DATASET
         self.force = force
@@ -164,49 +166,60 @@ class DatasetFolder(L.LightningDataModule):
         metadata.to_parquet(splits_path)
 
     def generate_clf_split(self):
-        from sklearn.model_selection import train_test_split
+        from sklearn.model_selection import StratifiedGroupKFold
 
         metadata = pd.read_parquet(self.metadata_path, engine='fastparquet')
         metadata = metadata.reset_index()
+        targets = metadata[self.target_name]
 
         # SPLIT
-        target_name = self.target_name
-        targets = metadata[target_name]
-
         # we validate on 'Adenocarcinoma', 'Squamous cell carcinoma' but keep the rest for train
         filter_ = targets.notna().values
         filter_ = filter_ & targets.isin(['Adenocarcinoma', 'Squamous cell carcinoma']).values
-        metadata = metadata[filter_]
-        targets = metadata[target_name]
+        targets = targets[filter_]
 
-        indices = targets.index.values
-        train_idc, test_idc = train_test_split(indices,
-                                               stratify=targets,
-                                               test_size=0.2,
-                                               random_state=0)
+        metadata = metadata.loc[targets.index]
+        indices = metadata.index.values
+        groups = metadata.patient_nr
+        targets = metadata[self.target_name]
 
-        fit_idc, val_idc = train_test_split(train_idc,
-                                            stratify=targets.loc[train_idc],
-                                            test_size=0.2,
-                                            random_state=0)
+        cv_train_test = StratifiedGroupKFold(
+            n_splits=5,  # 1/5 ≈ 0.20 → test size ≈ 20 %
+            shuffle=True,
+            random_state=0
+        )
+
+        cv_fit_val = StratifiedGroupKFold(
+            n_splits=8,
+            shuffle=True,
+            random_state=0
+        )
+
+        train_idc, test_idc = next(cv_train_test.split(indices, y=targets, groups=groups))
+        train_idc, test_idc = indices[train_idc], indices[test_idc]  # map relative to global indices
+        fit_idc, val_idc = next(cv_fit_val.split(train_idc, y=targets.loc[train_idc], groups=groups.loc[train_idc]))
+        fit_idc, val_idc = train_idc[fit_idc], train_idc[val_idc]   # map relative to global indices
 
         mapping = {'Adenocarcinoma': 0, 'Squamous cell carcinoma': 1}
         metadata.loc[:, self.target_name] = metadata[self.target_name].transform(lambda x: mapping.get(x, -1))
 
         # sanity checks
         assert set(fit_idc).union(val_idc).union(test_idc) == set(metadata.index.values)
-        assert set(fit_idc).intersection(val_idc) == set()
-        assert set(val_idc).intersection(test_idc) == set()
+        assert set(train_idc).intersection(set(test_idc)) == set()
+        assert set(fit_idc).intersection(set(val_idc)) == set()
+        assert set(val_idc).intersection(set(test_idc)) == set()
 
         metadata.loc[fit_idc, 'split'] = 'fit'
         metadata.loc[val_idc, 'split'] = 'val'
         metadata.loc[test_idc, 'split'] = 'test'
-
         metadata = metadata.set_index('sample_id')
 
         self.splits_dir.mkdir(parents=True, exist_ok=True)
         splits_path = self.splits_dir / 'clf.parquet'
         metadata.to_parquet(splits_path)
+
+        pd.crosstab(metadata.dx_name, metadata.split).to_csv(self.splits_dir / 'info-target.csv')
+        pd.crosstab(metadata.patient_nr, metadata.split).to_csv(self.splits_dir / 'info-group.csv')
 
     def prepare_data(self) -> None:
 
@@ -243,15 +256,19 @@ class DatasetFolder(L.LightningDataModule):
 
         # TRANSFORMS
         normalize = self.get_normalize_transform()
-        self.train_transform = v2.Compose([
-            self.train_transform,
-            normalize
-        ])
 
-        self.val_transform = v2.Compose([
-            self.val_transform,
-            normalize
-        ])
+        # TODO: fix this to work with arbitrary transforms
+        if self.train_transform is not None:
+            self.train_transform = v2.Compose([
+                self.train_transform,
+                normalize
+            ])
+
+        if self.val_transform is not None:
+            self.val_transform = v2.Compose([
+                self.val_transform,
+                normalize
+            ])
 
         self.train_set = DatasetFolder(
             dataset_dir=self.save_dir,
@@ -296,6 +313,7 @@ class DatasetFolder(L.LightningDataModule):
             persistent_workers=self.persistent_workers,
             pin_memory=self.pin_memory,
             sampler=self.train_sampler,
+            collate_fn=self.collate_fn
         )
 
     def val_dataloader(self):
@@ -306,6 +324,8 @@ class DatasetFolder(L.LightningDataModule):
             persistent_workers=self.persistent_workers,
             pin_memory=self.pin_memory,
             sampler=self.val_sampler,
+            collate_fn=self.collate_fn
+
         )
 
     def test_dataloader(self):
@@ -316,4 +336,5 @@ class DatasetFolder(L.LightningDataModule):
             persistent_workers=self.persistent_workers,
             pin_memory=self.pin_memory,
             sampler=self.test_sampler,
+            collate_fn=self.collate_fn
         )
