@@ -59,13 +59,13 @@ sweep = [
     # GNN
     # "cli/clf.py fit --config configs/Cords2024/clf-cords2024-graph.yaml --model.freeze_backbone=false",
     # DINOv1
-    # "clis/dinov1.py fit --config configs/Cords2024/dinov1-cords2024-vit.yaml",
+    "clis/dinov1.py fit --config configs/Cords2024/dinov1-cords2024-vit.yaml",
     "clis/dinov1.py fit --config configs/Cords2024/dinov1-cords2024-resnet.yaml",
     # MAEv1
     "clis/maev1.py fit --config configs/Cords2024/maev1-cords2024-vit.yaml",
 ]
 
-debug = True
+debug = False
 for args in sweep:
     if debug:
         args += ' --trainer.fast_dev_run=true'
