@@ -2,7 +2,7 @@
 def test_dataset_folder():
     from pathlib import Path
     from ai4bmr_learn.datamodules.dataset_folder import DatasetFolder
-    from torch.utils.data import DataLoader, SubsetRandomSampler
+    from torch.utils.data import DataLoader
     import ai4bmr_datasets
     from torchvision.transforms import v2
     from ai4bmr_learn.transforms.dino_transform import DINOTransform
@@ -52,3 +52,32 @@ def test_dataset_folder():
 
     batch = next(iter(DataLoader(dm.train_set, batch_size=4)))
     batch = next(iter(DataLoader(dm.val_set, batch_size=4)))
+
+def test_dataset_folder_with_graph_collator():
+    from ai4bmr_learn.collators.graph import Graph
+    from pathlib import Path
+    from ai4bmr_learn.datamodules.dataset_folder import DatasetFolder
+    import ai4bmr_datasets
+    from tqdm import tqdm
+
+    stats_path = Path('/users/amarti51/prometex/data/dinov1/datasets/Cords2024/images/default/stats.json')
+    cache_dir = Path('/users/amarti51/prometex/data/dinov1/datasets/Cords2024/graphs/radius_32')
+    collator = Graph(radius=32, include_self=True, stats_path=stats_path, cache_dir=cache_dir)
+
+    dm = DatasetFolder(
+        dataset=ai4bmr_datasets.Cords2024(),
+        train_transform=None,
+        val_transform=None,
+        target_name='dx_name',
+        split_version='clf',
+        save_dir=Path('/users/amarti51/prometex/data/dinov1/datasets'),
+        force=False,
+        num_workers=8,
+        batch_size=8,
+        collate_fn=collator
+    )
+    dm.setup(stage='')
+
+    _ = [i for i in tqdm(dm.val_dataloader())]
+    _ = [i for i in tqdm(dm.train_dataloader())]
+    _ = [i for i in tqdm(dm.test_dataloader())]
