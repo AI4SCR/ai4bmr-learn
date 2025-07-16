@@ -45,19 +45,19 @@ python clis/clf.py fit {args}
 
 sweep = [
     # resnet18
-    "--config configs/Cords2024/clf-cords2024-resnet.yaml --model.backbone.init_args.pretrained=false --model.freeze_backbone=true",
-    "--config configs/Cords2024/clf-cords2024-resnet.yaml --model.backbone.init_args.pretrained=true --model.freeze_backbone=true",
-    "--config configs/Cords2024/clf-cords2024-resnet.yaml --model.backbone.init_args.pretrained=true --model.freeze_backbone=false",
+    # "--config configs/Cords2024/clf-cords2024-resnet.yaml --model.backbone.init_args.pretrained=false --model.freeze_backbone=true",
+    # "--config configs/Cords2024/clf-cords2024-resnet.yaml --model.backbone.init_args.pretrained=true --model.freeze_backbone=true",
+    # "--config configs/Cords2024/clf-cords2024-resnet.yaml --model.backbone.init_args.pretrained=true --model.freeze_backbone=false",
     # resnet50
-    "--config configs/Cords2024/clf-cords2024-resnet.yaml --model.backbone.init_args.pretrained=false --model.freeze_backbone=true --model.backbone.init_args.model_name=resnet50 --model.input_dim=2048",
-    "--config configs/Cords2024/clf-cords2024-resnet.yaml --model.backbone.init_args.pretrained=true --model.freeze_backbone=true --model.backbone.init_args.model_name=resnet50 --model.input_dim=2048",
-    "--config configs/Cords2024/clf-cords2024-resnet.yaml --model.backbone.init_args.pretrained=true --model.freeze_backbone=false --model.backbone.init_args.model_name=resnet50 --model.input_dim=2048",
+    # "--config configs/Cords2024/clf-cords2024-resnet.yaml --model.backbone.init_args.pretrained=false --model.freeze_backbone=true --model.backbone.init_args.model_name=resnet50 --model.input_dim=2048",
+    # "--config configs/Cords2024/clf-cords2024-resnet.yaml --model.backbone.init_args.pretrained=true --model.freeze_backbone=true --model.backbone.init_args.model_name=resnet50 --model.input_dim=2048",
+    # "--config configs/Cords2024/clf-cords2024-resnet.yaml --model.backbone.init_args.pretrained=true --model.freeze_backbone=false --model.backbone.init_args.model_name=resnet50 --model.input_dim=2048",
     # vit
-    "--config configs/Cords2024/clf-cords2024-vit.yaml --model.backbone.init_args.pretrained=false --model.freeze_backbone=true",
-    "--config configs/Cords2024/clf-cords2024-vit.yaml --model.backbone.init_args.pretrained=true --model.freeze_backbone=true",
-    "--config configs/Cords2024/clf-cords2024-vit.yaml --model.backbone.init_args.pretrained=true --model.freeze_backbone=false",
+    # "--config configs/Cords2024/clf-cords2024-vit.yaml --model.backbone.init_args.pretrained=false --model.freeze_backbone=true",
+    # "--config configs/Cords2024/clf-cords2024-vit.yaml --model.backbone.init_args.pretrained=true --model.freeze_backbone=true",
+    # "--config configs/Cords2024/clf-cords2024-vit.yaml --model.backbone.init_args.pretrained=true --model.freeze_backbone=false",
     # GNN
-    "--config configs/Cords2024/clf-cords2024-graph.yaml --model.freeze_backbone=false",
+    # "--config configs/Cords2024/clf-cords2024-graph.yaml --model.freeze_backbone=false",
 ]
 
 debug = False
