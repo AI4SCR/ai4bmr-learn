@@ -140,8 +140,8 @@ class LinearProbing(Callback):
         if force:
             return True
 
-        if trainer.current_epoch == 0 and self.run_before_train:
-            return False
+        # if trainer.current_epoch == 0 and self.run_before_train:
+        #     return False
 
         if trainer.current_epoch % self.run_every_num_epochs == 0:
             return True

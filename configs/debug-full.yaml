@@ -27,7 +27,7 @@ trainer:
 #      init_args:
 #        monitor: *monitor
 #        mode: *mode
-#        patience: 10
+#        patience: 25
 #        min_delta: 0.001
 #    - class_path: ai4bmr_learn.callbacks.UMAP.UMAP
 #      init_args:
