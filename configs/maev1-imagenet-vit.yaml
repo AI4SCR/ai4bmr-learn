@@ -107,6 +107,8 @@ model:
       img_size: 224
       num_channels: 3
       dynamic_img_size: false
+  max_epochs: *max_epochs
+  pooling: cls
   decoder_kwargs: null
   mask_ratio: 0.75
   lr: 0.00015
@@ -114,8 +116,6 @@ model:
   weight_decay: 0.04
   betas: [0.9, 0.999]
   warmup_lr_epochs: 5
-  max_epochs: *max_epochs
-  pooling: cls
 optimizer: null
 lr_scheduler: null
 ckpt_path: null

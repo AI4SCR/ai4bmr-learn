@@ -56,7 +56,7 @@ trainer:
   num_sanity_val_steps: null
   log_every_n_steps: null
   gradient_clip_val: null
-  accumulate_grad_batches: 8
+  accumulate_grad_batches: 16
 data:
   class_path: ai4bmr_learn.datamodules.dataset_folder.DatasetFolder
   init_args:
@@ -65,8 +65,8 @@ data:
     target_name: dx_name
     save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/datasets
     split_version: ssl
-    batch_size: &batch_size 4
-    num_workers: 8 # max 24
+    batch_size: &batch_size 8
+    num_workers: 16 # max 24
     persistent_workers: true
     shuffle: true
     pin_memory: true
@@ -90,11 +90,12 @@ model:
     init_args:
       model_name: vit_small_patch16_224
       num_channels: 43
-      global_pool: token
       pretrained: false
     dict_kwargs:
       img_size: 224
       dynamic_img_size: false
+  max_epochs: *max_epochs
+  pooling: cls
   decoder_kwargs: null
   mask_ratio: 0.75
   lr: 0.00015
@@ -102,8 +103,6 @@ model:
   weight_decay: 0.04
   betas: [0.9, 0.999]
   warmup_lr_epochs: 5
-  max_epochs: *max_epochs
-  pooling: cls
 optimizer: null
 lr_scheduler: null
 ckpt_path: null

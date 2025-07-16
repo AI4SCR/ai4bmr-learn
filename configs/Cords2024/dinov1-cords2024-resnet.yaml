@@ -9,11 +9,12 @@ trainer:
   logger:
     - class_path: lightning.pytorch.loggers.WandbLogger
       init_args:
-        project: dinov1-cords2024
+        project: ssl-cords2024
         save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/logs
         log_model: false
         tags: ['dinov1', 'resnet']
   callbacks:
+    - class_path: ai4bmr_learn.callbacks.log_model_stats.LogModelStats
     - class_path: ai4bmr_learn.callbacks.LinearProbing.LinearProbing
       init_args:
         target_key: target
@@ -55,7 +56,7 @@ trainer:
   num_sanity_val_steps: null
   log_every_n_steps: null
   gradient_clip_val: null
-  accumulate_grad_batches: 8
+  accumulate_grad_batches: 16
 data:
   class_path: ai4bmr_learn.datamodules.dataset_folder.DatasetFolder
   init_args:
@@ -64,7 +65,7 @@ data:
     target_name: dx_name
     save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/datasets
     split_version: ssl
-    batch_size: &batch_size 16
+    batch_size: &batch_size 8
     num_workers: 16 # max 24
     persistent_workers: true
     shuffle: true
