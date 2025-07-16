@@ -23,7 +23,7 @@ class Classifier(L.LightningModule):
             for param in self.backbone.parameters():
                 param.requires_grad = False
 
-        self.classifier = nn.Linear(input_dim, num_classes)
+        self.head = nn.Linear(input_dim, num_classes)
         self.pooling = pooling
         self.batch_key = batch_key
 
@@ -45,7 +45,7 @@ class Classifier(L.LightningModule):
 
         y = self.backbone(data)
         y = self.pool(y)
-        logits = self.classifier(y)
+        logits = self.head(y)
         targets = batch["target"].long()
 
         loss = self.criterion(logits, targets)
@@ -94,7 +94,7 @@ class Classifier(L.LightningModule):
         images = batch['image']
         y = self.backbone(images)
         y = self.pool(y)
-        logits = self.classifier(y)
+        logits = self.head(y)
         preds = logits.argmax(dim=1)
 
         batch["prediction"] = preds.detach().cpu()

@@ -107,24 +107,25 @@ class MaskedAutoEncoder(nn.Module):
 
     def __init__(self,
                  model_name: str = 'vit_small_patch16_224',
-                 num_classes: int = 0,
-                 global_pool: str = "token",
-                 image_size: int = 224,
-                 dynamic_img_size: bool = True,
                  num_channels: int = 3,
-                 pretrained: bool = False
+                 num_classes: int = 0,
+                 pretrained: bool = False,
+                 global_pool: str = "token",
+                 # ViT
+                 # img_size: int = 224,
+                 # dynamic_img_size: bool = True,
+                 **kwargs
                  ):
         super().__init__()
 
         model = timm.create_model(model_name=model_name,
-                                  num_classes=num_classes,
-                                  global_pool=global_pool,
-                                  img_size=image_size,
-                                  dynamic_img_size=dynamic_img_size,
-                                  in_chans=num_channels,
-                                  pretrained=pretrained)
+                                          num_classes=num_classes,
+                                          global_pool=global_pool,
+                                          in_chans=num_channels,
+                                          pretrained=pretrained,
+                                          **kwargs)
 
-        self.tokenizer = Tokenizer(model, image_size=image_size)
+        self.tokenizer = Tokenizer(model, image_size=kwargs.get('img_size'))
         self.encoder = MaskedEncoder(model, num_patches=self.tokenizer.num_tokens)
 
     def forward(self, x):
