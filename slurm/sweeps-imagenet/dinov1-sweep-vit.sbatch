@@ -26,6 +26,7 @@ cd /work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn || exit
 # ------------------------------------------------------------------------------
 # 1) Define value‐lists for each hyperparameter
 # ------------------------------------------------------------------------------
+DH=('2048 512 64' '')      # dino head output_dim, hidden_dim, bottleneck_dim
 LR=(0.005 0.003 0.0005)    # learning rate
 WD=(0.04 0.02)             # weight decay
 TT=(0.04 0.06 0.08)        # teacher_temp
