@@ -26,7 +26,7 @@ class DINOv1(L.LightningModule):
                  input_dim: int,
                  dino_head_output_dim: int = 2048,
                  dino_head_hidden_dim: int = 512,
-                 dino_head_bottelneck_dim: int = 64,
+                 dino_head_bottleneck_dim: int = 64,
                  lr: float = 5e-4,
                  global_batch_size: int = 64,
                  max_epochs: int = 150,
@@ -63,16 +63,16 @@ class DINOv1(L.LightningModule):
         # STUDENT
         self.student_backbone = backbone
         self.student_head = DINOProjectionHead(input_dim,
-                                               dino_head_hidden_dim, dino_head_bottelneck_dim, dino_head_output_dim,
+                                               dino_head_hidden_dim, dino_head_bottleneck_dim, dino_head_output_dim,
                                                freeze_last_layer=freeze_last_layer, norm_last_layer=norm_last_layer)
         # TEACHER
         self.teacher_backbone = copy.deepcopy(backbone)
         self.teacher_head = DINOProjectionHead(input_dim,
-                                               dino_head_hidden_dim, dino_head_bottelneck_dim, dino_head_output_dim)
+                                               dino_head_hidden_dim, dino_head_bottleneck_dim, dino_head_output_dim)
         deactivate_requires_grad(self.teacher_backbone)
         deactivate_requires_grad(self.teacher_head)
 
-        self.criterion = DINOLoss(output_dim=2048,
+        self.criterion = DINOLoss(output_dim=dino_head_output_dim,
                                   warmup_teacher_temp_epochs=warmup_teacher_temp_epochs,
                                   teacher_temp=teacher_temp,
                                   )
