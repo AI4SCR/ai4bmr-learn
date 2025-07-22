@@ -16,7 +16,7 @@ def submit_job(args, debug: bool = False):
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=24
 #SBATCH --mem=64G
-#SBATCH --time=24:00:00
+#SBATCH --time=04:00:00
 
 # Load environment
 source /users/amarti51/miniconda3/bin/activate
@@ -59,10 +59,14 @@ sweep = [
     # GNN
     # "cli/clf.py fit --config configs/Cords2024/clf-cords2024-graph.yaml --model.freeze_backbone=false",
     # DINOv1
-    "clis/dinov1.py fit --config configs/Cords2024/dinov1-cords2024-vit.yaml",
-    "clis/dinov1.py fit --config configs/Cords2024/dinov1-cords2024-resnet.yaml",
+    # "clis/dinov1.py fit --config configs/Cords2024/dinov1-cords2024-vit.yaml",
+    # "clis/dinov1.py fit --config configs/Cords2024/dinov1-cords2024-resnet.yaml",
     # MAEv1
-    "clis/maev1.py fit --config configs/Cords2024/maev1-cords2024-vit.yaml",
+    # "clis/maev1.py fit --config configs/Cords2024/maev1-cords2024-vit.yaml",
+    # Finetune
+    "clis/clf.py fit --config configs/Cords2024/dinov1-cords2024-resnet-ft.yaml",
+    "clis/clf.py fit --config configs/Cords2024/dinov1-cords2024-vit-ft.yaml",
+    "clis/clf.py fit --config configs/Cords2024/maev1-cords2024-vit-ft.yaml",
 ]
 
 debug = False

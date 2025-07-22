@@ -10,7 +10,7 @@ trainer:
     - class_path: lightning.pytorch.loggers.WandbLogger
       init_args:
         project: clf-imagenet
-        save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/logs
+        save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/logs
         log_model: false
         tags: ['classification', 'resnet']
   callbacks:

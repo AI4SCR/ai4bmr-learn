@@ -117,7 +117,7 @@ class UMAP(Callback):
         return outputs, batch_idx
 
     def on_train_start(self, trainer, pl_module):
-        if self.run_before_train:
+        if self.run_before_train and not trainer.fast_dev_run:
             logger.info(f'UMAP on_train_start')
             outputs, batch_idx = self.get_outputs(trainer, pl_module)
             self.accumulate(outputs)
@@ -125,7 +125,7 @@ class UMAP(Callback):
             self.reset()
 
     def on_train_end(self, trainer, pl_module):
-        if self.run_after_train:
+        if self.run_after_train and not trainer.fast_dev_run:
             logger.info(f'UMAP on_train_end')
             outputs, batch_idx = self.get_outputs(trainer, pl_module)
             self.accumulate(outputs)
@@ -134,6 +134,9 @@ class UMAP(Callback):
 
     def should_run(self, trainer, force):
         if trainer.sanity_checking:
+            return False
+
+        if trainer.fast_dev_run:
             return False
 
         if force:
