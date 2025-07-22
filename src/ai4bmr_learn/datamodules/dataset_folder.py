@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from tqdm import tqdm
 
 import lightning as L
 import numpy as np
@@ -50,6 +51,7 @@ class DatasetFolder(L.LightningDataModule):
                  save_dir: Path,
                  target_name: str,
                  split_version: str,
+                 annotation_names: list[str] | None = None,
                  val_transform: v2.Compose | None = None,
                  train_transform: v2.Compose | None = None,
                  force: bool = False,
@@ -58,7 +60,7 @@ class DatasetFolder(L.LightningDataModule):
                  persistent_workers: bool = True,
                  shuffle: bool = True,
                  pin_memory: bool = True,
-                 collate_fn = None
+                 collate_fn=None
                  ):
         super().__init__()
 
@@ -83,8 +85,9 @@ class DatasetFolder(L.LightningDataModule):
         self.masks_dir = self.save_dir / 'masks'
         self.masks_dir.mkdir(parents=True, exist_ok=True)
 
+        # ANNOTATIONS
         self.annotations_dir = self.save_dir / 'annotations'
-        self.cell_type_annotations_dir = self.annotations_dir / 'cell_type'
+        self.annotation_names = annotation_names or []
 
         # SPLIT
         self.split_version = split_version
@@ -127,6 +130,10 @@ class DatasetFolder(L.LightningDataModule):
     def generate_ssl_split(self):
         from sklearn.model_selection import train_test_split
 
+        splits_path = self.splits_dir / 'ssl.parquet'
+        if splits_path.exists():
+            return
+
         metadata = pd.read_parquet(self.metadata_path, engine='fastparquet')
         sample_ids = metadata.index.tolist()
         metadata = metadata.reset_index()
@@ -166,11 +173,14 @@ class DatasetFolder(L.LightningDataModule):
         metadata = metadata.set_index('sample_id')
 
         self.splits_dir.mkdir(parents=True, exist_ok=True)
-        splits_path = self.splits_dir / 'ssl.parquet'
         metadata.to_parquet(splits_path)
 
     def generate_clf_split(self):
         from sklearn.model_selection import StratifiedGroupKFold
+
+        splits_path = self.splits_dir / 'clf.parquet'
+        if splits_path.exists():
+            return
 
         metadata = pd.read_parquet(self.metadata_path, engine='fastparquet')
         metadata = metadata.reset_index()
@@ -202,7 +212,7 @@ class DatasetFolder(L.LightningDataModule):
         train_idc, test_idc = next(cv_train_test.split(indices, y=targets, groups=groups))
         train_idc, test_idc = indices[train_idc], indices[test_idc]  # map relative to global indices
         fit_idc, val_idc = next(cv_fit_val.split(train_idc, y=targets.loc[train_idc], groups=groups.loc[train_idc]))
-        fit_idc, val_idc = train_idc[fit_idc], train_idc[val_idc]   # map relative to global indices
+        fit_idc, val_idc = train_idc[fit_idc], train_idc[val_idc]  # map relative to global indices
 
         mapping = {'Adenocarcinoma': 0, 'Squamous cell carcinoma': 1}
         metadata.loc[:, self.target_name] = metadata[self.target_name].transform(lambda x: mapping.get(x, -1))
@@ -219,13 +229,14 @@ class DatasetFolder(L.LightningDataModule):
         metadata = metadata.set_index('sample_id')
 
         self.splits_dir.mkdir(parents=True, exist_ok=True)
-        splits_path = self.splits_dir / 'clf.parquet'
         metadata.to_parquet(splits_path)
 
         pd.crosstab(metadata.dx_name, metadata.split).to_csv(self.splits_dir / 'info-target.csv')
         pd.crosstab(metadata.patient_nr, metadata.split).to_csv(self.splits_dir / 'info-group.csv')
 
-    def prepare_cell_type_annotations(self):
+    def prepare_annotation(self, col_name: str):
+        logger.info(f'Preparing annotations for {col_name}')
+        
         metadata = self.dataset.metadata.copy()
         image_ids = set([i.stem for i in self.images_dir.glob('*.tiff')])
         mask_ids = set([i.stem for i in self.masks_dir.glob('*.tiff')])
@@ -233,18 +244,23 @@ class DatasetFolder(L.LightningDataModule):
 
         sample_ids = set(image_ids) & set(mask_ids) & set(metadata_ids)
 
-        col_name = 'cell_type'
+        save_dir = self.annotations_dir / col_name
+        save_dir.mkdir(parents=True, exist_ok=True)
+
         label_to_id = {v: k for k, v in enumerate(metadata[col_name].unique(), start=1)}
         metadata['label_id'] = metadata[col_name].map(label_to_id)
 
-        for sample_id in sample_ids:
+        for sample_id in tqdm(sample_ids):
             obj_to_label = metadata.loc[sample_id, 'label_id']
             obj_to_label.index = obj_to_label.index.astype(int)
             obj_to_label = obj_to_label.to_dict()
+            obj_to_label[0] = 0
 
             mask = tifffile.imread(self.masks_dir / f'{sample_id}.tiff')
-            # TODO: remove all cell that do not have a label
-            labels = np.vectorize(lambda x: obj_to_label.get(x, x))(mask)
+            assert set(mask.flatten()) == set(obj_to_label)
+            labels = np.vectorize(obj_to_label.get)(mask)
+
+            save_mask(labels, save_dir / f'{sample_id}.tiff')
 
     def prepare_data(self) -> None:
 
@@ -258,11 +274,19 @@ class DatasetFolder(L.LightningDataModule):
                      metadata_version='published', load_metadata=True)
 
             sample_ids = sorted(set(ds.images))
+
+            # METADATA
             filter_ = ds.clinical.index.isin(sample_ids)
             ds.clinical[filter_].to_parquet(self.metadata_path, engine='fastparquet')
 
+            # ANNOTATIONS
+            for col_name in self.annotation_names:
+                self.prepare_annotation(col_name=col_name)
+
+            # SPLITS
             self.generate_splits()
 
+            # NORMALIZE IMAGES AND COMPUTE STATS
             sr = StatsRecorder()
             for i, sample_id in enumerate(sample_ids, start=1):
                 logger.info(f"Processing {i}/{len(sample_ids)}")
@@ -366,5 +390,11 @@ class DatasetFolder(L.LightningDataModule):
             collate_fn=self.collate_fn
         )
 
+
 from ai4bmr_datasets import Cords2024
-self = DatasetFolder(dataset=Cords2024(), save_dir=Path('/users/amarti51/prometex/data/dinov1/datasets'), target_name='', split_version='')
+
+self = DatasetFolder(dataset=Cords2024(),
+                     annotation_names=['cell_category', 'cell_type', 'cell_subtype'],
+                     save_dir=Path('/users/amarti51/prometex/data/dinov1/datasets'),
+                     target_name='dx_name',
+                     split_version='')
