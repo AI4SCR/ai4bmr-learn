@@ -9,6 +9,7 @@ class Classifier(L.LightningModule):
                  input_dim: int,
                  num_classes: int,
                  lr: float = 1e-3,
+                 lr_backbone: float = 1e-4,
                  weight_decay: float = 0.01,
                  freeze_backbone: bool = False,
                  pooling: str = 'flatten',
@@ -28,6 +29,7 @@ class Classifier(L.LightningModule):
         self.batch_key = batch_key
 
         self.lr = lr
+        self.lr_backbone = lr_backbone
         self.weight_decay = weight_decay
 
         self.criterion = nn.CrossEntropyLoss()
@@ -102,8 +104,11 @@ class Classifier(L.LightningModule):
         return batch
 
     def configure_optimizers(self):
-        params = filter(lambda p: p.requires_grad, self.parameters())
-        optimizer = optim.Adam(params=params, lr=self.lr, weight_decay=self.weight_decay)
+        optimizer = optim.Adam([
+            {'params': self.head.parameters(), 'lr': self.lr},
+            {'params': filter(lambda p: p.requires_grad, self.backbone.parameters()), 'lr': self.lr_backbone}
+        ], weight_decay=self.weight_decay)
+
         return optimizer
 
     def pool(self, x):

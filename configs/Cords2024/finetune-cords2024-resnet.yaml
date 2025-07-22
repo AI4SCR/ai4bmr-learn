@@ -10,10 +10,13 @@ trainer:
     - class_path: lightning.pytorch.loggers.WandbLogger
       init_args:
         project: clf-cords2024
-        save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/logs
+        save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/logs
         log_model: false
-        tags: ['classification', 'resnet']
+        tags: ['classification', 'resnet', 'finetune']
   callbacks:
+    - class_path: ai4bmr_learn.callbacks.module_checkpoint.ModuleCheckpoint
+      init_args:
+        module_name: backbone.backbone
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: epoch
@@ -58,7 +61,7 @@ data:
     save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/datasets
     split_version: clf
     batch_size: &batch_size 32
-    num_workers: 24
+    num_workers: 16
     persistent_workers: true
     shuffle: true
     pin_memory: true
@@ -74,7 +77,6 @@ data:
             init_args:
               size: &image_size 224
               scale: [0.8, 1]
-#              ratio: [1, 1]  # TODO: crop image to largest square only
     val_transform:
       <<: *train_transform
 model:
@@ -85,10 +87,12 @@ model:
       num_channels: 43
       global_pool: avg
       pretrained: false
+      ckpt_path: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/logs/ssl-cords2024/j5wfik3n/checkpoints/module=student_backbone.backbone.ckpt
   input_dim: 512
   num_classes: 2
-  freeze_backbone: true
+  freeze_backbone: false
   lr: 1e-4
+  lr_backbone: 1e-5
   weight_decay: 0.04
   pooling: flatten
 optimizer: null

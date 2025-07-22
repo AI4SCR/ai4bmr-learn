@@ -14,28 +14,10 @@ trainer:
         log_model: false
         tags: ['classification', 'resnet']
   callbacks:
-
-#    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
-#      init_args:
-#        logging_interval: epoch
-#    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
-#      init_args:
-#        monitor: &monitor val/f1-macro
-#        mode: &mode max  # "min" for loss, "max" for accuracy, etc.
-#        save_last: true
-#    - class_path: lightning.pytorch.callbacks.EarlyStopping
-#      init_args:
-#        monitor: *monitor
-#        mode: *mode
-#        patience: 25
-#        min_delta: 0.001
-#    - class_path: ai4bmr_learn.callbacks.UMAP.UMAP
-#      init_args:
-#        label_key: target
-#        run_before_train: true
-#        run_after_train: false
-#        run_every_num_epochs: 3
-  fast_dev_run: false
+    class_path: ai4bmr_learn.callbacks.module_checkpoint.ModuleCheckpoint
+    init_args:
+        module_name: backbone
+  fast_dev_run: true
   max_epochs: &max_epochs 3
   min_epochs: null
   max_time: 00:00:10:00

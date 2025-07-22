@@ -12,7 +12,7 @@ trainer:
         project: ssl-cords2024
         save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/maev1/logs
         log_model: false
-        tags: ['maev1', 'resnet']
+        tags: ['maev1', 'vit']
   callbacks:
     - class_path: ai4bmr_learn.callbacks.log_model_stats.LogModelStats
     - class_path: ai4bmr_learn.callbacks.LinearProbing.LinearProbing
