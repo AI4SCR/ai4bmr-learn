@@ -1,12 +1,12 @@
 trainer:
-  fast_dev_run: false
+  fast_dev_run: true
   logger:
     - class_path: lightning.pytorch.loggers.WandbLogger
       init_args:
-        project: maev1
-        save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/logs
+        project: default
+        save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/logs
         log_model: false
 data:
   init_args:
-    batch_size: 4
+    batch_size: 8
     num_workers: 0

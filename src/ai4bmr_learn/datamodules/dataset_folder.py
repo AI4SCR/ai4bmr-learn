@@ -5,6 +5,7 @@ import lightning as L
 import numpy as np
 import pandas as pd
 import torch
+import tifffile
 from ai4bmr_core.utils.saving import save_image, save_mask
 from ai4bmr_core.utils.stats import StatsRecorder
 from loguru import logger
@@ -81,6 +82,9 @@ class DatasetFolder(L.LightningDataModule):
 
         self.masks_dir = self.save_dir / 'masks'
         self.masks_dir.mkdir(parents=True, exist_ok=True)
+
+        self.annotations_dir = self.save_dir / 'annotations'
+        self.cell_type_annotations_dir = self.annotations_dir / 'cell_type'
 
         # SPLIT
         self.split_version = split_version
@@ -221,6 +225,27 @@ class DatasetFolder(L.LightningDataModule):
         pd.crosstab(metadata.dx_name, metadata.split).to_csv(self.splits_dir / 'info-target.csv')
         pd.crosstab(metadata.patient_nr, metadata.split).to_csv(self.splits_dir / 'info-group.csv')
 
+    def prepare_cell_type_annotations(self):
+        metadata = self.dataset.metadata.copy()
+        image_ids = set([i.stem for i in self.images_dir.glob('*.tiff')])
+        mask_ids = set([i.stem for i in self.masks_dir.glob('*.tiff')])
+        metadata_ids = metadata.index.get_level_values('sample_id').unique()
+
+        sample_ids = set(image_ids) & set(mask_ids) & set(metadata_ids)
+
+        col_name = 'cell_type'
+        label_to_id = {v: k for k, v in enumerate(metadata[col_name].unique(), start=1)}
+        metadata['label_id'] = metadata[col_name].map(label_to_id)
+
+        for sample_id in sample_ids:
+            obj_to_label = metadata.loc[sample_id, 'label_id']
+            obj_to_label.index = obj_to_label.index.astype(int)
+            obj_to_label = obj_to_label.to_dict()
+
+            mask = tifffile.imread(self.masks_dir / f'{sample_id}.tiff')
+            # TODO: remove all cell that do not have a label
+            labels = np.vectorize(lambda x: obj_to_label.get(x, x))(mask)
+
     def prepare_data(self) -> None:
 
         if self.stats_path.exists() and not self.force:
@@ -229,9 +254,10 @@ class DatasetFolder(L.LightningDataModule):
             logger.info(f'Preparing dataset...')
 
             ds = self.dataset
-            ds.setup(image_version='published', mask_version='published')
+            ds.setup(image_version='published', mask_version='annotated',
+                     metadata_version='published', load_metadata=True)
 
-            sample_ids = sorted(set(ds.images) & set(ds.masks))
+            sample_ids = sorted(set(ds.images))
             filter_ = ds.clinical.index.isin(sample_ids)
             ds.clinical[filter_].to_parquet(self.metadata_path, engine='fastparquet')
 
@@ -241,13 +267,14 @@ class DatasetFolder(L.LightningDataModule):
             for i, sample_id in enumerate(sample_ids, start=1):
                 logger.info(f"Processing {i}/{len(sample_ids)}")
 
-                mask = ds.masks[sample_id].data
                 image = ds.images[sample_id].data
                 image = normalize(image)
                 sr.update(image)
-
                 save_image(image, self.images_dir / f"{sample_id}.tiff")
-                save_mask(mask, self.masks_dir / f"{sample_id}.tiff")
+
+                if sample_id in ds.masks:
+                    mask = ds.masks[sample_id].data
+                    save_mask(mask, self.masks_dir / f"{sample_id}.tiff")
 
             pd.Series(sr.__dict__).to_json(self.stats_path)
 
@@ -338,3 +365,6 @@ class DatasetFolder(L.LightningDataModule):
             sampler=self.test_sampler,
             collate_fn=self.collate_fn
         )
+
+from ai4bmr_datasets import Cords2024
+self = DatasetFolder(dataset=Cords2024(), save_dir=Path('/users/amarti51/prometex/data/dinov1/datasets'), target_name='', split_version='')
