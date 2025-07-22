@@ -2,6 +2,7 @@ from lightning.pytorch.cli import SaveConfigCallback
 from lightning.pytorch.loggers import Logger
 import lightning as L
 from jsonargparse._namespace import Namespace
+from pathlib import Path
 
 def to_dict(item):
     item = vars(item) if isinstance(item, Namespace) else item
@@ -18,4 +19,8 @@ class LoggerSaveConfigCallback(SaveConfigCallback):
     def save_config(self, trainer: L.Trainer, pl_module: L.LightningModule, stage: str) -> None:
         if isinstance(trainer.logger, Logger):
             config = to_dict(self.config)
+
+            run_dir = Path(trainer.logger.save_dir) / trainer.logger.experiment.project / trainer.logger.experiment._attach_id
+            config['run_dir'] = str(run_dir)
+
             trainer.logger.experiment.config.update(config)
