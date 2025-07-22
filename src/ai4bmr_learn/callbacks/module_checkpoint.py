@@ -8,6 +8,9 @@ class ModuleCheckpoint(Callback):
         self.every_n_epochs = every_n_epochs
 
     def on_train_epoch_end(self, trainer, pl_module):
+        if trainer.fast_dev_run:
+            return
+
         epoch = trainer.current_epoch
         if (epoch + 1) % self.every_n_epochs != 0:
             return
@@ -21,7 +24,8 @@ class ModuleCheckpoint(Callback):
         for attr in self.module_name.split("."):
             module = getattr(module, attr)
 
+        # TODO: move to CPU before saving
         torch.save(module.state_dict(), path)
 
-        key = f'{self.module_name}_ckpt_path'
-        trainer.logger.experiment.config.update({key: str(path)})
+        # key = f'{self.module_name}_ckpt_path'
+        # trainer.logger.experiment.config.update({key: str(path)})

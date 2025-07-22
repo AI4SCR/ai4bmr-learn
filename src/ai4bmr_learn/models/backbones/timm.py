@@ -1,8 +1,8 @@
 import timm
 import torch
 import torch.nn as nn
-
-from timm.models.resnet import ResNet
+from pathlib import Path
+from loguru import logger
 
 # %% BACKBONE
 class Backbone(nn.Module):
@@ -16,6 +16,7 @@ class Backbone(nn.Module):
                  # ViT
                  # img_size: int = 224,
                  # dynamic_img_size: bool = True,
+                 ckpt_path: Path | None = None,
                  **kwargs
                  ):
         super().__init__()
@@ -26,6 +27,14 @@ class Backbone(nn.Module):
                                           in_chans=num_channels,
                                           pretrained=pretrained,
                                           **kwargs)
+
+        if ckpt_path is not None:
+            state_dict = torch.load(ckpt_path, weights_only=True, map_location=torch.device('cpu'))
+            missing, unexpected = self.backbone.load_state_dict(state_dict=state_dict, strict=True)
+            if missing:
+                logger.warning(f'checkpoint has missing keys: {missing}')
+            if unexpected:
+                logger.warning(f'checkpoint has unexpected keys: {unexpected}')
 
     def forward(self, x):
         x = self.backbone(x)
@@ -118,15 +127,15 @@ class MaskedAutoEncoder(nn.Module):
                  ):
         super().__init__()
 
-        model = timm.create_model(model_name=model_name,
+        self.backbone = timm.create_model(model_name=model_name,
                                           num_classes=num_classes,
                                           global_pool=global_pool,
                                           in_chans=num_channels,
                                           pretrained=pretrained,
                                           **kwargs)
 
-        self.tokenizer = Tokenizer(model, image_size=kwargs.get('img_size'))
-        self.encoder = MaskedEncoder(model, num_patches=self.tokenizer.num_tokens)
+        self.tokenizer = Tokenizer(self.backbone, image_size=kwargs.get('img_size'))
+        self.encoder = MaskedEncoder(self.backbone, num_patches=self.tokenizer.num_tokens)
 
     def forward(self, x):
         x = self.tokenizer(x)
