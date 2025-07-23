@@ -1,7 +1,7 @@
 
 def test_dataset_folder():
     from pathlib import Path
-    from ai4bmr_learn.datamodules.dataset_folder import DatasetFolder
+    from ai4bmr_learn.datamodules.prepare_dataset import DatasetFolder
     from torch.utils.data import DataLoader
     import ai4bmr_datasets
     from torchvision.transforms import v2
@@ -56,7 +56,7 @@ def test_dataset_folder():
 def test_dataset_folder_with_graph_collator():
     from ai4bmr_learn.collators.graph import Graph
     from pathlib import Path
-    from ai4bmr_learn.datamodules.dataset_folder import DatasetFolder
+    from ai4bmr_learn.datamodules.prepare_dataset import DatasetFolder
     import ai4bmr_datasets
     from tqdm import tqdm
 

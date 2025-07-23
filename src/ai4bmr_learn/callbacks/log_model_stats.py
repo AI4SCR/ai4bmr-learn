@@ -13,6 +13,10 @@ class LogModelStats(Callback):
 
     def on_fit_start(self, trainer, pl_module):
         from ai4bmr_learn.models.utils import collect_model_stats
+
+        if trainer.fast_dev_run:
+            return
+
         logger.info('Logging model statistics')
 
         stats = collect_model_stats(pl_module)
