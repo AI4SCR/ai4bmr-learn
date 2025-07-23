@@ -25,13 +25,13 @@ class ImageSamples(Callback):
         trainer.logger.log_image(key=f"image_samples/{name}", images=[grid])
 
     def on_validation_start(self, trainer, pl_module) -> None:
-        if trainer.current_epoch == 0 and not trainer.sanity_checking:
+        if trainer.current_epoch == 0 and not trainer.fast_dev_run:
             logger.info(f'Logging image samples from val [num_samples={self.num_samples}]')
             ds = trainer.val_dataloaders.dataset
             self.visualize(trainer=trainer, name='val', dataset=ds)
 
     def on_train_start(self, trainer, pl_module):
-        if trainer.sanity_checking:
+        if trainer.fast_dev_run:
             return
 
         logger.info(f'Logging image samples from train [num_samples={self.num_samples}]')
@@ -47,7 +47,7 @@ class DINOImageSamples(Callback):
         self.rng = np.random.default_rng(seed=seed)
 
     def on_train_start(self, trainer, pl_module):
-        if trainer.sanity_checking:
+        if not trainer.fast_dev_run:
             return
 
         logger.info(f'Logging DINO image samples [num_samples={self.num_samples}]')

@@ -24,6 +24,7 @@ def generate_splits(
         stratify: bool = False,
         target_column_name: str | None = None,
         encode_targets: bool = False,
+        nan_value: int = -1,
         encoded_target_col_name: str | None = 'target',
         use_filtered_targets_for_train: bool = False,
         include_targets: list[str] | None = None,
@@ -62,7 +63,7 @@ def generate_splits(
 
     if encode_targets:
         mapping = {v:k for k, v in enumerate(targets.unique())}
-        metadata.loc[:, encoded_target_col_name] = metadata[target_column_name].transform(lambda x: mapping.get(x, -1))
+        metadata.loc[:, encoded_target_col_name] = metadata[target_column_name].transform(lambda x: mapping.get(x, nan_value))
 
     if stratify and group_column_name is not None:
         splitter = StratifiedGroupKFold
@@ -112,19 +113,12 @@ def generate_splits(
         assert set(fit_indices).union(val_indices).union(test_indices) == set(indices)
 
     # sanity check
-    all_indices = set(fit_indices).union(val_indices).union(test_indices)
     assert set(train_indices).intersection(test_indices) == set()
     assert set(val_indices).intersection(test_indices) == set()
     assert set(fit_indices).intersection(test_indices) == set()
     assert set(fit_indices).intersection(val_indices) == set()
 
-    logger.info(
-        f"Split dataset (n={len(metadata)}) in:\n"
-        f"  num_test: {len(test_indices)}\n"
-        f"  num_train: {len(train_indices)}\n"
-        f"      num_fit: {len(fit_indices)}\n"
-        f"      num_val: {len(val_indices)}"
-    )
+    print_split_summary(metadata=metadata, fit_indices=fit_indices, test_indices=test_indices, val_indices=val_indices)
 
     # NOTE: we need to use the `.value` otherwise the column names is `Split.COLUM_NAME` after re-load
     metadata.loc[test_indices, Split.COLUMN_NAME.value] = Split.TEST.value
@@ -139,6 +133,31 @@ def generate_splits(
 
     return metadata
 
+
+from rich.console import Console
+from rich.table import Table
+
+def print_split_summary(metadata, test_indices, fit_indices, val_indices):
+    all_indices = set(fit_indices).union(val_indices).union(test_indices)
+
+    console = Console()
+    table = Table(title=f"Dataset Split (n={len(metadata)})")
+
+    # define columns
+    table.add_column("Split", justify="left", style="bold")
+    table.add_column("Count", justify="right")
+
+    # add rows
+    table.add_row("Test", str(len(test_indices)))
+    table.add_row("Fit",  str(len(fit_indices)))
+    table.add_row("Val",  str(len(val_indices)))
+    table.add_row("───",  "─" * max(len(str(len(all_indices))), 3))
+    table.add_row("Total", str(len(all_indices)))
+
+    console.print(table)
+
+# Example usage:
+# print_split_summary(metadata, test_indices, fit_indices, val_indices, all_indices)
 
 def create_nested_cv_datasets(
         *,
