@@ -6,21 +6,27 @@ import pandas as pd
 from loguru import logger
 from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold, KFold, GroupKFold, StratifiedShuffleSplit
 from torch.utils.data import Dataset
+from sklearn.preprocessing import LabelEncoder
 
 
 class Split(str, Enum):
     COLUMN_NAME = "split"
     TRAIN = "train"
+    FIT = "fit"
     VAL = "val"
     TEST = "test"
 
 
 def generate_splits(
         metadata: pd.DataFrame,
-        target_column_name: str = "target",
         test_size: float | None = None,
         val_size: float | None = None,
         stratify: bool = False,
+        target_column_name: str | None = None,
+        encode_targets: bool = False,
+        encoded_target_col_name: str | None = 'target',
+        use_filtered_targets_for_train: bool = False,
+        include_targets: list[str] | None = None,
         group_column_name: str | None = None,
         random_state: int | None = None,
         verbose: int = 1,
@@ -35,12 +41,28 @@ def generate_splits(
 
     metadata = metadata.copy()
     assert metadata.index.has_duplicates == False
-    num_samples = len(metadata)
+    indices_universe = metadata.index.values
 
-    if group_column_name is not None:
-        groups = metadata[group_column_name].values
+    # FILTER DATA
+    if target_column_name is not None:
+        assert target_column_name in metadata
+        targets = metadata[target_column_name]
+        filter_ = targets.notna().values
+        targets = targets[filter_]
+
+        if include_targets is not None:
+            filter_ = targets.isin(include_targets)
+            targets = targets[filter_]
+
+        indices = targets.index.values
     else:
-        groups = None
+        indices = indices_universe
+
+    num_samples = len(indices)
+
+    if encode_targets:
+        mapping = {v:k for k, v in enumerate(targets.unique())}
+        metadata.loc[:, encoded_target_col_name] = metadata[target_column_name].transform(lambda x: mapping.get(x, -1))
 
     if stratify and group_column_name is not None:
         splitter = StratifiedGroupKFold
@@ -55,51 +77,64 @@ def generate_splits(
     if test_size:
         split = splitter(n_splits=num_test_splits, shuffle=True, random_state=random_state)
 
-        y = metadata[target_column_name] if stratify else None
+        y = metadata.loc[indices, target_column_name] if stratify else None
+        groups = metadata.loc[indices, group_column_name].values if group_column_name is not None else None
         train_indices, test_indices = next(split.split(np.zeros(num_samples), y=y, groups=groups))
 
-        train_indices = metadata.index[train_indices]
-        test_indices = metadata.index[test_indices]
+        train_indices = indices[train_indices]
+        test_indices = indices[test_indices]
     else:
-        train_indices = metadata.index
+        train_indices = indices
         test_indices = []
 
-    # split train into train, val
+    # split train into fit, val
     if val_size:
-        train_metadata, test_metadata = (
-            metadata.loc[train_indices],
-            metadata.loc[test_indices],
-        )
+        train_metadata, test_metadata = metadata.loc[train_indices], metadata.loc[test_indices]
         num_train_samples = len(train_metadata)
 
         split = splitter(n_splits=num_val_splits, shuffle=True, random_state=random_state)
 
         y = train_metadata[target_column_name] if stratify else None
-        train_indices, val_indices = next(split.split(np.zeros(num_train_samples), y=y, groups=groups))
+        groups = train_metadata[group_column_name].values if group_column_name is not None else None
+        fit_indices, val_indices = next(split.split(np.zeros(num_train_samples), y=y, groups=groups))
 
-        train_indices = train_metadata.index[train_indices]
+        fit_indices = train_metadata.index[fit_indices]
         val_indices = train_metadata.index[val_indices]
     else:
         val_indices = []
+        fit_indices = train_indices
 
-    # sanity checks
-    assert set(train_indices).union(val_indices).union(test_indices) == set(metadata.index.values)
+    if use_filtered_targets_for_train:
+        excl_indices = set(indices_universe) - set(fit_indices).union(val_indices).union(test_indices)
+        fit_indices = list(set(fit_indices).union(excl_indices))
+        assert set(fit_indices).union(val_indices).union(test_indices) == set(indices_universe)
+    else:
+        assert set(fit_indices).union(val_indices).union(test_indices) == set(indices)
+
+    # sanity check
+    all_indices = set(fit_indices).union(val_indices).union(test_indices)
     assert set(train_indices).intersection(test_indices) == set()
     assert set(val_indices).intersection(test_indices) == set()
+    assert set(fit_indices).intersection(test_indices) == set()
+    assert set(fit_indices).intersection(val_indices) == set()
 
     logger.info(
-        f"Split dataset in:\n"
+        f"Split dataset (n={len(metadata)}) in:\n"
         f"  num_test: {len(test_indices)}\n"
         f"  num_train: {len(train_indices)}\n"
-        f"  num_val: {len(val_indices)}"
+        f"      num_fit: {len(fit_indices)}\n"
+        f"      num_val: {len(val_indices)}"
     )
 
     # NOTE: we need to use the `.value` otherwise the column names is `Split.COLUM_NAME` after re-load
     metadata.loc[test_indices, Split.COLUMN_NAME.value] = Split.TEST.value
-    metadata.loc[train_indices, Split.COLUMN_NAME.value] = Split.TRAIN.value
+    metadata.loc[fit_indices, Split.COLUMN_NAME.value] = Split.FIT.value
     metadata.loc[val_indices, Split.COLUMN_NAME.value] = Split.VAL.value
-    assert metadata[Split.COLUMN_NAME.value].isna().any() == False
-    dtype = pd.CategoricalDtype(categories=[Split.TRAIN.value, Split.VAL.value, Split.TEST.value], ordered=False)
+
+    if use_filtered_targets_for_train:
+        assert metadata[Split.COLUMN_NAME.value].isna().any() == False
+
+    dtype = pd.CategoricalDtype(categories=[Split.FIT.value, Split.VAL.value, Split.TEST.value], ordered=False)
     metadata[Split.COLUMN_NAME.value] = metadata[Split.COLUMN_NAME.value].astype(dtype)
 
     return metadata
@@ -130,7 +165,7 @@ def create_nested_cv_datasets(
         outer_metadata.to_parquet(save_dir / f"outer_fold={outer_fold}.parquet", engine="fastparquet")
 
         for inner_fold in range(num_inner_cv):
-            filter_ = outer_metadata[Split.COLUMN_NAME] == Split.TRAIN
+            filter_ = outer_metadata[Split.COLUMN_NAME] == Split.FIT
             inner_metadata = outer_metadata[filter_]
             inner_metadata = generate_splits(
                 inner_metadata,
