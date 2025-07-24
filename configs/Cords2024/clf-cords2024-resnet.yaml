@@ -14,6 +14,9 @@ trainer:
         log_model: false
         tags: ['classification', 'resnet']
   callbacks:
+    - class_path: ai4bmr_learn.callbacks.module_checkpoint.ModuleCheckpoint
+      init_args:
+        module_name: backbone.backbone
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: epoch

@@ -123,6 +123,7 @@ class DINOv1(L.LightningModule):
     def validation_step(self, batch, batch_idx):
         y = self.student_backbone(batch['image'])
         y = self.pool(y).cpu()
+
         batch['loss'] = 0
         batch['embedding'] = y
         return batch
@@ -133,6 +134,7 @@ class DINOv1(L.LightningModule):
     def predict_step(self, batch, batch_idx):
         y = self.student_backbone(batch['image'])
         y = self.pool(y).cpu()
+
         batch['embedding'] = y
         return batch
 

@@ -55,7 +55,7 @@ class Classifier(L.LightningModule):
         return y, logits, targets, loss
 
     def training_step(self, batch, batch_idx):
-        _, logits, targets, loss = self._shared_step(batch, batch_idx)
+        y, logits, targets, loss = self._shared_step(batch, batch_idx)
         batch_size = targets.shape[0]
 
         # metrics
@@ -64,7 +64,10 @@ class Classifier(L.LightningModule):
 
         # loss
         self.log("train_loss", loss.item(), on_epoch=True, batch_size=batch_size)
-        return loss
+
+        batch['loss'] = loss
+        batch['embedding'] = y.detach().cpu()
+        return batch
 
     def validation_step(self, batch, batch_idx):
         y, logits, targets, loss = self._shared_step(batch, batch_idx)
@@ -92,6 +95,10 @@ class Classifier(L.LightningModule):
         # loss
         self.log("test_loss_epoch", loss.item(), batch_size=batch_size)
 
+        batch['loss'] = loss
+        batch['embedding'] = y.detach().cpu()
+        return batch
+
     def predict_step(self, batch, batch_idx):
         images = batch['image']
         y = self.backbone(images)
@@ -101,6 +108,7 @@ class Classifier(L.LightningModule):
 
         batch["prediction"] = preds.detach().cpu()
         batch["logits"] = logits.detach().cpu()
+        batch['embedding'] = y.detach().cpu()
         return batch
 
     def configure_optimizers(self):

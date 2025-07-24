@@ -25,7 +25,6 @@ def generate_splits(
         target_column_name: str | None = None,
         encode_targets: bool = False,
         nan_value: int = -1,
-        encoded_target_col_name: str | None = 'target',
         use_filtered_targets_for_train: bool = False,
         include_targets: list[str] | None = None,
         group_column_name: str | None = None,
@@ -63,7 +62,8 @@ def generate_splits(
 
     if encode_targets:
         mapping = {v:k for k, v in enumerate(targets.unique())}
-        metadata.loc[:, encoded_target_col_name] = metadata[target_column_name].transform(lambda x: mapping.get(x, nan_value))
+        metadata.loc[:, target_column_name] = metadata[target_column_name].transform(lambda x: mapping.get(x, nan_value))
+        metadata = metadata.astype({target_column_name: int})
 
     if stratify and group_column_name is not None:
         splitter = StratifiedGroupKFold
@@ -77,7 +77,8 @@ def generate_splits(
     # split into train, test
     if test_size:
         split = splitter(n_splits=num_test_splits, shuffle=True, random_state=random_state)
-
+        y = np.array(['a'] * 5 + ['b'] * 5).astype('object')
+        next(split.split(np.zeros(10), y=y, groups=None))
         y = metadata.loc[indices, target_column_name] if stratify else None
         groups = metadata.loc[indices, group_column_name].values if group_column_name is not None else None
         train_indices, test_indices = next(split.split(np.zeros(num_samples), y=y, groups=groups))

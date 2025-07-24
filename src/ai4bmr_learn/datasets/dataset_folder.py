@@ -18,6 +18,7 @@ class DatasetFolder(Dataset):
                  target_name: str | None = None,
                  mask_version: str | None = None,
                  graph_version: str | None = None,
+                 annotation_version: str | None = None,
                  ):
         super().__init__()
 
@@ -34,13 +35,14 @@ class DatasetFolder(Dataset):
         else:
             self.sample_ids = self.metadata.index.tolist()
 
+        self.target_name = target_name
         self.targets = self.metadata[target_name] if target_name else None
 
         self.image_version = image_version
         if image_version is not None:
-            self.image_dir = self.dataset_dir / "images" / image_version
-            assert self.image_dir.exists() and self.image_dir.is_dir()
-            self.image_paths = {i.stem: i for i in self.image_dir.glob("*.tiff")}
+            self.images_dir = self.dataset_dir / "images" / image_version
+            assert self.images_dir.exists() and self.images_dir.is_dir()
+            self.image_paths = {i.stem: i for i in self.images_dir.glob("*.tiff")}
             assert set(self.sample_ids) <= set(self.image_paths)
 
         self.mask_version = mask_version
@@ -57,17 +59,22 @@ class DatasetFolder(Dataset):
             self.graph_paths = {i.stem: i for i in self.graphs_dir.glob("*.pt")}
             assert set(self.sample_ids) <= set(self.graph_paths)
 
+        self.annotation_version = annotation_version
+        if annotation_version is not None:
+            self.annotations_dir = self.dataset_dir / "annotations" / annotation_version
+            assert self.annotations_dir.exists() and self.annotations_dir.is_dir()
+            self.annotation_paths = {i.stem: i for i in self.annotations_dir.glob('*.tiff')}
+            # assert set(self.sample_ids) <= set(self.annotation_paths)
+
         self.to_image = lambda x: tv_tensors.Image(torch.tensor(x).float())
         self.to_mask = lambda x: tv_tensors.Mask(torch.tensor(x).long())
         self.transform = transform
 
     def __getitem__(self, key):
-        print('Hello', key)
         if isinstance(key, tuple):
             idx, sample_id = key
         else:
             sample_id = self.sample_ids[key]
-            print('sample_id', sample_id)
 
         item = {'sample_id': sample_id}
 
@@ -90,7 +97,19 @@ class DatasetFolder(Dataset):
 
         if self.targets is not None:
             target = self.targets[sample_id]
-            item['target'] = target
+            item['metadata'] = {self.target_name: target}
+
+        if self.annotation_version is not None:
+            if sample_id in self.annotation_paths:
+                anno_path = self.annotation_paths[sample_id]
+                anno = tifffile.imread(anno_path)
+                mask = True
+            else:
+                anno = torch.zeros_like(image)
+                mask = False
+
+            anno = self.to_mask(anno)
+            item['annotations'] = {self.annotation_version: {'annotation': anno, 'keep': mask}}
 
         if self.transform is not None:
             item = self.transform(item)
@@ -102,5 +121,3 @@ class DatasetFolder(Dataset):
 
     def setup(self):
         pass
-
-# from torch.utils.data._utils.fetch import

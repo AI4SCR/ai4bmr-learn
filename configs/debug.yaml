@@ -1,5 +1,7 @@
 trainer:
-  fast_dev_run: true
+  limit_train_batches: 3
+  limit_val_batches: 10
+  fast_dev_run: false
   logger:
     - class_path: lightning.pytorch.loggers.WandbLogger
       init_args:

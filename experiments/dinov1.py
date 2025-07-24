@@ -4,7 +4,7 @@ from lightning.pytorch import seed_everything
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from ai4bmr_learn.callbacks.LinearProbing import LinearProbing
-from ai4bmr_learn.callbacks.UMAP import UMAP
+from ai4bmr_learn.callbacks.umap import UMAP
 from ai4bmr_learn.datamodules.prepare_dataset import Cords2024
 from ai4bmr_learn.models.backbones.timm import Backbone
 from ai4bmr_learn.ssl.dinov1 import DINOv1
