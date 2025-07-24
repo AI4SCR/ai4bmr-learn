@@ -74,3 +74,7 @@ for args in sweep:
     if debug:
         args += ' --trainer.fast_dev_run=true'
     submit_job(args=args, debug=debug)
+
+# python clis/clf.py fit --config configs/Cords2024/dinov1-cords2024-resnet-ft.yaml --trainer.fast_dev_run=true
+# python clis/clf.py fit --config configs/Cords2024/dinov1-cords2024-vit-ft.yaml --trainer.fast_dev_run=true
+# python clis/clf.py fit --config configs/Cords2024/maev1-cords2024-vit-ft.yaml --trainer.fast_dev_run=true

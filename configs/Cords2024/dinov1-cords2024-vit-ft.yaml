@@ -14,22 +14,23 @@ trainer:
         log_model: false
         tags: ['classification', 'vit', 'finetune']
   callbacks:
+    - class_path: ai4bmr_learn.callbacks.log_model_stats.LogModelStats
     - class_path: ai4bmr_learn.callbacks.module_checkpoint.ModuleCheckpoint
       init_args:
         module_name: backbone.backbone
-    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
-      init_args:
-        logging_interval: epoch
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         monitor: &monitor val/f1-macro
         mode: &mode max  # "min" for loss, "max" for accuracy, etc.
         save_last: true
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: epoch
     - class_path: lightning.pytorch.callbacks.EarlyStopping
       init_args:
         monitor: *monitor
         mode: *mode
-        patience: 25
+        patience: 50
         min_delta: 0.001
     - class_path: ai4bmr_learn.callbacks.UMAP.UMAP
       init_args:
@@ -53,32 +54,47 @@ trainer:
   accumulate_grad_batches: 1
   gradient_clip_val: null
 data:
-  class_path: ai4bmr_learn.datamodules.dataset_folder.DatasetFolder
+  class_path: ai4bmr_learn.datamodules.dataset_collection.DatasetCollection
   init_args:
-    dataset:
-      class_path: ai4bmr_datasets.Cords2024
-    target_name: dx_name
-    save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/datasets
-    split_version: clf
+    datasets:
+      fit:
+        class_path: ai4bmr_learn.datasets.dataset_folder.DatasetFolder
+        init_args:
+          dataset_dir: /users/amarti51/prometex/data/dinov1/datasets/Cords2024
+          image_version: default
+          split_version: clf
+          split: fit
+          target_name: dx_name
+          transform: &train_transform
+            class_path: torchvision.transforms.v2.Compose
+            init_args:
+              transforms:
+                - class_path: torchvision.transforms.v2.ToDtype
+                  init_args:
+                    dtype: torch.float32
+                    scale: false
+                - class_path: torchvision.transforms.v2.RandomResizedCrop
+                  init_args:
+                    size: &image_size 224
+                    scale: [0.8, 1]
+                - class_path: ai4bmr_learn.transforms.wrappers.Normalize
+                  init_args:
+                    stats_path: /users/amarti51/prometex/data/dinov1/datasets/Cords2024/images/default/stats.json
+      val:
+        class_path: ai4bmr_learn.datasets.dataset_folder.DatasetFolder
+        init_args:
+          dataset_dir: /users/amarti51/prometex/data/dinov1/datasets/Cords2024
+          image_version: default
+          split_version: clf
+          split: val
+          target_name: dx_name
+          transform:
+            <<: *train_transform
     batch_size: &batch_size 32
-    num_workers: 16
+    num_workers: 8 # max 24
     persistent_workers: true
     shuffle: true
     pin_memory: true
-    train_transform: &train_transform
-      class_path: torchvision.transforms.v2.Compose
-      init_args:
-        transforms:
-          - class_path: torchvision.transforms.v2.ToDtype
-            init_args:
-              dtype: torch.float32
-              scale: false
-          - class_path: torchvision.transforms.v2.RandomResizedCrop
-            init_args:
-              size: &image_size 224
-              scale: [0.8, 1]
-    val_transform:
-      <<: *train_transform
 model:
   backbone:
     class_path: ai4bmr_learn.models.backbones.timm.Backbone

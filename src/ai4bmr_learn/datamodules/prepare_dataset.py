@@ -129,10 +129,13 @@ class PrepareDatasetFolder(L.LightningDataModule):
             return
 
         logger.info(f'Preparing metadata...')
+
         sample_ids = [i.stem for i in self.images_dir.glob('*.tiff')] + [i.stem for i in self.masks_dir.glob('*.tiff')]
         sample_ids = list(set(sample_ids))
         filter_ = self.dataset.clinical.index.isin(sample_ids)
-        self.dataset.clinical[filter_].to_parquet(self.metadata_path, engine='fastparquet')
+        metadata = self.dataset.clinical[filter_]
+        metadata = metadata.convert_dtypes()
+        metadata.to_parquet(self.metadata_path, engine='fastparquet')
 
     def prepare_masks(self):
         if self.masks_dir.exists() and not self.force:
@@ -192,6 +195,7 @@ from ai4bmr_datasets import Cords2024
 # generate_splits()
 splits_kwargs = dict(target_column_name='dx_name',
                      include_targets=['Adenocarcinoma', 'Squamous cell carcinoma'],
+                     # encode_targets=False,
                      use_filtered_targets_for_train=True)
 save_dir = Path('/users/amarti51/prometex/data/benchmarking/datasets')
 dm = PrepareDatasetFolder(dataset=Cords2024(), save_dir=save_dir,
@@ -206,7 +210,7 @@ dm = PrepareDatasetFolder(dataset=Cords2024(), save_dir=save_dir,
                           split_version='clf-target=dx_name', split_kwargs=splits_kwargs)
 dm.prepare_data()
 
-dm = self = PrepareDatasetFolder(dataset=Cords2024(), save_dir=save_dir,
-                          split_version='clf-target=dx_name', split_kwargs=splits_kwargs,
-                          annotation_version='annotated', annotation_col_name='cell_type')
-dm.prepare_data()
+# dm = self = PrepareDatasetFolder(dataset=Cords2024(), save_dir=save_dir,
+#                           split_version='clf-target=dx_name', split_kwargs=splits_kwargs,
+#                           annotation_version='annotated', annotation_col_name='cell_type')
+# dm.prepare_data()

@@ -125,8 +125,8 @@ wandb_logger = WandbLogger(project='dinov1',
                            save_dir=save_dir)
 
 # CALLBACKS
-from ai4bmr_learn.callbacks.ImageSamples import DINOImageSamples
-from ai4bmr_learn.callbacks.UMAP import UMAP
+from ai4bmr_learn.callbacks.image_samples import DINOImageSamples
+from ai4bmr_learn.callbacks.umap import UMAP
 lr_monitor = LearningRateMonitor(logging_interval="epoch")
 image_samples = DINOImageSamples(num_samples=5)
 umap = UMAP(label_key='target', log_before_train=True, log_every_num_epochs=10)
