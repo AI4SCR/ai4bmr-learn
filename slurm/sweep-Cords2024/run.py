@@ -14,7 +14,7 @@ def submit_job(args, debug: bool = False):
 #SBATCH --gres-flags=enforce-binding
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=24
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
 #SBATCH --time=02:00:00
 
@@ -64,9 +64,15 @@ sweep = [
     # MAEv1
     # "clis/maev1.py fit --config configs/Cords2024/maev1-cords2024-vit.yaml",
     # Finetune
-    "clis/clf.py fit --config configs/Cords2024/dinov1-cords2024-resnet-ft.yaml",
-    "clis/clf.py fit --config configs/Cords2024/dinov1-cords2024-vit-ft.yaml",
-    "clis/clf.py fit --config configs/Cords2024/maev1-cords2024-vit-ft.yaml",
+    # "clis/clf.py fit --config configs/Cords2024/dinov1-cords2024-resnet-ft.yaml",
+    "clis/clf.py fit --config configs/Cords2024/dinov1-cords2024-resnet-ft.yaml --model.lr=0.00001 --model.lr_backbone=0.000001 --model.weight_decay=0.0004",
+    # "clis/clf.py fit --config configs/Cords2024/dinov1-cords2024-resnet-ft.yaml --model.freeze_backbone=true",
+    # "clis/clf.py fit --config configs/Cords2024/dinov1-cords2024-vit-ft.yaml",
+    "clis/clf.py fit --config configs/Cords2024/dinov1-cords2024-vit-ft.yaml --model.lr=0.00001 --model.lr_backbone=0.000001 --model.weight_decay=0.08",
+    # "clis/clf.py fit --config configs/Cords2024/dinov1-cords2024-vit-ft.yaml --model.freeze_backbone=true",
+    # "clis/clf.py fit --config configs/Cords2024/maev1-cords2024-vit-ft.yaml",
+    "clis/clf.py fit --config configs/Cords2024/maev1-cords2024-vit-ft.yaml --model.lr=0.00001 --model.lr_backbone=0.000001 --model.weight_decay=0.08",
+    # "clis/clf.py fit --config configs/Cords2024/maev1-cords2024-vit-ft.yaml --model.freeze_backbone=true",
 ]
 
 debug = False

@@ -10,9 +10,9 @@ trainer:
     - class_path: lightning.pytorch.loggers.WandbLogger
       init_args:
         project: ssl-cords2024
-        save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/logs
+        save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/maev1/logs
         log_model: false
-        tags: ['dinov1', 'vit']
+        tags: ['maev1', 'vit']
   callbacks:
     - class_path: ai4bmr_learn.callbacks.log_model_stats.LogModelStats
     - class_path: ai4bmr_learn.callbacks.LinearProbing.LinearProbing
@@ -61,63 +61,50 @@ data:
   class_path: ai4bmr_learn.datamodules.dataset_folder.DatasetFolder
   init_args:
     dataset:
-      class_path: ai4bmr_datasets.Cords2024
-    target_name: dx_name
-    save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/dinov1/datasets
+      class_path: ai4bmr_datasets.PCa
+    target_name: disease_progr
+    save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/benchmarking/datasets
     split_version: ssl
     batch_size: &batch_size 8
     num_workers: 16 # max 24
     persistent_workers: true
     shuffle: true
     pin_memory: true
-    train_transform:
+    train_transform: &train_transform
       class_path: torchvision.transforms.v2.Compose
       init_args:
         transforms:
           - class_path: torchvision.transforms.v2.ToDtype
             init_args:
               dtype: torch.float32
-              scale: true
-          - class_path: ai4bmr_learn.transforms.dino_transform.DINOTransform
-            init_args:
-              global_crop_size: &image_size 224
-    val_transform:
-      class_path: torchvision.transforms.v2.Compose
-      init_args:
-        transforms:
-          - class_path: torchvision.transforms.v2.ToDtype
-            init_args:
-              dtype: torch.float32
-              scale: true
+              scale: false
           - class_path: torchvision.transforms.v2.RandomResizedCrop
             init_args:
-              size: *image_size
+              size: &image_size 224
               scale: [0.8, 1]
+    val_transform:
+      <<: *train_transform
 model:
-  backbone:
-    class_path: ai4bmr_learn.models.backbones.timm.Backbone
-    init_args:
-      model_name: vit_small_patch16_224
-      num_channels: 43
-      global_pool: token
-      pretrained: false
-    dict_kwargs:
-      img_size: 224
-      dynamic_img_size: true
-  max_epochs: *max_epochs
-  pooling: flatten
-  input_dim: 384
-  lr: 3e-3
-  global_batch_size: 128  # TODO: link this argument
-  warmup_lr_epochs: 3
-  weight_decay: 0.04  # 0.01-0.02 for small, default: 0.04
-  betas: [0.9, 0.999]  # (0.9, 0.95)
-  teacher_temp: 0.08  # 0.04 (default) – 0.07
-  warmup_teacher_temp_epochs: 3
-  momentum: 0.996  # 0.999
-  momentum_end: 1
-  freeze_last_layer: 1  # 3
-  norm_last_layer: true
+  class_path: ai4bmr_learn.ssl.maev1.MAEv1
+  init_args:
+    backbone:
+      class_path: ai4bmr_learn.models.backbones.timm.MaskedAutoEncoder
+      init_args:
+        model_name: vit_small_patch16_224
+        num_channels: 43
+        pretrained: false
+      dict_kwargs:
+        img_size: 224
+        dynamic_img_size: false
+    max_epochs: *max_epochs
+    pooling: cls
+    decoder_kwargs: null
+    mask_ratio: 0.75
+    lr: 0.00015
+    global_batch_size: 128
+    weight_decay: 0.04
+    betas: [0.9, 0.999]
+    warmup_lr_epochs: 5
 optimizer: null
 lr_scheduler: null
 ckpt_path: null

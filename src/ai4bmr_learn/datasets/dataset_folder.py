@@ -98,18 +98,19 @@ class DatasetFolder(Dataset):
         if self.targets is not None:
             target = self.targets[sample_id]
             item['metadata'] = {self.target_name: target}
+            item['target'] = target
 
         if self.annotation_version is not None:
             if sample_id in self.annotation_paths:
                 anno_path = self.annotation_paths[sample_id]
                 anno = tifffile.imread(anno_path)
-                mask = True
+                keep = True
             else:
                 anno = torch.zeros_like(image)
-                mask = False
+                keep = False
 
             anno = self.to_mask(anno)
-            item['annotations'] = {self.annotation_version: {'annotation': anno, 'keep': mask}}
+            item['annotations'] = {self.annotation_version: {'annotation': anno, 'keep': keep}}
 
         if self.transform is not None:
             item = self.transform(item)

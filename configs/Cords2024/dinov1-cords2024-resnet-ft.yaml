@@ -14,6 +14,7 @@ trainer:
         log_model: false
         tags: ['classification', 'resnet', 'finetune']
   callbacks:
+    - class_path: ai4bmr_learn.callbacks.cache.ValidationCache
     - class_path: ai4bmr_learn.callbacks.log_model_stats.LogModelStats
     - class_path: ai4bmr_learn.callbacks.module_checkpoint.ModuleCheckpoint
       init_args:
@@ -57,7 +58,7 @@ data:
     datasets:
       fit:
         class_path: ai4bmr_learn.datasets.dataset_folder.DatasetFolder
-        init_args:
+        init_args: &fit_args
           dataset_dir: /users/amarti51/prometex/data/dinov1/datasets/Cords2024
           image_version: default
           split_version: clf
@@ -73,7 +74,7 @@ data:
                     scale: false
                 - class_path: torchvision.transforms.v2.RandomResizedCrop
                   init_args:
-                    size: &image_size 224
+                    size: 224
                     scale: [0.8, 1]
                 - class_path: ai4bmr_learn.transforms.wrappers.Normalize
                   init_args:
@@ -81,15 +82,10 @@ data:
       val:
         class_path: ai4bmr_learn.datasets.dataset_folder.DatasetFolder
         init_args:
-          dataset_dir: /users/amarti51/prometex/data/dinov1/datasets/Cords2024
-          image_version: default
-          split_version: clf
+          << : *fit_args
           split: val
-          target_name: dx_name
-          transform:
-            <<: *train_transform
     batch_size: &batch_size 32
-    num_workers: 8 # max 24
+    num_workers: 16 # max 24
     persistent_workers: true
     shuffle: true
     pin_memory: true
