@@ -15,6 +15,7 @@ trainer:
         tags: ['classification', 'resnet']
   callbacks:
     - class_path: ai4bmr_learn.callbacks.cache.ValidationCache
+    - class_path: ai4bmr_learn.callbacks.log_model_stats.LogModelStats
     - class_path: ai4bmr_learn.callbacks.linear_probing.LinearProbing
       init_args:
         target_key: target
@@ -24,14 +25,14 @@ trainer:
     - class_path: ai4bmr_learn.callbacks.module_checkpoint.ModuleCheckpoint
       init_args:
         module_name: backbone.backbone
-    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
-      init_args:
-        logging_interval: epoch
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         monitor: &monitor val/f1-macro
         mode: &mode max  # "min" for loss, "max" for accuracy, etc.
         save_last: true
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: epoch
     - class_path: lightning.pytorch.callbacks.EarlyStopping
       init_args:
         monitor: *monitor

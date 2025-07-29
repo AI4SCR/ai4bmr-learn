@@ -36,7 +36,7 @@ trainer:
         mode: min
         patience: 150
         min_delta: 0.001
-    - class_path: ai4bmr_learn.callbacks.UMAP.UMAP
+    - class_path: ai4bmr_learn.callbacks.umap.UMAP
       init_args:
         label_key: target
         run_before_train: true
