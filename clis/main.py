@@ -2,7 +2,6 @@ import lightning
 import torch
 from lightning.pytorch.cli import LightningCLI
 
-from ai4bmr_learn.supervised.classification import Classifier
 from dotenv import load_dotenv
 from ai4bmr_learn.utils.utils import setup_wandb_auth
 from ai4bmr_learn.callbacks.save_config import LoggerSaveConfigCallback

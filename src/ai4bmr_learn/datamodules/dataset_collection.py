@@ -1,6 +1,7 @@
 import lightning as L
 from torch.utils.data import DataLoader, Dataset
 from torch import get_num_threads
+from typing import Any
 
 class DatasetCollection(L.LightningDataModule):
 
@@ -12,7 +13,7 @@ class DatasetCollection(L.LightningDataModule):
                  persistent_workers: bool = True,
                  shuffle: bool = True,
                  pin_memory: bool = True,
-                 collate_fn=None
+                 collate_fn: Any | None = None
                  ):
         super().__init__()
 
@@ -41,15 +42,15 @@ class DatasetCollection(L.LightningDataModule):
 
     def setup(self, stage: str | None = None):
 
-        if stage == 'fit' or stage is None:
-            if hasattr(self.fit_set, 'setup'):
-                self.fit_set.setup()
-        if stage == 'validate' or stage is None:
-            if hasattr(self.val_set, 'setup'):
-                self.val_set.setup()
-        if stage == 'test' or stage is None:
-            if hasattr(self.test_set, 'setup'):
-                self.test_set.setup()
+        # if stage == 'fit' or stage is None:
+        if hasattr(self.fit_set, 'setup'):
+            self.fit_set.setup()
+        # if stage == 'validate' or stage is None:
+        if hasattr(self.val_set, 'setup'):
+            self.val_set.setup()
+        # if stage == 'test' or stage is None:
+        if hasattr(self.test_set, 'setup'):
+            self.test_set.setup()
 
     def train_dataloader(self):
         kwargs = self.dl_kwargs.copy()
