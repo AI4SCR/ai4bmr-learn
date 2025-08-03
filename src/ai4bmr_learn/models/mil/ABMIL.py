@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from einops import rearrange
-
+from glom import glom
 
 # %%
 class ABMIL(nn.Module):
@@ -212,6 +212,8 @@ class ABMILModule(L.LightningModule):
         pre_attention_dim=None,
         post_attention=False,
         class_weight: torch.tensor = None,
+        batch_key: str | None = None,
+        target_key: str = 'target'
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -229,6 +231,8 @@ class ABMILModule(L.LightningModule):
             post_attention=post_attention,
         )
 
+        self.batch_key = batch_key
+        self.target_key = target_key
         self.class_weight = class_weight
         self.criterion = nn.CrossEntropyLoss(weight=class_weight)
 
@@ -240,8 +244,10 @@ class ABMILModule(L.LightningModule):
         self.test_metrics = metrics.clone(prefix="test/")
 
     def _shared_step(self, batch, batch_idx):
+        data = glom(batch, self.batch_key) if self.batch_key is not None else batch
         logits = self.model(batch)
-        targets = batch["target"].long()
+
+        targets = glom(batch, self.target_key).long()
 
         loss = self.criterion(logits, targets)
 

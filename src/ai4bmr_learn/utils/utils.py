@@ -33,12 +33,12 @@ def get_batch_size(iterable, n: int):
     return (len(iterable) + n - 1) // n
 
 
-def setup_wandb_auth():
+def setup_wandb_auth(api_key_name: str = 'WANDB_API_KEY_ETHZ'):
     import os
     import netrc
 
     # Try environment variable first
-    api_key = os.getenv("WANDB_API_KEY_ETHZ")
+    api_key = os.getenv(api_key_name)
 
     if api_key is None:
         try:

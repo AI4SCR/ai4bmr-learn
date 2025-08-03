@@ -7,7 +7,7 @@ trainer:
   num_nodes: 1
   precision: null
   logger:
-    - class_path: lightning.pytorch.loggers.WandbLogger
+    - class_path: ai4bmr_learn.logging.loggers.WandbLogger
       init_args:
         project: clf-imagenet
         save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/logs
