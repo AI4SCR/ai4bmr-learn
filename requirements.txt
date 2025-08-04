@@ -1,0 +1,12 @@
+torch
+torchinfo
+numpy
+pandas
+geopandas
+timm
+lightning
+anndata
+helical
+glom
+scikit-image
+scikit-learn
