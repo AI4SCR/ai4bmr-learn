@@ -26,7 +26,7 @@ def test_geneformer_collate():
 
     batch = collator([item1, item2])
 
-    assert 'expression' not in batch
+    assert 'expression' in batch
     assert 'attention_masks' in batch['expression']
     assert 'input_ids' in batch['expression']
     assert batch['expression']['input_ids'].shape[:2] == (2, (224 // 16) ** 2)  # pyright: ignore
