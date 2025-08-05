@@ -59,10 +59,12 @@ class DatasetCollection(L.LightningDataModule):
 
     def val_dataloader(self):
         kwargs = self.dl_kwargs.copy()
+        kwargs.update({'shuffle': False})
         kwargs.update(self.dataloaders.get('val', {}))
         return DataLoader(self.val_set, **kwargs)
 
     def test_dataloader(self):
         kwargs = self.dl_kwargs.copy()
+        kwargs.update({'shuffle': False})
         kwargs.update(self.dataloaders.get('test', {}))
         return DataLoader(self.test_set, **kwargs)
