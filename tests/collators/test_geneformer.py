@@ -33,7 +33,7 @@ def test_geneformer_collate():
 
     from ai4bmr_learn.models.encoder.geneformer import GeneformerHelical
     import torch
-    
+
     model = GeneformerHelical(device='cpu')
     out = model.forward(**batch['expression'])
     out = torch.nanmean(out, dim=(1, 2))
