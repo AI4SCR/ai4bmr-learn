@@ -32,7 +32,9 @@ class BaseTabularDataModule(L.LightningDataModule):
 
 
 # %%
-from ai4bmr_learn.datasets.MIL import MILDataset
+from ai4bmr_learn.datasets.mil import MILDataset
+
+
 class BaseMILDataModule(L.LightningDataModule):
 
     def __init__(
