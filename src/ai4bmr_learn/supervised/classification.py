@@ -64,10 +64,10 @@ class Classifier(L.LightningModule):
 
         # metrics
         self.train_metrics(logits, targets)
-        self.log_dict(self.train_metrics, on_epoch=True, on_step=False, batch_size=batch_size)
+        self.log_dict(self.train_metrics, batch_size=batch_size)
 
         # loss
-        self.log("train_loss", loss.item(), on_epoch=True, batch_size=batch_size)
+        self.log("train_loss", loss.item(), batch_size=batch_size)
 
         batch['loss'] = loss
         batch['embedding'] = y.detach().cpu()
@@ -79,10 +79,10 @@ class Classifier(L.LightningModule):
 
         # metrics
         self.valid_metrics(logits, targets)
-        self.log_dict(self.valid_metrics, on_epoch=True, on_step=False, batch_size=batch_size)
+        self.log_dict(self.valid_metrics, batch_size=batch_size)
 
         # loss
-        self.log("val_loss_epoch", loss.item(), on_epoch=True, batch_size=batch_size)
+        self.log("val_loss", loss.item(), batch_size=batch_size)
 
         batch['loss'] = loss
         batch['embedding'] = y.detach().cpu()
@@ -94,10 +94,10 @@ class Classifier(L.LightningModule):
 
         # metrics
         self.test_metrics(logits, targets)
-        self.log_dict(self.test_metrics, on_epoch=True, on_step=False, batch_size=batch_size)
+        self.log_dict(self.test_metrics, batch_size=batch_size)
 
         # loss
-        self.log("test_loss_epoch", loss.item(), batch_size=batch_size)
+        self.log("test_loss", loss.item(), batch_size=batch_size)
 
         batch['loss'] = loss
         batch['embedding'] = y.detach().cpu()
