@@ -39,7 +39,7 @@ class Classifier(L.LightningModule):
         self.criterion = nn.CrossEntropyLoss()
 
         # METRICS
-        # task = "multiclass" if num_classes > 2 else "binary"
+        self.num_classes = num_classes
         metrics = get_metric_collection(num_classes=num_classes)
         self.train_metrics = metrics.clone(prefix="train/")
         self.valid_metrics = metrics.clone(prefix="val/")
@@ -62,6 +62,7 @@ class Classifier(L.LightningModule):
         batch_size = targets.shape[0]
 
         # metrics
+        logits = logits.argmax(dim=1) if self.num_classes == 2 else logits
         self.train_metrics(logits, targets)
         self.log_dict(self.train_metrics, batch_size=batch_size)
 
@@ -77,6 +78,7 @@ class Classifier(L.LightningModule):
         batch_size = targets.shape[0]
 
         # metrics
+        logits = logits.argmax(dim=1) if self.num_classes == 2 else logits
         self.valid_metrics(logits, targets)
         self.log_dict(self.valid_metrics, on_step=False, on_epoch=True, batch_size=batch_size)
 
@@ -92,6 +94,7 @@ class Classifier(L.LightningModule):
         batch_size = targets.shape[0]
 
         # metrics
+        logits = logits.argmax(dim=1) if self.num_classes == 2 else logits
         self.test_metrics(logits, targets)
         self.log_dict(self.test_metrics, batch_size=batch_size)
 
