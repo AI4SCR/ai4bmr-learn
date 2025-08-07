@@ -46,29 +46,96 @@ class MIL(L.LightningModule):
         self.batch_key = batch_key
         self.target_key = target_key
 
-    def shared_step(self, batch):
+    def shared_step(self, batch, batch_idx: int | None = None):
         data = glom(batch, self.batch_key)
+        assert isinstance(data, list) or isinstance(data, torch.Tensor)
         targets = glom(batch, self.target_key)
+        targets = torch.unique(targets, dim=1).squeeze()  # NOTE: we expect [B, M], #TODO: discuss this choice
+        assert targets.ndim == 1
 
         B, M, *D = data.shape
-        # data = data.flatten(end_dim=1)
-        logits = []
+        zs = []
+        # NOTE: we need to feed the bags separately to the backbone, since they are designed for [B, D] inputs
         for bag in data:
             z = self.backbone(bag)
             z = self.pool(z)
-            z = self.head(z)
-            logits.append(z)
-        logits = torch.cat(logits)
+            zs.append(z)
+        zs = torch.stack(zs)  # B, M, R
+        assert zs.shape[0] == B and zs.shape[1] == M
 
+        logits = self.head(zs)
         loss = self.criterion(logits, targets)
 
-        return targets, logits, loss
+        return zs, logits, targets, loss
 
     def training_step(self, batch, batch_idx):
-        targets, logits, loss = self.shared_step(batch)  # data: B, M, D
+        z, logits, targets, loss = self.shared_step(batch)
+        batch_size = targets.shape[0]
+
+        # metrics
+        self.train_metrics(logits, targets)
+        self.log_dict(self.train_metrics, batch_size=batch_size)
+
+        # loss
+        self.log("train_loss", loss, batch_size=batch_size)
+
+        batch['loss'] = loss
+        batch['embedding'] = z.detach().cpu()
+        return batch
 
     def validation_step(self, batch, batch_idx):
-        pass
+        z, logits, targets, loss = self.shared_step(batch)
+        batch_size = targets.shape[0]
+
+        # metrics
+        self.valid_metrics(logits, targets)
+        self.log_dict(self.valid_metrics, batch_size=batch_size)
+
+        # loss
+        self.log("val_loss", loss, batch_size=batch_size)
+
+        batch['loss'] = loss
+        batch['embedding'] = z.detach().cpu()
+        return batch
+
+    def test_step(self, batch, batch_idx):
+        z, logits, targets, loss = self.shared_step(batch, batch_idx)
+        batch_size = targets.shape[0]
+
+        # metrics
+        self.test_metrics(logits, targets)
+        self.log_dict(self.test_metrics, batch_size=batch_size)
+
+        # loss
+        self.log("test_loss", loss, batch_size=batch_size)
+
+        batch['loss'] = loss
+        batch['embedding'] = z.detach().cpu()
+        return batch
+
+    def predict_step(self, batch, batch_idx):
+        data = glom(batch, self.batch_key)
+
+        z = []
+        for bag in data:
+            z.append(self.pool(self.backbone(bag)))
+        z = torch.stack(z)
+
+        logits = self.head(z)
+        preds = logits.argmax(dim=1)
+
+        batch["prediction"] = preds.detach().cpu()
+        batch["logits"] = logits.detach().cpu()
+        batch['embedding'] = z.detach().cpu()
+        return batch
+
+    def configure_optimizers(self):
+        optimizer = optim.Adam([
+            {'params': self.head.parameters(), 'lr': self.lr},
+            {'params': filter(lambda p: p.requires_grad, self.backbone.parameters()), 'lr': self.lr_backbone}
+        ], weight_decay=self.weight_decay)
+
+        return optimizer
 
     def pool(self, x):
         if self.pooling is None:
