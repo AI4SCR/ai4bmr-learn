@@ -103,7 +103,7 @@ class CellTypeProbing(Callback):
 
         scores = {k: v.mean() for k,v in scores.items()}
 
-        scores = {f'linear_regression_probing/{k}': v for k,v in scores.items()}
+        scores = {f'cell_type_probing/{k}': v for k,v in scores.items()}
         scores["epoch"] = trainer.current_epoch
 
         if not trainer.fast_dev_run:
