@@ -14,7 +14,7 @@ class MIL(L.LightningModule):
                  lr_backbone: float = 1e-4,
                  weight_decay: float = 0.01,
                  freeze_backbone: bool = False,
-                 pooling: str = 'flatten',
+                 pooling: str | None = None,
                  batch_key: str | None = 'image',
                  target_key: str = 'label',
                  ):

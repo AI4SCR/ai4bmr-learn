@@ -12,7 +12,8 @@ setup_wandb_auth()
 torch.set_float32_matmul_precision('medium')
 
 def cli_main():
-    cli = LightningCLI(lightning.LightningModule, lightning.LightningDataModule, subclass_mode_data=True,
+    cli = LightningCLI(lightning.LightningModule, lightning.LightningDataModule,
+                       subclass_mode_data=True, subclass_mode_model=True,
                        save_config_callback=LoggerSaveConfigCallback, save_config_kwargs={"save_to_log_dir": False})
 
 
