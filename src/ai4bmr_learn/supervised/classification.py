@@ -3,7 +3,6 @@ import torch.optim as optim
 import torch.nn as nn
 from ai4bmr_learn.metrics.classification import get_metric_collection
 from glom import glom
-from sklearn.metrics import accuracy_score, recall_score
 
 class Classifier(L.LightningModule):
     def __init__(self,
