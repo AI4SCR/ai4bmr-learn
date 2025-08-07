@@ -1,3 +1,4 @@
+import logging
 from typing import Callable
 
 import pandas as pd
@@ -26,6 +27,7 @@ class MIL(Dataset):
         pass
 
 from torch.utils.data._utils.collate import collate, default_collate_fn_map
+import pickle
 
 class MILFromDataset(Dataset):
     def __init__(self, dataset: Dataset, collator: Callable | None | bool = None,
@@ -48,6 +50,9 @@ class MILFromDataset(Dataset):
         self.random_state = random_state
         self.rng = np.random.RandomState(random_state)
 
+        if self.num_instances is not None and self.shuffle and self.cache_dir is not None:
+            logging.warning(f'Using cache with `shuffle=True` and num_instance=True`. A random subset of instances will be cached once.')
+
     def setup(self):
         if hasattr(self.dataset, "setup"):
             self.dataset.setup()
@@ -60,8 +65,28 @@ class MILFromDataset(Dataset):
         if self.cache_dir is not None:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
 
+    def cache_bag(self, bag, id: str):
+        with open(self.cache_dir / f"{id}.pkl", "wb") as f:
+            pickle.dump(bag, f)
+
+    def load_bag(self, id: str):
+        with open(self.cache_dir / f"{id}.pkl", "rb") as f:
+            bag = pickle.load(f)
+        return bag
+
+    def has_cache(self, id: str):
+        return (self.cache_dir / f"{id}.pkl").exists()
+
+    def invalidate_cache(self):
+        import shutil
+        shutil.rmtree(self.cache_dir)
+
     def __getitem__(self, idx):
         bag_id = self.bag_ids[idx]
+
+        if self.cache_dir is not None and self.has_cache(bag_id):
+            return self.load_bag(bag_id)
+
         bag_idc = np.flatnonzero(np.array(self.dataset.bag_ids) == bag_id)
 
         if self.shuffle:
@@ -70,17 +95,23 @@ class MILFromDataset(Dataset):
         num_instances = self.num_instances or len(bag_idc)
         bag_idc = bag_idc[:num_instances]
 
-        instances = []
+        bag = []
         for idx in tqdm(bag_idc):
             item = self.dataset[idx]
             if self.bag_id_key is not None:
                 assert item[self.bag_id_key] == bag_id
-            instances.append(item)
+            bag.append(item)
 
         if self.collator is not False:
-            instances = self.collator(instances)
+            bag = self.collator(bag)
 
-        return instances
+        if isinstance(bag, dict):
+            bag['bag_id'] = bag_id
+
+        if self.cache_dir is not None:
+            self.cache_bag(bag, bag_id)
+
+        return bag
 
     def __len__(self):
         return len(self.bag_ids)

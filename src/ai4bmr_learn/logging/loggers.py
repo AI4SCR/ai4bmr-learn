@@ -1,8 +1,8 @@
 from lightning.pytorch.loggers import wandb
 import os
 
-# from dotenv import load_dotenv
-# load_dotenv()
+from dotenv import load_dotenv
+load_dotenv()
 
 class WandbLogger(wandb.WandbLogger):
 
@@ -12,4 +12,4 @@ class WandbLogger(wandb.WandbLogger):
         if base_url_nameL is not None:
             os.environ['WANDB_BASE_URL'] = os.environ[api_key_name]
 
-        super.__init__(**kwargs)
+        super().__init__(**kwargs)
