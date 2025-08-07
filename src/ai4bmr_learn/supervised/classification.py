@@ -3,6 +3,7 @@ import torch.optim as optim
 import torch.nn as nn
 from ai4bmr_learn.metrics.classification import get_metric_collection
 from glom import glom
+from sklearn.metrics import accuracy_score, recall_score
 
 class Classifier(L.LightningModule):
     def __init__(self,
@@ -44,10 +45,8 @@ class Classifier(L.LightningModule):
         self.valid_metrics = metrics.clone(prefix="val/")
         self.test_metrics = metrics.clone(prefix="test/")
 
-    def _shared_step(self, batch, batch_idx):
-        # print(batch.keys())
+    def shared_step(self, batch, batch_idx):
         data = glom(batch, self.batch_key) if self.batch_key is not None else batch
-        # data.to(self.device)
 
         y = self.backbone(data)
         y = self.pool(y)
@@ -59,7 +58,7 @@ class Classifier(L.LightningModule):
         return y, logits, targets, loss
 
     def training_step(self, batch, batch_idx):
-        y, logits, targets, loss = self._shared_step(batch, batch_idx)
+        y, logits, targets, loss = self.shared_step(batch, batch_idx)
         batch_size = targets.shape[0]
 
         # metrics
@@ -67,29 +66,29 @@ class Classifier(L.LightningModule):
         self.log_dict(self.train_metrics, batch_size=batch_size)
 
         # loss
-        self.log("train_loss", loss.item(), batch_size=batch_size)
+        self.log("loss/train", loss, batch_size=batch_size)
 
         batch['loss'] = loss
         batch['embedding'] = y.detach().cpu()
         return batch
 
     def validation_step(self, batch, batch_idx):
-        y, logits, targets, loss = self._shared_step(batch, batch_idx)
+        y, logits, targets, loss = self.shared_step(batch, batch_idx)
         batch_size = targets.shape[0]
 
         # metrics
         self.valid_metrics(logits, targets)
-        self.log_dict(self.valid_metrics, batch_size=batch_size)
+        self.log_dict(self.valid_metrics, on_step=False, on_epoch=True, batch_size=batch_size)
 
         # loss
-        self.log("val_loss", loss.item(), batch_size=batch_size)
+        self.log("loss/val", loss, batch_size=batch_size)
 
         batch['loss'] = loss
         batch['embedding'] = y.detach().cpu()
         return batch
 
     def test_step(self, batch, batch_idx):
-        y, logits, targets, loss = self._shared_step(batch, batch_idx)
+        y, logits, targets, loss = self.shared_step(batch, batch_idx)
         batch_size = targets.shape[0]
 
         # metrics
@@ -97,7 +96,7 @@ class Classifier(L.LightningModule):
         self.log_dict(self.test_metrics, batch_size=batch_size)
 
         # loss
-        self.log("test_loss", loss.item(), batch_size=batch_size)
+        self.log("loss/test", loss, batch_size=batch_size)
 
         batch['loss'] = loss
         batch['embedding'] = y.detach().cpu()
