@@ -6,6 +6,7 @@ from loguru import logger
 
 # %% BACKBONE
 class Backbone(nn.Module):
+    """A wrapper around timm.create_model to create a backbone model."""
 
     def __init__(self,
                  model_name: str = 'vit_small_patch16_224',
@@ -19,6 +20,17 @@ class Backbone(nn.Module):
                  ckpt_path: Path | None = None,
                  **kwargs
                  ):
+        """Initializes the Backbone model.
+
+        Args:
+            model_name: The name of the timm model to create.
+            num_channels: The number of input channels.
+            num_classes: The number of output classes. If 0, the classifier is removed.
+            pretrained: Whether to load pretrained weights from timm.
+            global_pool: The type of global pooling to use in the model.
+            ckpt_path: Optional path to a checkpoint file to load.
+            **kwargs: Additional arguments to pass to timm.create_model.
+        """
         super().__init__()
 
         self.backbone = timm.create_model(model_name=model_name,
@@ -48,7 +60,14 @@ from ai4bmr_learn.models.utils import get_at_index
 
 
 class Tokenizer(BaseTokenizer):
+    """Image tokenizer using the patch embedding layer of a Vision Transformer."""
     def __init__(self, model, image_size: int):
+        """Initializes the Tokenizer.
+
+        Args:
+            model: A timm Vision Transformer model.
+            image_size: The size of the input image (assumed to be square).
+        """
         kernel_size = model.patch_embed.proj.kernel_size
         dim = model.patch_embed.proj.out_channels
         num_channels = model.patch_embed.proj.in_channels
@@ -78,7 +97,18 @@ class Tokenizer(BaseTokenizer):
 
 
 class MaskedEncoder(BaseMaskedEncoder):
+    """A masked encoder for a Vision Transformer.
+
+    This encoder processes only a subset of the input tokens, as required for
+    masked autoencoding. It removes the classification head from the model.
+    """
     def __init__(self, model, num_patches: int):
+        """Initializes the MaskedEncoder.
+
+        Args:
+            model: A timm Vision Transformer model.
+            num_patches: The total number of patches in the image.
+        """
         self.num_patches = num_patches
         self.num_prefix_tokens = model.num_prefix_tokens
         self.dim = model.embed_dim
@@ -113,6 +143,7 @@ class MaskedEncoder(BaseMaskedEncoder):
 
 
 class MaskedAutoEncoder(nn.Module):
+    """A Masked Autoencoder (MAE) model built from a timm Vision Transformer."""
 
     def __init__(self,
                  model_name: str = 'vit_small_patch16_224',
@@ -125,6 +156,21 @@ class MaskedAutoEncoder(nn.Module):
                  # dynamic_img_size: bool = True,
                  **kwargs
                  ):
+        """Initializes the MaskedAutoEncoder model.
+
+        This constructor creates a Masked Autoencoder (MAE) model from a
+        timm Vision Transformer. It instantiates a tokenizer and a masked
+        encoder.
+
+        Args:
+            model_name: The name of the timm model to create.
+            num_channels: The number of input channels.
+            num_classes: The number of output classes.
+            pretrained: Whether to load pretrained weights.
+            global_pool: The type of global pooling to use.
+            **kwargs: Additional arguments to pass to timm.create_model.
+                      Note that `img_size` is an important argument to pass here.
+        """
         super().__init__()
 
         self.backbone = timm.create_model(model_name=model_name,
