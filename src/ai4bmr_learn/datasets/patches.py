@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 from typing import Callable
+from torchvision import tv_tensors
+from PIL.Image import Image
 
 import pandas as pd
 import torch
@@ -8,8 +10,45 @@ from loguru import logger
 from torch.utils.data import Dataset
 
 from ai4bmr_learn.data.splits import Split
-from ai4bmr_learn.data_models.Coordinate_v2 import PatchCoordinate
-from ai4bmr_learn.utils.images import get_patch
+from ai4bmr_learn.data_models.Coordinate_v2 import PatchCoordinate, SlideCoordinate
+from ai4bmr_learn.utils import io
+import numpy as np
+
+from torchvision.transforms import v2
+from ai4bmr_learn.utils.utils import pair
+
+
+def get_patch(coord: PatchCoordinate) -> tv_tensors.Image:
+    img_path = Path(coord.image_path)
+
+    x, y = coord.x, coord.y
+    kernel_height, kernel_width = pair(coord.kernel_size)
+    level = coord.level if hasattr(coord, 'level') else 0
+
+    patch = io.read_region(img_path=img_path, x=x, y=y, width=kernel_width, height=kernel_height, level=level)
+
+    if isinstance(coord, SlideCoordinate):
+        patch_height, patch_width = pair(coord.patch_size)
+        scale_factor = coord.scale_factor
+
+        assert np.isclose(kernel_width, patch_width * scale_factor)
+        assert np.isclose(kernel_height, patch_height * scale_factor)
+        assert np.isclose(coord.mpp * scale_factor, coord.patch_mpp)
+        assert patch_height == round(kernel_height / scale_factor)
+        assert patch_width == round(kernel_width / scale_factor)
+
+        transform = v2.Compose([
+            v2.ToImage(),
+            v2.Resize((patch_height, patch_width)),
+        ])
+
+    else:
+        transform = v2.Compose([
+            v2.ToImage(),
+        ])
+
+    patch = transform(patch)
+    return patch
 
 
 class Patches(Dataset):
@@ -21,6 +60,7 @@ class Patches(Dataset):
         split: str | None = None,
         transform: Callable | None = None,
         cache_dir: Path | None = None,
+        drop_nan_columns: bool = False,
     ):
         """
         Args:
@@ -43,6 +83,7 @@ class Patches(Dataset):
             self.metadata_path = Path(metadata_path).expanduser().resolve()
             assert self.metadata_path.exists(), f'metadata_path {self.metadata_path} does not exist'
         self.metadata: pd.DataFrame | None = None
+        self.drop_nan_columns = drop_nan_columns
         self.split = split
 
         # CACHE
@@ -60,13 +101,11 @@ class Patches(Dataset):
             self.coords = [PatchCoordinate(**i) for i in json.load(f)]
             self.coord_ids = [i.uuid for i in self.coords]
             # FIX: this is not safe if coords for different location with the same name are loaded.
-            self.image_ids = [i.image_path.stem for i in self.coords]
+            self.image_ids = [Path(i.image_path).stem for i in self.coords]
             logger.info(f'Loaded {len(self.coords)} patches')
 
         if self.metadata_path is not None:
             self.metadata = pd.read_parquet(self.metadata_path)
-            if self.metadata.isna().any().any():
-                logger.warning("Detected NaN values in the metadata which can't be collated in a dataloader")
 
             if self.split is not None:
                 keep = self.metadata[Split.COLUMN_NAME.value] == self.split
@@ -76,7 +115,19 @@ class Patches(Dataset):
                 valid_uuids = set(self.metadata.index)
                 self.coords = list(filter(lambda x: x.uuid in valid_uuids, self.coords))
                 self.coord_ids = [i.uuid for i in self.coords]
-                logger.info(f'Filtered coords for `split={self.split}. Found {len(self.coords)} patches')
+                assert len(self.metadata) == len(self.coords), f'Metadata and coords differ'
+                logger.info(f'Filtered coords and metadata for `split={self.split}`. Found {len(self.coords)} patches.')
+
+            filter_ = self.metadata.isna().any()
+            cols_with_nan = self.metadata.columns[filter_].tolist()
+            if filter_.any():
+                self.metadata = self.metadata.drop(columns=cols_with_nan) if self.drop_nan_columns else self.metadata
+                msg = f"Detected NaN values in the metadata which is incompatible with `torch.DataLoader`. Affected columns: {cols_with_nan}. "
+                msg += "Dropping them." if self.drop_nan_columns else "Use `drop_nan_columns=True` to drop them."
+                logger.warning(msg)
+
+                if self.split is not None and Split.COLUMN_NAME.value in cols_with_nan:
+                    logger.warning(f'Detected NaN in column `split`. This is most likely a bug.')
 
         if self.cache_dir and not self.has_cache():
             logger.info('No cache found. Creating...')

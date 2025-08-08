@@ -1,10 +1,11 @@
 from ai4bmr_learn.datasets.mil import MILFromDataset
 from ai4bmr_learn.supervised.mil import MIL
-from ai4bmr_datasets.datasets.Cords2024 import Cords2024
 from ai4bmr_learn.models.backbones.timm import Backbone
 from ai4bmr_learn.models.mil.linear import Linear
 from torch.utils.data import DataLoader, Dataset
+from ai4bmr_learn.datasets.patches import Patches
 import torch
+from pathlib import Path
 
 class DummyDataset(Dataset):
 
@@ -17,9 +18,15 @@ class DummyDataset(Dataset):
     def __len__(self):
         return len(self.bag_ids)
 
+dataset_dir = Path('/users/amarti51/prometex/data/benchmarking/datasets/Cords2024')
+ds = Patches(coords_path=dataset_dir / 'coords' / 'size=224-stride=224.json',
+             metadata_path=dataset_dir / 'splits' / 'coords' / 'clf-target=dx_name.parquet',
+             split='fit', drop_nan_columns=True)
+ds.setup()
+item = ds[0]
 
-ds = DummyDataset()
-mil_ds = MILFromDataset(dataset=ds, num_instances=4, pad=True)
+# ds = DummyDataset()
+mil_ds = MILFromDataset(dataset=ds, num_instances=4, pad=True, bag_ids_attr='image_ids')
 mil_ds.setup()
 bag = mil_ds[0]
 

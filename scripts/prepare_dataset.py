@@ -1,17 +1,15 @@
 from pathlib import Path
 
-import igraph
-from tqdm import tqdm
-
 import lightning as L
 import numpy as np
 import pandas as pd
-import tifffile
 from ai4bmr_core.utils.saving import save_image, save_mask
 from ai4bmr_core.utils.stats import StatsRecorder
 from loguru import logger
-from ai4bmr_learn.data.splits import generate_splits
 from tqdm import tqdm
+
+from ai4bmr_learn.data.splits import generate_splits
+from ai4bmr_learn.utils import io
 
 
 # %% HELPER
@@ -34,13 +32,10 @@ class PrepareDatasetFolder(L.LightningDataModule):
     def __init__(self,
                  dataset,
                  save_dir: Path,
-                 image_version: str = 'published',
-                 mask_version: str = 'annotated',
-                 patch_version: str = 'size=224-stride=224',
+                 coords_version: str = 'size=224-stride=224',
                  split_version: str | None = None,
                  split_kwargs: dict | None = None,
                  metadata_path: Path | None = None,
-                 annotation_version: str | None = None,
                  annotation_col_name: str | None = None,
                  force: bool = False,
                  ):
@@ -53,25 +48,25 @@ class PrepareDatasetFolder(L.LightningDataModule):
         self.save_dir = save_dir.resolve() / dataset.name
 
         # IMAGES
-        self.image_version = image_version
+        self.image_version = self.dataset.image_version
         self.images_dir = self.save_dir / 'images' / self.image_version
 
         # STATS
         self.stats_path = self.images_dir / 'stats.json'
 
         # MASKS
-        self.mask_version = mask_version
-        self.masks_dir = self.save_dir / 'masks' / mask_version
+        self.mask_version = self.dataset.mask_version
+        self.masks_dir = self.save_dir / 'masks' / self.mask_version
 
-        # PATCHES
-        self.patch_version = patch_version
-        self.patches_path = self.save_dir / 'patches' / f'{patch_version}.json'
+        # COORDS
+        self.coords_version = coords_version
+        self.coords_path = self.save_dir / 'coords' / f'{coords_version}.json'
 
         # METADATA
         self.metadata_path = metadata_path or self.save_dir / 'metadata.parquet'
 
         # ANNOTATIONS
-        self.annotation_version = annotation_version
+        self.annotation_version = self.dataset.metadata_version
         self.annotation_col_name = annotation_col_name
         if annotation_col_name is not None:
             self.annotations_dir = self.save_dir / 'annotations' / annotation_col_name
@@ -81,23 +76,58 @@ class PrepareDatasetFolder(L.LightningDataModule):
         if split_version is not None:
             self.split_kwargs = split_kwargs or {}
             self.splits_dir = self.save_dir / 'splits'
-            self.splits_path = self.save_dir / 'splits' / f'{self.split_version}.parquet'
 
         self.save_hyperparameters()
 
     def prepare_splits(self):
+        self.prepare_samples_splits()
+        self.prepare_coords_split()
 
-        if self.split_version is None or (self.splits_path.exists() and not self.force):
+    def prepare_coords_split(self):
+        if self.split_version is None:
             return
 
-        logger.info('Preparing splits...')
+        splits_path = self.save_dir / 'splits' / 'coords' /f'{self.split_version}.parquet'
+        if  splits_path.exists() and not self.force:
+            return
 
-        self.splits_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.info('Preparing coords splits...')
+
+        splits_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata = pd.read_parquet(self.metadata_path, engine='fastparquet')
+        coords = pd.read_json(self.coords_path)
+        coords['sample_id'] = coords.image_path.map(lambda x: Path(x).stem)
+
+        intx = list(set(coords).intersection(set(metadata)))
+        logger.warning(f'Metadata columns {intx} conflict with coord metadata. Dropping them.')
+        coords = coords.merge(metadata.drop(columns=intx), how='left', left_on='sample_id', right_index=True)
+
+        kwargs = dict(test_size=0.2, val_size=0.2, stratify=True, encode_targets=True, random_state=0)
+        kwargs.update(self.split_kwargs)
+        metadata = generate_splits(metadata=coords, **kwargs)
+        metadata = metadata.set_index('uuid')
+        metadata.to_parquet(splits_path, engine='fastparquet')
+        metadata.groupby('image_path').size().rename('num_patches').to_csv(splits_path.with_suffix('.csv'))
+
+
+    def prepare_samples_splits(self):
+
+        if self.split_version is None:
+            return
+
+        splits_path = self.save_dir / 'splits' / 'samples' / f'{self.split_version}.parquet'
+        if  splits_path.exists() and not self.force:
+            return
+
+        logger.info('Preparing samples splits...')
+
+        splits_path.parent.mkdir(parents=True, exist_ok=True)
         metadata = pd.read_parquet(self.metadata_path, engine='fastparquet')
         kwargs = dict(test_size=0.2, val_size=0.2, stratify=True, encode_targets=True, random_state=0)
         kwargs.update(self.split_kwargs)
         metadata = generate_splits(metadata=metadata, **kwargs)
-        metadata.to_parquet(self.splits_path, engine='fastparquet')
+        metadata.to_parquet(splits_path, engine='fastparquet')
+
 
     def prepare_annotation(self):
         if self.annotation_col_name is None or (self.annotations_dir.exists() and not self.force):
@@ -108,7 +138,7 @@ class PrepareDatasetFolder(L.LightningDataModule):
         self.annotations_dir.mkdir(parents=True, exist_ok=True)
         metadata = self.dataset.metadata
         image_ids = set([i.stem for i in self.images_dir.glob('*.tiff')])
-        mask_ids = set([i.stem for i in self.masks_dir.glob('*.tiff')])
+        mask_ids = set([i.stem for i in self.masks_dir.glob('*.zarr')])
         metadata_ids = metadata.index.get_level_values('sample_id').unique()
 
         sample_ids = set(image_ids) & set(mask_ids) & set(metadata_ids)
@@ -123,11 +153,11 @@ class PrepareDatasetFolder(L.LightningDataModule):
             obj_to_label = obj_to_label.to_dict()
             obj_to_label[0] = 0
 
-            mask = tifffile.imread(self.masks_dir / f'{sample_id}.tiff')
+            mask = io.imread(self.masks_dir / f'{sample_id}.zarr')
             assert set(mask.flatten()) == set(obj_to_label)
             labels = np.vectorize(obj_to_label.get)(mask)
 
-            save_mask(labels, self.annotations_dir / f'{sample_id}.tiff')
+            save_mask(labels, self.annotations_dir / f'{sample_id}.zarr')
 
     def prepare_metadata(self):
         if self.metadata_path.exists() and not self.force:
@@ -135,7 +165,7 @@ class PrepareDatasetFolder(L.LightningDataModule):
 
         logger.info(f'Preparing metadata...')
 
-        sample_ids = [i.stem for i in self.images_dir.glob('*.tiff')] + [i.stem for i in self.masks_dir.glob('*.tiff')]
+        sample_ids = [i.stem for i in self.images_dir.glob('*.zarr')] + [i.stem for i in self.masks_dir.glob('*.zarr')]
         sample_ids = list(set(sample_ids))
         filter_ = self.dataset.clinical.index.isin(sample_ids)
         metadata = self.dataset.clinical[filter_]
@@ -153,7 +183,8 @@ class PrepareDatasetFolder(L.LightningDataModule):
 
         for sample_id in tqdm(sample_ids):
             mask = self.dataset.masks[sample_id].data
-            save_mask(mask, self.masks_dir / f"{sample_id}.tiff")
+            mask = mask.astype(np.uint16) if mask.max() < 65534 else mask.astype(np.uint32)
+            save_mask(mask, self.masks_dir / f"{sample_id}.zarr")
 
     def prepare_images(self):
         if self.images_dir.exists() and self.stats_path.exists() and not self.force:
@@ -170,26 +201,26 @@ class PrepareDatasetFolder(L.LightningDataModule):
             image = self.dataset.images[sample_id].data
             image = normalize(image)
             sr.update(image)
-            save_image(image, self.images_dir / f"{sample_id}.tiff")
+            save_image(image, save_path=self.images_dir / f"{sample_id}.zarr")
 
         pd.Series(sr.__dict__).to_json(self.stats_path)
 
-    def prepare_patches(self):
+    def prepare_coords(self):
         from ai4bmr_learn.utils.images import get_coordinates_dict
         from ai4bmr_learn.data_models.Coordinate_v2 import PatchCoordinate
         import json
 
-        if self.patches_path.exists() and not self.force:
+        if self.coords_path.exists() and not self.force:
             return
 
-        logger.info(f'Preparing patches...')
+        logger.info(f'Preparing coords...')
 
-        self.patches_path.parent.mkdir(parents=True, exist_ok=True)
+        self.coords_path.parent.mkdir(parents=True, exist_ok=True)
 
         coords = []
-        img_paths = sorted(self.images_dir.glob('*.tiff'))
+        img_paths = sorted(self.images_dir.glob('*.zarr'))
         for img_path in tqdm(img_paths):
-            img = tifffile.imread(img_path)
+            img = io.imread(img_path)
             _, height, width = img.shape
             coords_dict = get_coordinates_dict(height=height, width=width, kernel_size=256, stride=256)
             # TODO: filter coords if necessary
@@ -197,27 +228,25 @@ class PrepareDatasetFolder(L.LightningDataModule):
                 [PatchCoordinate(**i, image_path=str(img_path)).model_dump() for i in coords_dict]
             )
 
-        with open(self.patches_path, 'w') as f:
+        with open(self.coords_path, 'w') as f:
             json.dump(coords, f)
 
         coords = pd.DataFrame.from_records(coords)
-        coords.groupby('image_path').size().rename('num_patches').to_csv(self.patches_path.with_suffix('.csv'), index=True)
+        coords.groupby('image_path').size().rename('num_patches').to_csv(self.coords_path.with_suffix('.csv'), index=True)
 
     def sanity_checks(self):
-        image_ids = set([i.stem for i in self.images_dir.glob('*.tiff')])
-        mask_ids = set([i.stem for i in self.masks_dir.glob('*.tiff')])
+        image_ids = set([i.stem for i in self.images_dir.glob('*.zarr')])
+        mask_ids = set([i.stem for i in self.masks_dir.glob('*.zarr')])
         if image_ids != mask_ids:
             logger.warning(f'Set of images and mask ids do not match')
 
     def prepare_data(self) -> None:
 
-        load_metadata = self.annotation_col_name is not None
-        self.dataset.setup(image_version=self.image_version, mask_version=self.mask_version,
-                           metadata_version=self.annotation_version, load_metadata=load_metadata)
+        self.dataset.setup()
 
         self.prepare_images()
         self.prepare_masks()
-        self.prepare_patches()
+        self.prepare_coords()
         self.prepare_metadata()
 
         self.prepare_splits()
@@ -230,21 +259,25 @@ class PrepareDatasetFolder(L.LightningDataModule):
 save_dir = Path('/users/amarti51/prometex/data/benchmarking/datasets')
 
 from ai4bmr_datasets import Cords2024
-# # generate_splits()
 splits_kwargs = dict(target_column_name='dx_name',
                      include_targets=['Adenocarcinoma', 'Squamous cell carcinoma'],
                      # encode_targets=False,
                      use_filtered_targets_for_train=True)
-dm = self = PrepareDatasetFolder(dataset=Cords2024(), save_dir=save_dir,
-                          split_version='ssl-target=dx_name', split_kwargs=splits_kwargs)
-# dm.prepare_data()
-dm.prepare_patches()
+ds = Cords2024(image_version='published', mask_version='annotated')
+dm = self = PrepareDatasetFolder(dataset=ds, save_dir=save_dir, split_version='ssl-target=dx_name', split_kwargs=splits_kwargs)
+dm.prepare_data()
+# dm.prepare_images()
+# dm.prepare_masks()
+# dm.prepare_coords()
+# dm.prepare_splits()
 #
-# splits_kwargs = dict(target_column_name='dx_name',
-#                      include_targets=['Adenocarcinoma', 'Squamous cell carcinoma'],
-#                      use_filtered_targets_for_train=False)
-# dm = PrepareDatasetFolder(dataset=Cords2024(), save_dir=save_dir,
-#                           split_version='clf-target=dx_name', split_kwargs=splits_kwargs)
+# %%
+splits_kwargs = dict(target_column_name='dx_name',
+                     include_targets=['Adenocarcinoma', 'Squamous cell carcinoma'],
+                     use_filtered_targets_for_train=False)
+dm = PrepareDatasetFolder(dataset=ds, save_dir=save_dir,
+                          split_version='clf-target=dx_name', split_kwargs=splits_kwargs)
+dm.prepare_splits()
 # dm.prepare_data()
 
 # dm = self = PrepareDatasetFolder(dataset=Cords2024(), save_dir=save_dir,
