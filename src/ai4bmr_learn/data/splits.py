@@ -31,6 +31,34 @@ def generate_splits(
         random_state: int | None = None,
         verbose: int = 1,
 ):
+    """
+    Generates a single train/test/validation split for a given metadata DataFrame.
+
+    Args:
+        metadata: The input DataFrame containing metadata.
+        test_size: The proportion of the dataset to include in the test split.
+                   Used to calculate n_splits for KFold as round(1 / test_size).
+                   The actual test set proportion will be 1 / round(1 / test_size).
+        val_size: The proportion of the training dataset to include in the validation split.
+                  Used to calculate n_splits for KFold as round(1 / val_size).
+                  The actual validation set proportion will be 1 / round(1 / val_size).
+        stratify: If True, data is split in a stratified fashion.
+        target_column_name: The name of the column to use for stratification.
+        encode_targets: If True, encodes the target column to integers.
+        nan_value: Value to use for NaN targets when encoding.
+        use_filtered_targets_for_train: If True, samples that were initially filtered out (e.g., due to missing
+                                        `target_column_name` values or not being in `include_targets`)
+                                        are added back to the 'fit' split. This means the 'fit' split
+                                        might contain samples without valid targets, and stratification
+                                        will not apply to these added samples. Use with caution.
+        include_targets: A list of target values to include in the splitting process.
+        group_column_name: The name of the column to use for grouping.
+        random_state: Seed for random number generator for reproducibility.
+        verbose: Verbosity level.
+
+    Returns:
+        A copy of the metadata DataFrame with an added 'split' column indicating 'fit', 'val', or 'test'.
+    """
     assert test_size or val_size, "Either `test_size` or `val_size` must be provided"
     num_test_splits = round(1 / test_size) if test_size is not None else None
     num_val_splits = round(1 / val_size) if val_size is not None else None
@@ -77,8 +105,6 @@ def generate_splits(
     # split into train, test
     if test_size:
         split = splitter(n_splits=num_test_splits, shuffle=True, random_state=random_state)
-        y = np.array(['a'] * 5 + ['b'] * 5).astype('object')
-        next(split.split(np.zeros(10), y=y, groups=None))
         y = metadata.loc[indices, target_column_name] if stratify else None
         groups = metadata.loc[indices, group_column_name].values if group_column_name is not None else None
         train_indices, test_indices = next(split.split(np.zeros(num_samples), y=y, groups=groups))
@@ -140,20 +166,22 @@ from rich.table import Table
 
 def print_split_summary(metadata, test_indices, fit_indices, val_indices):
     all_indices = set(fit_indices).union(val_indices).union(test_indices)
+    total_samples = len(metadata)
 
     console = Console()
-    table = Table(title=f"Dataset Split (n={len(metadata)})")
+    table = Table(title=f"Dataset Split (n={total_samples})")
 
     # define columns
     table.add_column("Split", justify="left", style="bold")
     table.add_column("Count", justify="right")
+    table.add_column("Percentage", justify="right")
 
     # add rows
-    table.add_row("Test", str(len(test_indices)))
-    table.add_row("Fit",  str(len(fit_indices)))
-    table.add_row("Val",  str(len(val_indices)))
-    table.add_row("───",  "─" * max(len(str(len(all_indices))), 3))
-    table.add_row("Total", str(len(all_indices)))
+    table.add_row("Test", str(len(test_indices)), f"{len(test_indices) / total_samples:.1%}")
+    table.add_row("Fit",  str(len(fit_indices)), f"{len(fit_indices) / total_samples:.1%}")
+    table.add_row("Val",  str(len(val_indices)), f"{len(val_indices) / total_samples:.1%}")
+    table.add_row("───",  "─" * max(len(str(len(all_indices))), 3), "───")
+    table.add_row("Total", str(len(all_indices)), f"{len(all_indices) / total_samples:.1%}")
 
     console.print(table)
 

@@ -32,6 +32,7 @@ geopandas="*"
 openslide-bin="*"
 openslide-python="*"
 lightly="*"
+rich="*"
 
 [tool.poetry.group.scanpy.dependencies]
 anndata="*"
