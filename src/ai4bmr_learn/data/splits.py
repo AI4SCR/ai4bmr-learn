@@ -174,14 +174,13 @@ def print_split_summary(metadata, test_indices, fit_indices, val_indices):
     # define columns
     table.add_column("Split", justify="left", style="bold")
     table.add_column("Count", justify="right")
-    table.add_column("Percentage", justify="right")
 
     # add rows
-    table.add_row("Test", str(len(test_indices)), f"{len(test_indices) / total_samples:.1%}")
-    table.add_row("Fit",  str(len(fit_indices)), f"{len(fit_indices) / total_samples:.1%}")
-    table.add_row("Val",  str(len(val_indices)), f"{len(val_indices) / total_samples:.1%}")
-    table.add_row("───",  "─" * max(len(str(len(all_indices))), 3), "───")
-    table.add_row("Total", str(len(all_indices)), f"{len(all_indices) / total_samples:.1%}")
+    table.add_row("Test", f"{len(test_indices)} ({len(test_indices) / total_samples:.1%})")
+    table.add_row("Fit",  f"{len(fit_indices)} ({len(fit_indices) / total_samples:.1%})")
+    table.add_row("Val",  f"{len(val_indices)} ({len(val_indices) / total_samples:.1%})")
+    table.add_row("───",  "─" * max(len(str(len(all_indices))), 3))
+    table.add_row("Total", f"{len(all_indices)} ({len(all_indices) / total_samples:.1%})")
 
     console.print(table)
 
