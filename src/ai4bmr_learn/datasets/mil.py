@@ -34,7 +34,7 @@ class MILFromDataset(Dataset):
     def __init__(self, dataset: Dataset, collator: Callable | None | bool = None,
                  num_instances: int | None = None, pad: bool = False, attention_key: str = 'attention',
                  shuffle: bool = False, random_state: int | None = None,
-                 bag_id_attr: str = 'bag_ids', bag_id_key: str | None = None, cache_path: Path | None = None):
+                 bag_ids_attr: str = 'bag_ids', bag_id_key: str | None = None, cache_path: Path | None = None):
 
         self.dataset = dataset
         if collator is None and not False:
@@ -42,8 +42,9 @@ class MILFromDataset(Dataset):
         else:
             self.collator = collator
 
-        self.bag_id_attr = bag_id_attr
+        self.bag_id_attr = bag_ids_attr
         self.bag_id_key = bag_id_key  # optional key that might be present in the item to assert correctness
+        self.dataset_bag_ids: list[str | int] | None = None
         self.bag_ids: list[str | int] | None = None
         self.cache_dir = cache_path
 
@@ -62,7 +63,8 @@ class MILFromDataset(Dataset):
             self.dataset.setup()
 
         if hasattr(self.dataset, self.bag_id_attr):
-            self.bag_ids = sorted(set(getattr(self.dataset, self.bag_id_attr)))
+            self.dataset_bag_ids = getattr(self.dataset, self.bag_id_attr)
+            self.bag_ids = sorted(set(self.dataset_bag_ids))
         else:
             raise ValueError(f"Dataset must have {self.bag_id_attr} attribute that identifies the bag ids.")
 
@@ -91,7 +93,7 @@ class MILFromDataset(Dataset):
         if self.cache_dir is not None and self.has_cache(bag_id):
             return self.load_bag(bag_id)
 
-        bag_idc = np.flatnonzero(np.array(self.dataset.bag_ids) == bag_id)
+        bag_idc = np.flatnonzero(np.array(self.dataset_bag_ids) == bag_id)  # FIX: this needs to be the attr
 
         if self.shuffle:
             self.rng.shuffle(bag_idc)
