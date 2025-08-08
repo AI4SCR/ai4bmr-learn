@@ -16,7 +16,8 @@ class MIL(L.LightningModule):
                  freeze_backbone: bool = False,
                  pooling: str | None = None,
                  batch_key: str | None = 'image',
-                 target_key: str = 'label',
+                 target_key: str = 'target',
+                 attention_key: str = 'attention'
                  ):
 
         super().__init__()
@@ -45,6 +46,7 @@ class MIL(L.LightningModule):
         # DATA
         self.batch_key = batch_key
         self.target_key = target_key
+        self.attention_key = attention_key
 
     def shared_step(self, batch, batch_idx: int | None = None):
         data = glom(batch, self.batch_key)
@@ -57,6 +59,8 @@ class MIL(L.LightningModule):
         zs = []
         # NOTE: we need to feed the bags separately to the backbone, since they are designed for [B, D] inputs
         for bag in data:
+            attention = glom(bag, self.attention_key)
+            bag = bag[attention]
             z = self.backbone(bag)
             z = self.pool(z)
             zs.append(z)
