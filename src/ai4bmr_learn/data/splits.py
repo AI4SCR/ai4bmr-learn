@@ -35,9 +35,7 @@ def generate_splits(
     num_test_splits = round(1 / test_size) if test_size is not None else None
     num_val_splits = round(1 / val_size) if val_size is not None else None
 
-    # TODO: support Grouped Split for multi-samples per patient cases
     # TODO: should we allow for re-splitting, i.e. check if `split_column_name` already exists in metadata?
-    # TODO: should we overwrite the metadata?
 
     metadata = metadata.copy()
     assert metadata.index.has_duplicates == False
@@ -77,8 +75,7 @@ def generate_splits(
     # split into train, test
     if test_size:
         split = splitter(n_splits=num_test_splits, shuffle=True, random_state=random_state)
-        y = np.array(['a'] * 5 + ['b'] * 5).astype('object')
-        next(split.split(np.zeros(10), y=y, groups=None))
+
         y = metadata.loc[indices, target_column_name] if stratify else None
         groups = metadata.loc[indices, group_column_name].values if group_column_name is not None else None
         train_indices, test_indices = next(split.split(np.zeros(num_samples), y=y, groups=groups))

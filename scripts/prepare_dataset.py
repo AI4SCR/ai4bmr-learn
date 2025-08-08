@@ -36,6 +36,7 @@ class PrepareDatasetFolder(L.LightningDataModule):
                  save_dir: Path,
                  image_version: str = 'published',
                  mask_version: str = 'annotated',
+                 patch_version: str = 'size=224-stride=224',
                  split_version: str | None = None,
                  split_kwargs: dict | None = None,
                  metadata_path: Path | None = None,
@@ -61,6 +62,10 @@ class PrepareDatasetFolder(L.LightningDataModule):
         # MASKS
         self.mask_version = mask_version
         self.masks_dir = self.save_dir / 'masks' / mask_version
+
+        # PATCHES
+        self.patch_version = patch_version
+        self.patches_path = self.save_dir / 'patches' / f'{patch_version}.json'
 
         # METADATA
         self.metadata_path = metadata_path or self.save_dir / 'metadata.parquet'
@@ -169,6 +174,35 @@ class PrepareDatasetFolder(L.LightningDataModule):
 
         pd.Series(sr.__dict__).to_json(self.stats_path)
 
+    def prepare_patches(self):
+        from ai4bmr_learn.utils.images import get_coordinates_dict
+        from ai4bmr_learn.data_models.Coordinate_v2 import PatchCoordinate
+        import json
+
+        if self.patches_path.exists() and not self.force:
+            return
+
+        logger.info(f'Preparing patches...')
+
+        self.patches_path.parent.mkdir(parents=True, exist_ok=True)
+
+        coords = []
+        img_paths = sorted(self.images_dir.glob('*.tiff'))
+        for img_path in tqdm(img_paths):
+            img = tifffile.imread(img_path)
+            _, height, width = img.shape
+            coords_dict = get_coordinates_dict(height=height, width=width, kernel_size=256, stride=256)
+            # TODO: filter coords if necessary
+            coords.extend(
+                [PatchCoordinate(**i, image_path=str(img_path)).model_dump() for i in coords_dict]
+            )
+
+        with open(self.patches_path, 'w') as f:
+            json.dump(coords, f)
+
+        coords = pd.DataFrame.from_records(coords)
+        coords.groupby('image_path').size().rename('num_patches').to_csv(self.patches_path.with_suffix('.csv'), index=True)
+
     def sanity_checks(self):
         image_ids = set([i.stem for i in self.images_dir.glob('*.tiff')])
         mask_ids = set([i.stem for i in self.masks_dir.glob('*.tiff')])
@@ -183,6 +217,7 @@ class PrepareDatasetFolder(L.LightningDataModule):
 
         self.prepare_images()
         self.prepare_masks()
+        self.prepare_patches()
         self.prepare_metadata()
 
         self.prepare_splits()
@@ -194,15 +229,16 @@ class PrepareDatasetFolder(L.LightningDataModule):
 # %%
 save_dir = Path('/users/amarti51/prometex/data/benchmarking/datasets')
 
-# from ai4bmr_datasets import Cords2024
+from ai4bmr_datasets import Cords2024
 # # generate_splits()
-# splits_kwargs = dict(target_column_name='dx_name',
-#                      include_targets=['Adenocarcinoma', 'Squamous cell carcinoma'],
-#                      # encode_targets=False,
-#                      use_filtered_targets_for_train=True)
-# dm = PrepareDatasetFolder(dataset=Cords2024(), save_dir=save_dir,
-#                           split_version='ssl-target=dx_name', split_kwargs=splits_kwargs)
+splits_kwargs = dict(target_column_name='dx_name',
+                     include_targets=['Adenocarcinoma', 'Squamous cell carcinoma'],
+                     # encode_targets=False,
+                     use_filtered_targets_for_train=True)
+dm = self = PrepareDatasetFolder(dataset=Cords2024(), save_dir=save_dir,
+                          split_version='ssl-target=dx_name', split_kwargs=splits_kwargs)
 # dm.prepare_data()
+dm.prepare_patches()
 #
 # splits_kwargs = dict(target_column_name='dx_name',
 #                      include_targets=['Adenocarcinoma', 'Squamous cell carcinoma'],
@@ -216,11 +252,11 @@ save_dir = Path('/users/amarti51/prometex/data/benchmarking/datasets')
 #                           annotation_version='annotated', annotation_col_name='cell_type')
 # dm.prepare_data()
 
-from ai4bmr_datasets import PCa
-target_name = 'disease_progr'
-splits_kwargs = dict(target_column_name=target_name, use_filtered_targets_for_train=True)
-dm = PrepareDatasetFolder(dataset=PCa(), save_dir=save_dir,
-                          image_version='filtered', mask_version='annotated',
-                          split_version=f'ssl-target={target_name}', split_kwargs=splits_kwargs,
-                          annotation_version='filtered-annotated', annotation_col_name='label')
-dm.prepare_data()
+# from ai4bmr_datasets import PCa
+# target_name = 'disease_progr'
+# splits_kwargs = dict(target_column_name=target_name, use_filtered_targets_for_train=True)
+# dm = PrepareDatasetFolder(dataset=PCa(), save_dir=save_dir,
+#                           image_version='filtered', mask_version='annotated',
+#                           split_version=f'ssl-target={target_name}', split_kwargs=splits_kwargs,
+#                           annotation_version='filtered-annotated', annotation_col_name='label')
+# dm.prepare_data()
