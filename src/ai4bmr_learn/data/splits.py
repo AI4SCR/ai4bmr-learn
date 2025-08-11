@@ -63,9 +63,7 @@ def generate_splits(
     num_test_splits = round(1 / test_size) if test_size is not None else None
     num_val_splits = round(1 / val_size) if val_size is not None else None
 
-    # TODO: support Grouped Split for multi-samples per patient cases
     # TODO: should we allow for re-splitting, i.e. check if `split_column_name` already exists in metadata?
-    # TODO: should we overwrite the metadata?
 
     metadata = metadata.copy()
     assert metadata.index.has_duplicates == False
