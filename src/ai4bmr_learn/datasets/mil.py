@@ -1,6 +1,7 @@
 import logging
 from typing import Callable
 
+import glom
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
@@ -31,8 +32,9 @@ import pickle
 
 class MILFromDataset(Dataset):
     def __init__(self, dataset: Dataset, collator: Callable | None | bool = None,
-                 num_instances: int | None = None, shuffle: bool = False, random_state: int | None = None,
-                 bag_id_attr: str = 'bag_ids', bag_id_key: str | None = None, cache_path: Path | None = None):
+                 num_instances: int | None = None, pad: bool = False, attention_key: str = 'attention',
+                 shuffle: bool = False, random_state: int | None = None,
+                 bag_ids_attr: str = 'bag_ids', bag_id_key: str | None = None, cache_path: Path | None = None):
 
         self.dataset = dataset
         if collator is None and not False:
@@ -40,12 +42,15 @@ class MILFromDataset(Dataset):
         else:
             self.collator = collator
 
-        self.bag_id_attr = bag_id_attr
+        self.bag_id_attr = bag_ids_attr
         self.bag_id_key = bag_id_key  # optional key that might be present in the item to assert correctness
+        self.dataset_bag_ids: list[str | int] | None = None
         self.bag_ids: list[str | int] | None = None
         self.cache_dir = cache_path
 
         self.num_instances = num_instances
+        self.pad = pad
+        self.attention_key = attention_key
         self.shuffle = shuffle
         self.random_state = random_state
         self.rng = np.random.RandomState(random_state)
@@ -58,7 +63,8 @@ class MILFromDataset(Dataset):
             self.dataset.setup()
 
         if hasattr(self.dataset, self.bag_id_attr):
-            self.bag_ids = sorted(set(getattr(self.dataset, self.bag_id_attr)))
+            self.dataset_bag_ids = getattr(self.dataset, self.bag_id_attr)
+            self.bag_ids = sorted(set(self.dataset_bag_ids))
         else:
             raise ValueError(f"Dataset must have {self.bag_id_attr} attribute that identifies the bag ids.")
 
@@ -87,7 +93,7 @@ class MILFromDataset(Dataset):
         if self.cache_dir is not None and self.has_cache(bag_id):
             return self.load_bag(bag_id)
 
-        bag_idc = np.flatnonzero(np.array(self.dataset.bag_ids) == bag_id)
+        bag_idc = np.flatnonzero(np.array(self.dataset_bag_ids) == bag_id)  # FIX: this needs to be the attr
 
         if self.shuffle:
             self.rng.shuffle(bag_idc)
@@ -98,9 +104,17 @@ class MILFromDataset(Dataset):
         bag = []
         for idx in tqdm(bag_idc):
             item = self.dataset[idx]
+            item = glom.assign(item, self.attention_key, True, missing=lambda: {})
             if self.bag_id_key is not None:
                 assert item[self.bag_id_key] == bag_id
             bag.append(item)
+
+        if self.pad and self.num_instances is not None:
+            num_pad = self.num_instances - len(bag_idc)
+            for _ in range(num_pad):
+                item = self.dataset[bag_idc[-1]]
+                item = glom.assign(item, self.attention_key, False, missing=lambda: {})
+                bag.append(item)
 
         if self.collator is not False:
             bag = self.collator(bag)

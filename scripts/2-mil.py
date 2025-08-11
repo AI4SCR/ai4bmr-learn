@@ -1,0 +1,40 @@
+from ai4bmr_learn.datasets.mil import MILFromDataset
+from ai4bmr_learn.supervised.mil import MIL
+from ai4bmr_learn.models.backbones.timm import Backbone
+from ai4bmr_learn.models.mil.linear import Linear
+from torch.utils.data import DataLoader, Dataset
+from ai4bmr_learn.datasets.patches import Patches
+import torch
+from pathlib import Path
+
+class DummyDataset(Dataset):
+
+    def __init__(self):
+        self.bag_ids = torch.randint(0, 35, size=(100,)).tolist()
+
+    def __getitem__(self, idx):
+        return dict(image=torch.randn(3, 224, 224), target=0 if torch.randn(1).item() > 0.5 else 0)
+
+    def __len__(self):
+        return len(self.bag_ids)
+
+dataset_dir = Path('/users/amarti51/prometex/data/benchmarking/datasets/Cords2024')
+ds = Patches(coords_path=dataset_dir / 'coords' / 'size=224-stride=224.json',
+             metadata_path=dataset_dir / 'splits' / 'coords' / 'clf-target=dx_name.parquet',
+             split='fit', drop_nan_columns=True)
+ds.setup()
+item = ds[0]
+
+# ds = DummyDataset()
+mil_ds = MILFromDataset(dataset=ds, num_instances=4, pad=True, bag_ids_attr='image_ids')
+mil_ds.setup()
+bag = mil_ds[0]
+
+num_classes = 3
+backbone = Backbone(model_name='resnet18', global_pool='avg')
+head = Linear(input_dim=512, num_classes=num_classes)
+mil = MIL(backbone=backbone, head=head, num_classes=num_classes)
+
+dl = DataLoader([mil_ds[0], mil_ds[2]], batch_size=2)
+batch = next(iter(dl))
+outs = mil(batch)
