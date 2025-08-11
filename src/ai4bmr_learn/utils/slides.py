@@ -7,7 +7,7 @@ import einops
 import openslide
 import torch
 from ai4bmr_learn.utils.device import get_device
-from ai4bmr_learn.datasets.Patches import Patches
+from ai4bmr_learn.datasets.patches import Patches
 from ai4bmr_learn.plotting.contours import visualize_contours
 from ai4bmr_learn.plotting.patches import visualize_coords
 from ai4bmr_learn.preprocessing.padding import get_pad_for_kernel
