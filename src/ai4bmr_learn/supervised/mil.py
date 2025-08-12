@@ -49,17 +49,19 @@ class MIL(L.LightningModule):
         self.attention_key = attention_key
 
     def shared_step(self, batch, batch_idx: int | None = None):
-        data = glom(batch, self.batch_key)
-        assert isinstance(data, list) or isinstance(data, torch.Tensor)
+        bags = glom(batch, self.batch_key)
+        attentions = glom(batch, self.attention_key)
+        assert isinstance(bags, list) or isinstance(bags, torch.Tensor)
+        assert isinstance(attentions, list) or isinstance(attentions, torch.Tensor)
+
         targets = glom(batch, self.target_key)
         targets = torch.unique(targets, dim=1).squeeze()  # NOTE: we expect [B, M], #TODO: discuss this choice
         assert targets.ndim == 1
 
-        B, M, *D = data.shape
+        B, M, *D = bags.shape
         zs = []
         # NOTE: we need to feed the bags separately to the backbone, since they are designed for [B, D] inputs
-        for bag in data:
-            attention = glom(bag, self.attention_key)
+        for bag, attention in zip(bags, attentions):
             bag = bag[attention]
             z = self.backbone(bag)
             z = self.pool(z)

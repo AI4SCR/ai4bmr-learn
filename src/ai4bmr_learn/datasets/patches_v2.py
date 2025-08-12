@@ -15,8 +15,10 @@ from ai4bmr_learn.utils import io
 import numpy as np
 
 from torchvision.transforms import v2
+from torchvision import tv_tensors
 from ai4bmr_learn.utils.utils import pair
 
+to_img = lambda x: tv_tensors.Image(x)
 
 def get_patch(coord: PatchCoordinate) -> tv_tensors.Image:
     img_path = Path(coord.image_path)
@@ -26,29 +28,7 @@ def get_patch(coord: PatchCoordinate) -> tv_tensors.Image:
     level = coord.level if hasattr(coord, 'level') else 0
 
     patch = io.read_region(img_path=img_path, x=x, y=y, width=kernel_width, height=kernel_height, level=level)
-
-    if isinstance(coord, SlideCoordinate):
-        patch_height, patch_width = pair(coord.patch_size)
-        scale_factor = coord.scale_factor
-
-        assert np.isclose(kernel_width, patch_width * scale_factor)
-        assert np.isclose(kernel_height, patch_height * scale_factor)
-        assert np.isclose(coord.mpp * scale_factor, coord.patch_mpp)
-        assert patch_height == round(kernel_height / scale_factor)
-        assert patch_width == round(kernel_width / scale_factor)
-
-        transform = v2.Compose([
-            v2.ToImage(),
-            v2.Resize((patch_height, patch_width)),
-        ])
-
-    else:
-        transform = v2.Compose([
-            v2.ToImage(),
-        ])
-
-    patch = transform(patch)
-    return patch
+    return to_img(patch)
 
 
 class Patches(Dataset):
@@ -92,6 +72,30 @@ class Patches(Dataset):
 
         # TRANSFORM
         self.transform = transform
+
+    def __len__(self):
+        return len(self.coords)
+
+    def __getitem__(self, idx) -> dict:
+        coord = self.coords[idx]
+        item = coord.model_dump()
+
+        if self.has_cache(uuid=coord.uuid):
+            patch_path = self.get_cache_path(coord.uuid)
+            patch = torch.load(patch_path, weights_only=False)
+        else:
+            patch = get_patch(coord)
+
+        item['image'] = patch
+
+        if self.metadata is not None:
+            metadata_dict = self.metadata.loc[coord.uuid].to_dict()
+            item['metadata'] = metadata_dict
+
+        if self.transform:
+            item = self.transform(item)
+
+        return item
 
 
     def setup(self):
@@ -175,33 +179,10 @@ class Patches(Dataset):
                 self.cache_dir = Path(item['image_path']).parent / 'patches'
                 self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-                torch.save(item['images'], patch_path)
+                torch.save(item['image'], patch_path)
                 # item['points'].to_parquet(points_path)
 
     def invalidate_cache(self):
         import shutil
         shutil.rmtree(self.cache_dir)
 
-    def __len__(self):
-        return len(self.coords)
-
-    def __getitem__(self, idx) -> dict:
-        coord = self.coords[idx]
-        item = coord.model_dump()
-
-        if self.has_cache(uuid=coord.uuid):
-            patch_path = self.get_cache_path(coord.uuid)
-            patch = torch.load(patch_path, weights_only=False)
-        else:
-            patch = get_patch(coord)
-
-        item['images'] = patch
-
-        if self.metadata is not None:
-            metadata_dict = self.metadata.loc[coord.uuid].to_dict()
-            item['metadata'] = metadata_dict
-
-        if self.transform:
-            item = self.transform(item)
-
-        return item
