@@ -4,6 +4,7 @@ import torch.nn as nn
 from ai4bmr_learn.metrics.classification import get_metric_collection
 from glom import glom
 import torch
+import numpy as np
 
 class MIL(L.LightningModule):
     def __init__(self,
@@ -16,8 +17,10 @@ class MIL(L.LightningModule):
                  freeze_backbone: bool = False,
                  pooling: str | None = None,
                  batch_key: str | None = 'image',
+                 data_keys: list[str] | None = None,
                  target_key: str = 'target',
-                 attention_key: str = 'attention'
+                 attention_key: str = 'attention',
+                 as_kwargs: bool = False,
                  ):
 
         super().__init__()
@@ -45,14 +48,46 @@ class MIL(L.LightningModule):
 
         # DATA
         self.batch_key = batch_key
+        self.data_keys = data_keys
+        if self.data_keys is None:
+            self.data_keys = [batch_key]
         self.target_key = target_key
         self.attention_key = attention_key
+        self.as_kwargs = as_kwargs
 
-    def shared_step(self, batch, batch_idx: int | None = None):
+    def shared_step_for_list(self, batch: list, batch_idx: int | None = None):
+
+        zs = []
+        targets = []
+        # NOTE: we need to feed the bags separately to the backbone, since they are designed for [B, D] inputs
+        for i, bag in enumerate(batch):
+
+            target = glom(bag, self.target_key)
+            target = torch.unique(target).item()
+            targets.append(target)
+
+            data = glom(bag, self.batch_key) if self.batch_key else bag
+
+            z = self.backbone(**data) if self.as_kwargs else self.backbone(data)
+            z = self.pool(z)
+            zs.append(z)
+
+        zs = torch.stack(zs)  # B, M, R
+        targets = torch.tensor(targets)
+        assert zs.shape[0] == targets.shape[0]
+
+        logits = self.head(zs)
+        loss = self.criterion(logits, targets)
+
+        return zs, logits, targets, loss
+
+    def shared_step_for_dict(self, batch, batch_idx: int | None = None):
         bags = glom(batch, self.batch_key)
-        attentions = glom(batch, self.attention_key)
-        assert isinstance(bags, list) or isinstance(bags, torch.Tensor)
-        assert isinstance(attentions, list) or isinstance(attentions, torch.Tensor)
+        attentions = glom(batch, self.attention_key, default=None)
+        assert isinstance(bags, torch.Tensor)
+        assert attentions is None or isinstance(attentions, torch.Tensor)
+        if attentions is not None and not isinstance(bags, torch.Tensor):
+            raise NotImplementedError('Bags must be pure tensors if you want to use padding. Use `collate_fn=list` and pad=False instead.')
 
         targets = glom(batch, self.target_key)
         targets = torch.unique(targets, dim=1).squeeze()  # NOTE: we expect [B, M], #TODO: discuss this choice
@@ -61,11 +96,16 @@ class MIL(L.LightningModule):
         B, M, *D = bags.shape
         zs = []
         # NOTE: we need to feed the bags separately to the backbone, since they are designed for [B, D] inputs
-        for bag, attention in zip(bags, attentions):
-            bag = bag[attention]
+        for i, bag in enumerate(bags):
+
+            if attentions is not None:
+                attention = attentions[i]
+                bag = bag[attention]
+
             z = self.backbone(bag)
             z = self.pool(z)
             zs.append(z)
+
         zs = torch.stack(zs)  # B, M, R
         assert zs.shape[0] == B and zs.shape[1] == M
 
@@ -73,6 +113,12 @@ class MIL(L.LightningModule):
         loss = self.criterion(logits, targets)
 
         return zs, logits, targets, loss
+
+    def shared_step(self, batch, batch_idx: int | None = None):
+        if isinstance(batch, list):
+            return self.shared_step_for_list(batch, batch_idx=batch_idx)
+        elif isinstance(batch, dict):
+            return self.shared_step_for_dict(batch, batch_idx=batch_idx)
 
     def training_step(self, batch, batch_idx):
         z, logits, targets, loss = self.shared_step(batch)
@@ -85,9 +131,13 @@ class MIL(L.LightningModule):
         # loss
         self.log("train_loss", loss, batch_size=batch_size)
 
-        batch['loss'] = loss
-        batch['embedding'] = z.detach().cpu()
-        return batch
+
+        if isinstance(batch, list):
+            return loss
+        else:
+            batch['loss'] = loss
+            batch['embedding'] = z.detach().cpu()
+            return batch
 
     def validation_step(self, batch, batch_idx):
         z, logits, targets, loss = self.shared_step(batch)
@@ -100,9 +150,12 @@ class MIL(L.LightningModule):
         # loss
         self.log("val_loss", loss, batch_size=batch_size)
 
-        batch['loss'] = loss
-        batch['embedding'] = z.detach().cpu()
-        return batch
+        if isinstance(batch, list):
+            return loss
+        else:
+            batch['loss'] = loss
+            batch['embedding'] = z.detach().cpu()
+            return batch
 
     def test_step(self, batch, batch_idx):
         z, logits, targets, loss = self.shared_step(batch, batch_idx)
