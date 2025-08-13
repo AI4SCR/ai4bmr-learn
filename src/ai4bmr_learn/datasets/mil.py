@@ -104,7 +104,8 @@ class MILFromDataset(Dataset):
         bag = []
         for idx in tqdm(bag_idc):
             item = self.dataset[idx]
-            item = glom.assign(item, self.attention_key, True, missing=lambda: {})
+            # NOTE: we do not need attention if we do not pad
+            # item = glom.assign(item, self.attention_key, True, missing=lambda: {})
             if self.bag_id_key is not None:
                 assert item[self.bag_id_key] == bag_id
             bag.append(item)
