@@ -52,7 +52,7 @@ class ImageNet(L.LightningDataModule):
         self.val_indices = indices[int(max_index * 0.9):]
         self.test_idx = None
 
-        self.train_set = self.val_set = self.test_set = None
+        self.train_set = self.val_set = self.test_set = self.predict_set = None
 
         # TRANSFORMS
         self.train_transform = train_transform
@@ -64,6 +64,7 @@ class ImageNet(L.LightningDataModule):
         from ai4bmr_learn.datasets.imagenet import ImageNet
         self.train_set = Subset(ImageNet(transform=self.train_transform), indices=self.train_indices)
         self.val_set = Subset(ImageNet(transform=self.val_transform), indices=self.val_indices)
+        self.predict_set = ImageNet(transform=self.val_transform)
 
     def train_dataloader(self):
         return DataLoader(
@@ -87,6 +88,15 @@ class ImageNet(L.LightningDataModule):
     def test_dataloader(self):
         return DataLoader(
             self.test_set,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            persistent_workers=self.persistent_workers,
+            pin_memory=self.pin_memory,
+        )
+
+    def predict_dataloader(self):
+        return DataLoader(
+            self.predict_set,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             persistent_workers=self.persistent_workers,
