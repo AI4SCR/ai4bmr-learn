@@ -137,7 +137,7 @@ class PrepareDatasetFolder(L.LightningDataModule):
 
         self.annotations_dir.mkdir(parents=True, exist_ok=True)
         metadata = self.dataset.metadata
-        image_ids = set([i.stem for i in self.images_dir.glob('*.tiff')])
+        image_ids = set([i.stem for i in self.images_dir.glob('*.zarr')])
         mask_ids = set([i.stem for i in self.masks_dir.glob('*.zarr')])
         metadata_ids = metadata.index.get_level_values('sample_id').unique()
 
@@ -184,7 +184,7 @@ class PrepareDatasetFolder(L.LightningDataModule):
         for sample_id in tqdm(sample_ids):
             mask = self.dataset.masks[sample_id].data
             mask = mask.astype(np.uint16) if mask.max() < 65534 else mask.astype(np.uint32)
-            save_mask(mask, self.masks_dir / f"{sample_id}.zarr")
+            io.imsave(mask, self.masks_dir / f"{sample_id}.zarr")
 
     def prepare_images(self):
         if self.images_dir.exists() and self.stats_path.exists() and not self.force:
@@ -201,7 +201,8 @@ class PrepareDatasetFolder(L.LightningDataModule):
             image = self.dataset.images[sample_id].data
             image = normalize(image)
             sr.update(image)
-            save_image(image, save_path=self.images_dir / f"{sample_id}.zarr")
+            image = image.astype(np.float32)
+            save_image(image, save_path=self.images_dir / f"{sample_id}.zarr", chunks=(image.shape[0], 512, 512))
 
         pd.Series(sr.__dict__).to_json(self.stats_path)
 
@@ -256,28 +257,28 @@ class PrepareDatasetFolder(L.LightningDataModule):
 
 
 # %%
-save_dir = Path('/users/amarti51/prometex/data/benchmarking/datasets')
+# save_dir = Path('/users/amarti51/prometex/data/benchmarking/datasets')
 
-from ai4bmr_datasets import Cords2024
-splits_kwargs = dict(target_column_name='dx_name',
-                     include_targets=['Adenocarcinoma', 'Squamous cell carcinoma'],
-                     # encode_targets=False,
-                     use_filtered_targets_for_train=True)
-ds = Cords2024(image_version='published', mask_version='annotated')
-dm = self = PrepareDatasetFolder(dataset=ds, save_dir=save_dir, split_version='ssl-target=dx_name', split_kwargs=splits_kwargs)
-dm.prepare_data()
+# from ai4bmr_datasets import Cords2024
+# splits_kwargs = dict(target_column_name='dx_name',
+#                      include_targets=['Adenocarcinoma', 'Squamous cell carcinoma'],
+#                      # encode_targets=False,
+#                      use_filtered_targets_for_train=True)
+# ds = Cords2024(image_version='published', mask_version='annotated')
+# dm = self = PrepareDatasetFolder(dataset=ds, save_dir=save_dir, split_version='ssl-target=dx_name', split_kwargs=splits_kwargs)
+# dm.prepare_data()
 # dm.prepare_images()
 # dm.prepare_masks()
 # dm.prepare_coords()
 # dm.prepare_splits()
 #
 # %%
-splits_kwargs = dict(target_column_name='dx_name',
-                     include_targets=['Adenocarcinoma', 'Squamous cell carcinoma'],
-                     use_filtered_targets_for_train=False)
-dm = PrepareDatasetFolder(dataset=ds, save_dir=save_dir,
-                          split_version='clf-target=dx_name', split_kwargs=splits_kwargs)
-dm.prepare_splits()
+# splits_kwargs = dict(target_column_name='dx_name',
+#                      include_targets=['Adenocarcinoma', 'Squamous cell carcinoma'],
+#                      use_filtered_targets_for_train=False)
+# dm = PrepareDatasetFolder(dataset=ds, save_dir=save_dir,
+#                           split_version='clf-target=dx_name', split_kwargs=splits_kwargs)
+# dm.prepare_splits()
 # dm.prepare_data()
 
 # dm = self = PrepareDatasetFolder(dataset=Cords2024(), save_dir=save_dir,
@@ -306,3 +307,22 @@ dm.prepare_splits()
 #
 # with open(save_path, 'w') as f:
 #     json.dump(items, f)
+
+if __name__ == '__main__':
+    from ai4bmr_datasets import PCa
+
+    save_dir = Path('/users/amarti51/prometex/data/benchmarking/datasets')
+    dataset = PCa(image_version='filtered', mask_version='annotated',
+                  metadata_version='filtered-annotated', load_metadata=True)
+    target_name = 'disease_progr'
+    splits_kwargs = dict(target_column_name=target_name, use_filtered_targets_for_train=True)
+    dm = self = PrepareDatasetFolder(dataset=dataset, save_dir=save_dir,
+                              split_version=f'ssl-target={target_name}', split_kwargs=splits_kwargs,
+                              annotation_col_name='label')
+    # dm.prepare_data()
+
+    splits_kwargs = dict(target_column_name=target_name, use_filtered_targets_for_train=False)
+    dm = self = PrepareDatasetFolder(dataset=dataset, save_dir=save_dir,
+                              split_version=f'clf-target={target_name}', split_kwargs=splits_kwargs,
+                              annotation_col_name='label')
+    dm.prepare_data()
