@@ -129,7 +129,7 @@ class MIL(L.LightningModule):
         self.log_dict(self.train_metrics, batch_size=batch_size)
 
         # loss
-        self.log("train_loss", loss, batch_size=batch_size)
+        self.log("train/loss", loss, batch_size=batch_size)
 
 
         if isinstance(batch, list):
@@ -148,7 +148,7 @@ class MIL(L.LightningModule):
         self.log_dict(self.valid_metrics, batch_size=batch_size)
 
         # loss
-        self.log("val_loss", loss, batch_size=batch_size)
+        self.log("val/loss", loss, batch_size=batch_size)
 
         if isinstance(batch, list):
             return loss
@@ -166,7 +166,7 @@ class MIL(L.LightningModule):
         self.log_dict(self.test_metrics, batch_size=batch_size)
 
         # loss
-        self.log("test_loss", loss, batch_size=batch_size)
+        self.log("test/loss", loss, batch_size=batch_size)
 
         batch['loss'] = loss
         batch['embedding'] = z.detach().cpu()
