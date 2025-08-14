@@ -188,12 +188,12 @@ class Items(Dataset):
         shutil.rmtree(self.cache_dir)
 
 
-items = self = Items(
-    items_path=Path('/users/amarti51/prometex/data/benchmarking/datasets/Cords2024/items/items.json'),
-    metadata_path=Path('/users/amarti51/prometex/data/benchmarking/datasets/Cords2024/splits/samples/clf-target=dx_name.parquet'),
-    id_key='sample_id',
-    split='fit',
-    drop_nan_columns=True
-)
-items.setup()
-items[0]['image']
+# items = self = Items(
+#     items_path=Path('/users/amarti51/prometex/data/benchmarking/datasets/Cords2024/items/items.json'),
+#     metadata_path=Path('/users/amarti51/prometex/data/benchmarking/datasets/Cords2024/splits/samples/clf-target=dx_name.parquet'),
+#     id_key='sample_id',
+#     split='fit',
+#     drop_nan_columns=True
+# )
+# items.setup()
+# items[0]['image']
