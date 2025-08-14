@@ -13,11 +13,11 @@ from ai4bmr_learn.plotting.patches import visualize_coords
 from ai4bmr_learn.preprocessing.padding import get_pad_for_kernel
 from ai4bmr_learn.utils.contours import find_contours
 from ai4bmr_learn.utils.images import (
-    SlideCoordinate,
     get_coordinates_dict,
     get_slide_patcher_params,
     get_thumbnail,
 )
+from ai4bmr_learn.data_models.Coordinate import SlideCoordinate
 
 from loguru import logger
 from shapely.affinity import scale
