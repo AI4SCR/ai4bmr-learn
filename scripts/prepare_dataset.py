@@ -293,3 +293,16 @@ dm.prepare_splits()
 #                           split_version=f'ssl-target={target_name}', split_kwargs=splits_kwargs,
 #                           annotation_version='filtered-annotated', annotation_col_name='label')
 # dm.prepare_data()
+
+# %% PREPARE ITEMS
+# items = []
+# import uuid
+# for img_path in Path('/users/amarti51/prometex/data/benchmarking/datasets/Cords2024/images/published').glob('*.zarr'):
+#     items.append({'uuid': str(uuid.uuid4()), 'image_path': str(img_path), 'sample_id': img_path.stem})
+#
+# import json
+# save_path = Path('/users/amarti51/prometex/data/benchmarking/datasets/Cords2024/items/items.json')
+# save_path.parent.mkdir(parents=True, exist_ok=True)
+#
+# with open(save_path, 'w') as f:
+#     json.dump(items, f)
