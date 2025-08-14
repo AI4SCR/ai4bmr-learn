@@ -34,7 +34,8 @@ class MILFromDataset(Dataset):
     def __init__(self, dataset: Dataset, collator: Callable | None | bool = None,
                  num_instances: int | None = None, pad: bool = False, attention_key: str = 'attention',
                  shuffle: bool = False, random_state: int | None = None,
-                 bag_ids_attr: str = 'bag_ids', bag_id_key: str | None = None, cache_path: Path | None = None):
+                 bag_ids_attr: str = 'bag_ids', bag_id_key: str | None = None, cache_path: Path | None = None,
+                 progress_bar: bool = False):
 
         self.dataset = dataset
         if collator is None and not False:
@@ -54,6 +55,7 @@ class MILFromDataset(Dataset):
         self.shuffle = shuffle
         self.random_state = random_state
         self.rng = np.random.RandomState(random_state)
+        self.progress_bar = progress_bar
 
         if self.num_instances is not None and self.shuffle and self.cache_dir is not None:
             logging.warning(f'Using cache with `shuffle=True` and num_instance=True`. A random subset of instances will be cached once.')
@@ -102,7 +104,8 @@ class MILFromDataset(Dataset):
         bag_idc = bag_idc[:num_instances]
 
         bag = []
-        for idx in tqdm(bag_idc):
+        iterator = tqdm(bag_idc) if self.progress_bar else bag_idc
+        for idx in iterator:
             item = self.dataset[idx]
             # NOTE: we do not need attention if we do not pad
             # item = glom.assign(item, self.attention_key, True, missing=lambda: {})
