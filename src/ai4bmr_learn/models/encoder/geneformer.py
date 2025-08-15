@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from loguru import logger
 
-class GeneformerHelical(nn.Module):
+class Geneformer(nn.Module):
     def __init__(
         self,
         model_name: str = 'gf-12L-30M-i2048',
@@ -38,7 +38,7 @@ class GeneformerHelical(nn.Module):
 
         self.fill_na = fill_na
 
-    def forward(self, input_ids: torch.Tensor, attention_masks: torch.Tensor | None = None):
+    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor | None = None):
         """
         Forward pass through the Geneformer model.
         Args:
@@ -57,9 +57,9 @@ class GeneformerHelical(nn.Module):
         input_ids = input_ids.reshape(-1, num_genes)
         batched_input_ids = input_ids.split(mini_batch_size, dim=0)
 
-        if attention_masks is not None:
-            attention_masks = attention_masks.reshape(-1, num_genes)
-            batched_attention_mask = attention_masks.split(mini_batch_size, dim=0)
+        if attention_mask is not None:
+            attention_mask = attention_mask.reshape(-1, num_genes)
+            batched_attention_mask = attention_mask.split(mini_batch_size, dim=0)
         else:
             batched_attention_mask = [None] * len(batched_input_ids)
 
@@ -85,9 +85,10 @@ class GeneformerHelical(nn.Module):
 
 def pool_embeddings(
     embeddings: torch.Tensor,
-    pooling: str = 'mean',
+    pooling: str = 'cell',
     attention_masks: torch.Tensor | None = None,
     has_special_tokens: bool = False,
+    eps: float = 1e-5,
 ) -> torch.Tensor:
     """
     Pool the embeddings using the specified pooling method.
@@ -100,6 +101,7 @@ def pool_embeddings(
         The pooled embeddings.
     """
     if pooling == 'cls':
+        assert has_special_tokens, f'`{pooling}` is not a valid pooling method for models without special token'
         return embeddings[:, 0]  # batch_size, embedding_dim
     elif pooling == 'cell':
         if attention_masks is None:
@@ -108,6 +110,6 @@ def pool_embeddings(
         if has_special_tokens:
             embeddings = embeddings[:, 1:-1]
             attention_masks = attention_masks[:, 1:-1]
-        return embeddings.sum(dim=1) / attention_masks.sum(dim=1, keepdim=True)
+        return embeddings.sum(dim=1) / (attention_masks.sum(dim=1, keepdim=True) + eps)
     else:
         raise NotImplementedError(f'{pooling} is not implemented.')

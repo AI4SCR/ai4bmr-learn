@@ -104,7 +104,7 @@ class BaseCollate:
         return batch
 
 
-class GeneFormerCollate(BaseCollate):
+class GeneformerCollate(BaseCollate):
     def __init__(
         self,
         kernel_size: int,
@@ -148,13 +148,13 @@ class GeneFormerCollate(BaseCollate):
         input_ids = pad_input_ids(input_ids=input_ids, pad_token_id=pad_token_id, max_len=max_len)
         input_ids = torch.stack(input_ids)  # type: ignore
         assert not torch.isnan(input_ids).any(), 'Stacked expression data contains NaN values.'  # pyright: ignore
-        attention_masks = get_attention_mask_for_padded_tensors(input_ids=input_ids, pad_token_id=pad_token_id)  # type: ignore
+        attention_mask = get_attention_mask_for_padded_tensors(input_ids=input_ids, pad_token_id=pad_token_id)  # type: ignore
 
         batch_size = input_ids.shape[0] // num_tokens  # type: ignore
         input_ids = input_ids.view(batch_size, num_tokens, -1)  # type: ignore
-        attention_masks = attention_masks.view(batch_size, num_tokens, -1)
+        attention_mask = attention_mask.view(batch_size, num_tokens, -1)
 
-        return {'input_ids': input_ids, 'attention_masks': attention_masks}
+        return {'input_ids': input_ids, 'attention_mask': attention_mask}
 
     def __call__(self, batch):
         self.ensembl_dict = self.get_gene_dict(batch)
@@ -174,14 +174,14 @@ class GeneFormerCollate(BaseCollate):
                 )
                 input_ids = torch.stack(input_ids).view(batch_size, num_tokens, max_len)
 
-                attention_masks = view['attention_masks'].view(-1, num_ids)
-                attention_masks = pad_input_ids(
-                    attention_masks, pad_token_id=self.tk.gene_token_dict.get('<pad>'), max_len=max_len
+                attention_mask = view['attention_mask'].view(-1, num_ids)
+                attention_mask = pad_input_ids(
+                    attention_mask, pad_token_id=self.tk.gene_token_dict.get('<pad>'), max_len=max_len
                 )
-                attention_masks = torch.stack(attention_masks).view(batch_size, num_tokens, max_len)
+                attention_mask = torch.stack(attention_mask).view(batch_size, num_tokens, max_len)
 
                 view['input_ids'] = input_ids
-                view['attention_masks'] = attention_masks
+                view['attention_mask'] = attention_mask
 
         return result
 

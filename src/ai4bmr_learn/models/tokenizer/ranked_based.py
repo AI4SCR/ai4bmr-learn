@@ -3,6 +3,9 @@ import os
 import json
 import torch.nn as nn
 
+import ai4bmr_learn.utils.utils
+
+
 class RankBasedTokenizer(nn.Module):
     def __init__(self, labels: list[str], label_key: str = 'label', pad_token='[PAD]', unk_token='[UNK]', mask_token='[MASK]', max_length=None):
         super().__init__()
@@ -37,7 +40,7 @@ class RankBasedTokenizer(nn.Module):
         self.max_length = max_length or len(self.labels)
 
     def forward(self, item):
-        scores = item['points'][self.label_key].value_counts().to_dict()
+        scores = ai4bmr_learn.utils.utils.to_dict()
         tokenized = self.encode(scores)
         return tokenized
 
