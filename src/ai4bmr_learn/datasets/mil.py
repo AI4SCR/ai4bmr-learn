@@ -9,6 +9,9 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
+import ai4bmr_learn.utils.utils
+
+
 class MIL(Dataset):
 
     def __init__(self, data_dir: Path, metadata_path: Path, bag_id_col: str, num_instances: int):
@@ -181,5 +184,5 @@ class MILDataset(Dataset):
         dtype = torch.long if self.is_categorical else torch.float
         target = torch.tensor(self.targets.loc[sample_id], dtype=dtype)
 
-        metadata = self.metadata.loc[sample_id].to_dict()
+        metadata = ai4bmr_learn.utils.utils.to_dict()
         return dict(x=x, target=target, metadata=metadata, sample_id=sample_id)

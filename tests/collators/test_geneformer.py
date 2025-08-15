@@ -1,5 +1,5 @@
 def test_geneformer_collate():
-    from ai4bmr_learn.collators.geneformer import GeneFormerCollate
+    from ai4bmr_learn.collators.geneformer import GeneformerCollate
     import geopandas as gpd
     import numpy as np
 
@@ -19,7 +19,7 @@ def test_geneformer_collate():
     points['ensembl_id'] = np.random.choice(ensembl_ids, size=num_obs, replace=True)
     points['transcript_id'] = np.arange(num_obs)
 
-    collator = GeneFormerCollate(kernel_size=16, stride=16)
+    collator = GeneformerCollate(kernel_size=16, stride=16)
 
     item1 = {'points': points, 'patch_size': 224}
     item2 = {'points': points.copy(), 'patch_size': 224}

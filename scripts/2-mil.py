@@ -5,7 +5,7 @@ from ai4bmr_learn.supervised.mil import MIL
 from ai4bmr_learn.models.backbones.timm import Backbone
 from ai4bmr_learn.models.mil.linear import Linear
 from torch.utils.data import DataLoader, Dataset
-from ai4bmr_learn.datasets.patches_v2 import Patches
+from ai4bmr_learn.datasets.coordinates import Patches
 import torch
 from pathlib import Path
 

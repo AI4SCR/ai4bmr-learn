@@ -1,20 +1,11 @@
 from lightning.pytorch.cli import SaveConfigCallback
 from lightning.pytorch.loggers import Logger
 import lightning as L
-from jsonargparse._namespace import Namespace
 from pathlib import Path
 from loguru import logger
 
-def to_dict(item):
-    item = vars(item) if isinstance(item, Namespace) else item
+from ai4bmr_learn.utils.utils import to_dict
 
-    if isinstance(item, dict):
-        return {k: to_dict(v) for k, v in item.items()}
-
-    if isinstance(item, (list, tuple)):
-        return [to_dict(i) for i in item]
-
-    return item
 
 class LoggerSaveConfigCallback(SaveConfigCallback):
     def save_config(self, trainer: L.Trainer, pl_module: L.LightningModule, stage: str) -> None:

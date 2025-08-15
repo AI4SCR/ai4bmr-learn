@@ -1,24 +1,51 @@
 import json
 from pathlib import Path
 from typing import Callable
-from torchvision import tv_tensors
-from PIL.Image import Image
 
+import geopandas as gpd
 import pandas as pd
 import torch
 from loguru import logger
 from torch.utils.data import Dataset
-
-from ai4bmr_learn.data.splits import Split
-from ai4bmr_learn.data_models.Coordinate_v2 import PatchCoordinate, SlideCoordinate
-from ai4bmr_learn.utils import io
-import numpy as np
-
-from torchvision.transforms import v2
 from torchvision import tv_tensors
+
+import ai4bmr_learn.utils.utils
+from ai4bmr_learn.data.splits import Split
+from ai4bmr_learn.data_models.Coordinate_v2 import PatchCoordinate
+from ai4bmr_learn.utils import io
 from ai4bmr_learn.utils.utils import pair
 
 to_img = lambda x: tv_tensors.Image(x)
+
+
+def get_points(coord):
+    from shapely.affinity import translate, scale
+    from ai4bmr_learn.utils.utils import pair
+
+    kernel_height, kernel_width = pair(coord.kernel_size)
+
+    xmin = coord.x
+    ymin = coord.y
+    xmax = xmin + kernel_width
+    ymax = ymin + kernel_height
+    bbox = (xmin, ymin, xmax, ymax)
+
+    scale_factor = getattr(coord, 'scale_factor', 1)
+
+    # check option: use_arrwo=True, not supported for gpkg
+    points = gpd.read_file(coord.points_path, bbox=bbox)
+
+    points['geometry'] = points['geometry'].map(
+        lambda geom: scale(
+            translate(geom=geom, xoff=-xmin, yoff=-ymin, zoff=0),
+            xfact=1 / scale_factor,
+            yfact=1 / scale_factor,
+            origin=(0, 0)
+        )
+    )
+
+    return points
+
 
 def get_patch(coord: PatchCoordinate) -> tv_tensors.Image:
     img_path = Path(coord.image_path)
@@ -31,16 +58,18 @@ def get_patch(coord: PatchCoordinate) -> tv_tensors.Image:
     return to_img(patch)
 
 
-class Patches(Dataset):
+class Coordinates(Dataset):
 
     def __init__(
-        self,
-        coords_path: Path,
-        metadata_path: Path | None = None,
-        split: str | None = None,
-        transform: Callable | None = None,
-        cache_dir: Path | None = None,
-        drop_nan_columns: bool = False,
+            self,
+            coords_path: Path,
+            metadata_path: Path | None = None,
+            split: str | None = None,
+            transform: Callable | None = None,
+            cache_dir: Path | None = None,
+            drop_nan_columns: bool = False,
+            with_image: bool = True,
+            with_points: bool = True,
     ):
         """
         Args:
@@ -56,6 +85,8 @@ class Patches(Dataset):
         self.coords: list[PatchCoordinate] | None = None
         self.coord_ids: list[str] | None = None
         self.image_ids: list[str] | None = None
+        self.with_image = with_image
+        self.with_points = with_points
 
         # METADATA
         self.metadata_path = metadata_path
@@ -81,22 +112,34 @@ class Patches(Dataset):
         item = coord.model_dump()
 
         if self.has_cache(uuid=coord.uuid):
-            patch_path = self.get_cache_path(coord.uuid)
-            patch = torch.load(patch_path, weights_only=False)
-        else:
-            patch = get_patch(coord)
 
-        item['image'] = patch
+            if self.with_image:
+                patch_path = self.cache_dir / f'{coord.uuid}.pt'
+                patch = torch.load(patch_path, weights_only=False)
+                item['image'] = patch
+
+            if self.with_points:
+                points_path = self.cache_dir / f'{coord.uuid}.parquet'
+                points = gpd.read_parquet(points_path)
+                item['points'] = points
+
+        else:
+            if self.with_image:
+                patch = get_patch(coord)
+                item['image'] = patch
+
+            if self.with_points:
+                points = get_points(coord)
+                item['points'] = points
 
         if self.metadata is not None:
-            metadata_dict = self.metadata.loc[coord.uuid].to_dict()
+            metadata_dict = ai4bmr_learn.utils.utils.to_dict()
             item['metadata'] = metadata_dict
 
         if self.transform:
             item = self.transform(item)
 
         return item
-
 
     def setup(self):
         logger.info(f'Setting up Patches dataset from coords_path: {self.coords_path}')
@@ -137,7 +180,6 @@ class Patches(Dataset):
             logger.info('No cache found. Creating...')
             self.create_cache()
 
-
     def has_cache(self, uuid: str | None = None) -> bool:
 
         if self.cache_dir is None:
@@ -145,6 +187,7 @@ class Patches(Dataset):
 
         if self.cached_ids is None:
             logger.info(f'Gather cached ids...')
+            # TODO: this does not error if only the images or only the points are cached...
             self.cached_ids = set([i.stem for i in self.cache_dir.rglob('*.pt')])
 
         if uuid is not None:
@@ -154,7 +197,7 @@ class Patches(Dataset):
 
             # TODO: report subset matches
             if uuids <= self.cached_ids:
-                logger.info(f'Found all {len(uuids)} cached patches in {self.coords_path}')
+                logger.info(f'Found cache for all {len(uuids)} coordinates in {self.cache_dir}')
                 return True
             else:
                 return False
@@ -170,8 +213,8 @@ class Patches(Dataset):
         num_coords = len(self.coords)
         for i in tqdm(range(num_coords), total=num_coords, desc='Caching patches'):
             coord = self.coords[i]
-            patch_path = self.get_cache_path(coord.uuid)
-            # points_path = self.cache_dir / f'{coord.uuid}.parquet'
+            patch_path = self.cache_dir / f'{coord.uuid}.pt'
+            points_path = self.cache_dir / f'{coord.uuid}.parquet'
 
             # if not patch_path.exists() or not points_path.exists():
             if not patch_path.exists():
@@ -180,9 +223,8 @@ class Patches(Dataset):
                 self.cache_dir.mkdir(parents=True, exist_ok=True)
 
                 torch.save(item['image'], patch_path)
-                # item['points'].to_parquet(points_path)
+                item['points'].to_parquet(points_path)
 
     def invalidate_cache(self):
         import shutil
         shutil.rmtree(self.cache_dir)
-
