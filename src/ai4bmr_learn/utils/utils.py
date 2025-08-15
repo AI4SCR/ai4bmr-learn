@@ -1,6 +1,8 @@
 from typing import Iterable, Iterator, TypeVar, List
 from itertools import islice
 
+from jsonargparse import Namespace
+
 T = TypeVar('T')
 
 
@@ -56,3 +58,15 @@ def setup_wandb_auth(api_key_name: str = 'WANDB_API_KEY_ETHZ'):
         os.environ["WANDB_API_KEY"] = api_key
     else:
         raise RuntimeError("No WANDB API key found in env or .netrc")
+
+
+def to_dict(item):
+    item = vars(item) if isinstance(item, Namespace) else item
+
+    if isinstance(item, dict):
+        return {k: to_dict(v) for k, v in item.items()}
+
+    if isinstance(item, (list, tuple)):
+        return [to_dict(i) for i in item]
+
+    return item

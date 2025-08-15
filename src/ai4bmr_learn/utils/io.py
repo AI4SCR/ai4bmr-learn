@@ -12,6 +12,9 @@ def imread(img_path: Path, engine: str | None = None):
         case '.tiff':
             import tifffile
             data = tifffile.imread(img_path)
+        case '.tif':
+            import tifffile
+            data = tifffile.imread(img_path)
         case '.zip':
             import zarr
             store = zarr.ZipStore(str(img_path), mode="r")
@@ -47,6 +50,9 @@ def save_image(
         case '.tiff':
             import tifffile
             tifffile.imwrite(save_path, img, tile=chunks, compression=compressor)
+        case '.tif':
+            import tifffile
+            tifffile.imwrite(save_path, img, tile=chunks, compression=compressor)
 
 
 imsave = save_image
@@ -75,6 +81,9 @@ def read_region(
             store = zarr.ZipStore(str(img_path), mode="r")
             return zarr.open_array(store=store)
         case '.tiff':
+            import tifffile
+            return tifffile.imread(files=img_path, mode="r")
+        case '.tif':
             import tifffile
             return tifffile.imread(files=img_path, mode="r")
         case '.openslide':

@@ -8,6 +8,7 @@ from ai4bmr_core.utils.stats import StatsRecorder
 from loguru import logger
 from tqdm import tqdm
 
+import ai4bmr_learn.utils.utils
 from ai4bmr_learn.data.splits import generate_splits
 from ai4bmr_learn.utils import io
 
@@ -151,7 +152,7 @@ class PrepareDatasetFolder(L.LightningDataModule):
         for sample_id in tqdm(sample_ids):
             obj_to_label = metadata.loc[sample_id, 'label_id']
             obj_to_label.index = obj_to_label.index.astype(int)
-            obj_to_label = obj_to_label.to_dict()
+            obj_to_label = ai4bmr_learn.utils.utils.to_dict()
             obj_to_label[0] = 0
 
             mask = io.imread(self.masks_dir / f'{sample_id}.zarr')
