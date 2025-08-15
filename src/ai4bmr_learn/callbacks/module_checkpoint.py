@@ -1,6 +1,7 @@
 from lightning.pytorch.callbacks import Callback
 import torch
 from pathlib import Path
+from loguru import logger
 
 class ModuleCheckpoint(Callback):
     def __init__(self, module_name: str = 'backbone.backbone', every_n_epochs: int = 1):
@@ -17,6 +18,7 @@ class ModuleCheckpoint(Callback):
 
         save_dir = Path(trainer.logger.save_dir) / trainer.logger.experiment.project / trainer.logger.experiment._attach_id / 'checkpoints'
         save_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Saving checkpoint for module '{self.module_name}' at epoch {epoch + 1} to {save_dir}")
 
         path = save_dir / f"module={self.module_name}-epoch={epoch}-step={trainer.global_step}.ckpt"
 
