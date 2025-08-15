@@ -2,11 +2,15 @@ import torch
 
 
 def batch_to_device(batch, device):
-    for k, v in batch.items():
-        if isinstance(v, torch.Tensor):
-            batch[k] = v.to(device)
 
-    return batch
+    if isinstance(batch, torch.Tensor):
+        return batch.to(device)
+
+    if isinstance(batch, (list, tuple)):
+        return [batch_to_device(batch, device) for batch in batch]
+
+    if isinstance(batch, dict):
+        return {k: batch_to_device(v, device) for k,v in batch.items()}
 
 
 def get_device(logger=None):

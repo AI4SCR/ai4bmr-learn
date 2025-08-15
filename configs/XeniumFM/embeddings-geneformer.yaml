@@ -9,8 +9,8 @@ trainer:
   logger:
     - class_path: lightning.pytorch.loggers.WandbLogger
       init_args:
-        project: PCa2025
-        save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/logs/PCa2025
+        project: embeddings
+        save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/logs/embeddings
         log_model: false
         tags:
           - embeddings
@@ -18,7 +18,7 @@ trainer:
     - class_path: ai4bmr_learn.callbacks.save_outputs.SaveOutputs
       init_args:
         step: predict
-        save_dir: /users/amarti51/prometex/data/benchmarking/embeddings/PCa/oee8hrej/test
+        save_dir: /users/amarti51/prometex/data/embeddings/geneformer/patch-level/test
         save_key: z
         drop_keys:
   fast_dev_run: false
@@ -54,73 +54,30 @@ trainer:
   reload_dataloaders_every_n_epochs: 0
   default_root_dir: null
   model_registry: null
-model:
-  class_path: ai4bmr_learn.modules.model_builder.ModelBuilder
-  init_args:
-      path: ai4bmr_learn.models.backbones.timm.Backbone
-      batch_key: image
-  dict_kwargs:
-    model_name: resnet18
-    num_channels: 40
-    global_pool: avg
-    pretrained: false
-    ckpt_path: /work/FAC/FBM/DBC/mrapsoma/prometex/data/logs/PCa2025/PCa2025/oee8hrej/checkpoints/module=backbone.backbone-epoch=0-step=43.ckpt
 data:
   class_path: ai4bmr_learn.datamodules.dataloader_collection.DataLoaderCollection
   init_args:
     dataloaders:
-      fit:
-        - class_path: ai4bmr_learn.datamodules.dataloader_collection.DataLoader
-          init_args:
-            dataset:
-              class_path: ai4bmr_learn.datasets.items.Items
-              init_args: &fit_kwargs
-                items_path: '/users/amarti51/prometex/data/benchmarking/datasets/PCa/items/items.json'
-                metadata_path: '/users/amarti51/prometex/data/benchmarking/datasets/PCa/splits/samples/clf-target=disease_progr.parquet'
-                id_key: 'sample_id'
-                split: 'fit'
-                drop_nan_columns: true
-                transform: &train_transform
-                  class_path: torchvision.transforms.v2.Compose
-                  init_args:
-                    transforms:
-                      - class_path: torchvision.transforms.v2.ToDtype
-                        init_args:
-                          dtype: torch.float32
-                          scale: false
-                      - class_path: torchvision.transforms.v2.RandomResizedCrop
-                        init_args:
-                          size: &image_size 224
-                          scale: [0.8, 1]
-                      - class_path: ai4bmr_learn.transforms.wrappers.Normalize
-                        init_args:
-                          stats_path: /users/amarti51/prometex/data/benchmarking/datasets/PCa/images/filtered/stats.json
-          dict_kwargs: &fit_dataloader_kwargs
-            batch_size: 4
-            num_workers: 0
-            persistent_workers: false
-            shuffle: false
-            pin_memory: true
-      val:
-        - class_path: ai4bmr_learn.datamodules.dataloader_collection.DataLoader
-          init_args:
-            dataset:
-              class_path: ai4bmr_learn.datasets.items.Items
-              init_args:
-                <<: *fit_kwargs
-                split: 'val'
-          dict_kwargs:
-            <<: *fit_dataloader_kwargs
       predict:
         - class_path: ai4bmr_learn.datamodules.dataloader_collection.DataLoader
           init_args:
             dataset:
-              class_path: ai4bmr_learn.datasets.items.Items
+              class_path: ai4bmr_learn.datasets.coordinates.Coordinates
+              init_args: &ds_kwargs
+                coords_path: /work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/splits/hest1k-tts=4-fvs=0-min_transcripts_per_patch=200/test-0.json
+                cache_dir: /work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/cache
+            collate_fn:
+              class_path: ai4bmr_learn.collators.geneformer.GeneformerCollate
               init_args:
-                <<: *fit_kwargs
-                split: test
-          dict_kwargs:
-            <<: *fit_dataloader_kwargs
+                kernel_size: 14
+                stride: 14
+                model_name: &MODEL_NAME gf-6L-30M-i2048
+model:
+  class_path: ai4bmr_learn.modules.model_builder.ModelBuilder
+  init_args:
+    path: ai4bmr_learn.model.encoder.gene_former.Geneformer
+    batch_key: expression
+    as_kwargs: true
 optimizer: null
 lr_scheduler: null
 ckpt_path: null

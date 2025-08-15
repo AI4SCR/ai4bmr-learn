@@ -8,6 +8,7 @@ from loguru import logger
 from torch.utils.data import Dataset
 from torchvision import tv_tensors
 
+import ai4bmr_learn.utils.utils
 from ai4bmr_learn.data.splits import Split
 from ai4bmr_learn.utils import io
 from ai4bmr_learn.utils.utils import pair
@@ -97,7 +98,7 @@ class Items(Dataset):
             item['image'] = image
 
         if self.metadata is not None:
-            metadata_dict = self.metadata.loc[item[self.id_key]].to_dict()
+            metadata_dict = ai4bmr_learn.utils.utils.to_dict()
             item['metadata'] = metadata_dict
 
         if self.transform:

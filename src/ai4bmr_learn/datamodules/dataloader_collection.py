@@ -1,11 +1,11 @@
 import lightning as L
 from torch.utils.data import Dataset
-from typing import Callable
+from typing import Callable, Any
 import torch.utils.data
 
 class DataLoader(torch.utils.data.DataLoader):
 
-    def __init__(self, dataset: Dataset, collate_fn: Callable = None, **kwargs):
+    def __init__(self, dataset: Dataset, collate_fn: Any | None = None, **kwargs):
         super().__init__(dataset, collate_fn=collate_fn, **kwargs)
 
 

@@ -6,6 +6,9 @@ from sklearn.preprocessing import LabelEncoder
 import numpy as np
 from pathlib import Path
 
+import ai4bmr_learn.utils.utils
+
+
 class TabularDataset(Dataset):
 
     def __init__(self, *, data: pd.DataFrame, metadata: pd.DataFrame, target_column_name: str = "target"):
@@ -48,7 +51,7 @@ class TabularDataset(Dataset):
         x = torch.tensor(self.data.iloc[idx].values).float()
         target = torch.tensor(self.targets.iloc[idx])
         target = target.long() if self.is_categorical else target.float()
-        metadata = self.metadata.iloc[idx].to_dict()
+        metadata = ai4bmr_learn.utils.utils.to_dict()
         return dict(x=x, target=target, metadata=metadata)
 
     @classmethod
