@@ -4,6 +4,7 @@ from lightning.pytorch.callbacks import Callback
 from pathlib import Path
 import shutil
 import torch
+from loguru import logger
 
 class SaveOutputs(Callback):
 
@@ -33,7 +34,11 @@ class SaveOutputs(Callback):
 
         if self.drop_keys:
             for key in self.drop_keys:
-                del data[key]
+                try:
+                    del data[key]
+                except KeyError as e:
+                    logger.error(f'Key "{key}" not found in batch. Available keys: {list(data.keys())}')
+                    raise e
 
         save_path = self.save_dir / f'dl_idx={dataloader_idx}-batch_idx={batch_idx}.pt'
         torch.save(data, save_path)
