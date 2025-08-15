@@ -38,3 +38,17 @@ class ModelBuilder(L.LightningModule):
     def forward(self, x) -> Any:
         x = glom(x, self.batch_key) if self.batch_key else x
         return self.model(**x) if self.as_kwargs else self.model(x)
+
+
+class Model(L.LightningModule):
+
+    def __init__(self, model = nn.Module, batch_key: str | None = None, as_kwargs: bool = False, **kwargs):
+        super().__init__()
+        self.model = model
+        self.batch_key = batch_key
+        self.as_kwargs = as_kwargs
+        self.save_hyperparameters()
+
+    def forward(self, x) -> Any:
+        x = glom(x, self.batch_key) if self.batch_key else x
+        return self.model(**x) if self.as_kwargs else self.model(x)
