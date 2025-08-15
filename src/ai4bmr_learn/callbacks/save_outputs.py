@@ -18,12 +18,13 @@ class SaveOutputs(Callback):
             shutil.rmtree(save_dir, ignore_errors=True)
 
         self.save_dir = save_dir
-        self.save_dir.mkdir(parents=True, exist_ok=True)
 
         self.save_key = save_key
         self.drop_keys = drop_keys
 
     def run(self, batch, outputs, batch_idx, dataloader_idx):
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+
         if self.save_key:
             data = batch
             data[self.save_key] = outputs
@@ -38,17 +39,17 @@ class SaveOutputs(Callback):
         torch.save(data, save_path)
 
     def on_train_batch_end(self, trainer, pl_module, outputs: Any, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
-        if self.step == 'fit':
+        if self.step == 'fit' and not trainer.sanity_checking:
             self.run(batch=batch, outputs=outputs, batch_idx=batch_idx, dataloader_idx=dataloader_idx)
 
     def on_validation_batch_end(self, trainer, pl_module, outputs: Any, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
-        if self.step == 'val':
+        if self.step == 'val' and not trainer.sanity_checking:
             self.run(batch=batch, outputs=outputs, batch_idx=batch_idx, dataloader_idx=dataloader_idx)
 
     def on_test_batch_end(self, trainer, pl_module, outputs: Any, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
-        if self.step == 'test':
+        if self.step == 'test' and not trainer.sanity_checking:
             self.run(batch=batch, outputs=outputs, batch_idx=batch_idx, dataloader_idx=dataloader_idx)
 
     def on_predict_batch_end(self, trainer, pl_module, outputs: Any, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
-        if self.step == 'predict':
+        if self.step == 'predict' and not trainer.sanity_checking:
             self.run(batch=batch, outputs=outputs, batch_idx=batch_idx, dataloader_idx=dataloader_idx)
