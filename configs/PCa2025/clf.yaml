@@ -13,13 +13,31 @@ trainer:
         save_dir: /work/FAC/FBM/DBC/mrapsoma/prometex/data/logs/PCa2025
         log_model: false
         tags: ['clf', 'resnet']
-  callbacks: null
+  callbacks:
+    - class_path: ai4bmr_learn.callbacks.log_model_stats.LogModelStats
+    - class_path: ai4bmr_learn.callbacks.module_checkpoint.ModuleCheckpoint
+      init_args:
+        module_name: backbone.backbone
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        monitor: &monitor val/f1
+        mode: &mode max  # "min" for loss, "max" for accuracy, etc.
+        save_last: true
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: epoch
+    - class_path: lightning.pytorch.callbacks.EarlyStopping
+      init_args:
+        monitor: *monitor
+        mode: *mode
+        patience: 15
+        min_delta: 0.001
   fast_dev_run: false
-  max_epochs: null
+  max_epochs: 50
   min_epochs: null
   max_steps: -1
   min_steps: null
-  max_time: null
+  max_time: 00:01:55:00
   limit_train_batches: null
   limit_val_batches: null
   limit_test_batches: null
@@ -28,7 +46,7 @@ trainer:
   val_check_interval: null
   check_val_every_n_epoch: 1
   num_sanity_val_steps: null
-  log_every_n_steps: null
+  log_every_n_steps: 5
   enable_checkpointing: null
   enable_progress_bar: null
   enable_model_summary: null
@@ -54,7 +72,7 @@ model:
       class_path: ai4bmr_learn.models.backbones.timm.Backbone
       init_args:
         model_name: resnet18
-        num_channels: 43
+        num_channels: 40
         global_pool: avg
         pretrained: false
     input_dim: 512
@@ -65,7 +83,7 @@ model:
     weight_decay: 0.04
     pooling: flatten
     batch_key: image
-    target_key: metadata.dx_name
+    target_key: metadata.disease_progr
 data:
   class_path: ai4bmr_learn.datamodules.dataloader_collection.DataLoaderCollection
   init_args:
@@ -76,8 +94,8 @@ data:
             dataset:
               class_path: ai4bmr_learn.datasets.items.Items
               init_args: &fit_kwargs
-                items_path: '/users/amarti51/prometex/data/benchmarking/datasets/Cords2024/items/items.json'
-                metadata_path: '/users/amarti51/prometex/data/benchmarking/datasets/Cords2024/splits/samples/clf-target=dx_name.parquet'
+                items_path: '/users/amarti51/prometex/data/benchmarking/datasets/PCa/items/items.json'
+                metadata_path: '/users/amarti51/prometex/data/benchmarking/datasets/PCa/splits/samples/clf-target=disease_progr.parquet'
                 id_key: 'sample_id'
                 split: 'fit'
                 drop_nan_columns: true
@@ -93,10 +111,13 @@ data:
                         init_args:
                           size: &image_size 224
                           scale: [0.8, 1]
+                      - class_path: ai4bmr_learn.transforms.wrappers.Normalize
+                        init_args:
+                          stats_path: /users/amarti51/prometex/data/benchmarking/datasets/PCa/images/filtered/stats.json
           dict_kwargs:
-            batch_size: 4
-            num_workers: 0
-            persistent_workers: false
+            batch_size: 8
+            num_workers: 12
+            persistent_workers: true
             shuffle: false
             pin_memory: true
       val:
@@ -107,6 +128,12 @@ data:
               init_args:
                 <<: *fit_kwargs
                 split: 'val'
+          dict_kwargs:
+            batch_size: 8
+            num_workers: 12
+            persistent_workers: true
+            shuffle: false
+            pin_memory: true
       predict:
         - class_path: ai4bmr_learn.datamodules.dataloader_collection.DataLoader
           init_args:

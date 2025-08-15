@@ -61,6 +61,7 @@ class PrepareDatasetFolder(L.LightningDataModule):
         # COORDS
         self.coords_version = coords_version
         self.coords_path = self.save_dir / 'coords' / f'{coords_version}.json'
+        self.items_path = self.save_dir / 'items' / 'items.json'
 
         # METADATA
         self.metadata_path = metadata_path or self.save_dir / 'metadata.parquet'
@@ -170,6 +171,11 @@ class PrepareDatasetFolder(L.LightningDataModule):
         filter_ = self.dataset.clinical.index.isin(sample_ids)
         metadata = self.dataset.clinical[filter_]
         metadata = metadata.convert_dtypes()
+
+        cols = metadata.select_dtypes(['datetime']).columns
+        for col in cols:
+            metadata[col] = metadata[col].dt.strftime("%Y-%m-%d")
+
         metadata.to_parquet(self.metadata_path, engine='fastparquet')
 
     def prepare_masks(self):
@@ -241,6 +247,21 @@ class PrepareDatasetFolder(L.LightningDataModule):
         if image_ids != mask_ids:
             logger.warning(f'Set of images and mask ids do not match')
 
+    def prepare_items(self):
+        import uuid
+        import json
+
+        if self.items_path.exists():
+            return
+
+        items = []
+        for img_path in self.images_dir.glob('*.zarr'):
+            items.append({'uuid': str(uuid.uuid4()), 'image_path': str(img_path), 'sample_id': img_path.stem})
+
+        self.items_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.items_path, 'w') as f:
+            json.dump(items, f)
+
     def prepare_data(self) -> None:
 
         self.dataset.setup()
@@ -248,6 +269,7 @@ class PrepareDatasetFolder(L.LightningDataModule):
         self.prepare_images()
         self.prepare_masks()
         self.prepare_coords()
+        self.prepare_items()
         self.prepare_metadata()
 
         self.prepare_splits()
@@ -325,4 +347,6 @@ if __name__ == '__main__':
     dm = self = PrepareDatasetFolder(dataset=dataset, save_dir=save_dir,
                               split_version=f'clf-target={target_name}', split_kwargs=splits_kwargs,
                               annotation_col_name='label')
-    dm.prepare_data()
+    # dm.prepare_data()
+    dm.prepare_metadata()
+    dm.prepare_splits()
