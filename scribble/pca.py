@@ -59,9 +59,11 @@ collate_fn = GeneformerCollate(
 )
 
 coords_path=Path("/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/splits/hest1k-tts=4-fvs=0-min_transcripts_per_patch=200/test-0.json")
-dataset = Coordinates(coords_path=coords_path, cache_dir = Path('/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/cache'))
+dataset = Coordinates(coords_path=coords_path, with_image=False,
+                      cache_dir = Path('/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/cache'))
 dataset.setup()
 item = dataset[0]
+item.keys()
 
 # Single DataLoader
 predict_loader = DataLoader(
