@@ -6,32 +6,27 @@ from typing import Callable
 
 class Embeddings(Dataset):
 
-    def __init__(self, embeddings_dir: Path, transform: Callable | None = None, pattern: str = '*.pt'):
+    def __init__(self, data_dir: Path | None = None, transform: Callable | None = None, pattern: str = '*.pt'):
         super().__init__()
-
-        self.embeddings_dir = embeddings_dir.resolve()
-        assert self.embeddings_dir.exists(), f'{self.embeddings_dir} does not exist.'
+        
+        self.data_dir = data_dir.resolve()
+        assert self.data_dir.exists(), f'{self.data_dir} does not exist.'
         self.pattern = pattern
 
         self.transform = transform
-        self.embeddings: list | None = None
+        self.data_paths: list[Path] | None = None
 
     def setup(self):
-        embedding_paths = sorted(self.embeddings_dir.glob(self.pattern))
-        logger.info(f'Found {len(embedding_paths)} embeddings in {self.embeddings_dir}')
-
-        self.embeddings = []
-        for embedding_path in embedding_paths:
-            embedding = torch.load(str(embedding_path), map_location='cpu', weights_only=True)
-            if self.transform is not None:
-                embedding = self.transform(embedding)
-            self.embeddings.append(embedding)
+        self.data_paths = sorted(self.data_dir.glob(self.pattern))
+        logger.info(f'Found {len(self.data_paths)} embeddings in {self.data_dir}')
 
     def __len__(self) -> int:
-        return 1
+        return len(self.data_paths)
 
     def __getitem__(self, idx: int):
-        return self.embeddings
+        data_path = self.data_paths[idx]
+        embedding = torch.load(str(data_path), map_location='cpu', weights_only=True)
+        return embedding
 
 # ds = Embeddings(Path('/users/amarti51/prometex/data/benchmarking/embeddings/PCa/oee8hrej'))
 # ds.setup()
