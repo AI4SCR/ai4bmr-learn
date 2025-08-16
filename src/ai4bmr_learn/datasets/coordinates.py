@@ -70,6 +70,7 @@ class Coordinates(Dataset):
             drop_nan_columns: bool = False,
             with_image: bool = True,
             with_points: bool = True,
+            index_key: str | None = None
     ):
         """
         Args:
@@ -90,9 +91,11 @@ class Coordinates(Dataset):
 
         # METADATA
         self.metadata_path = metadata_path
+        self.index_key = index_key
         if metadata_path is not None:
             self.metadata_path = Path(metadata_path).expanduser().resolve()
             assert self.metadata_path.exists(), f'metadata_path {self.metadata_path} does not exist'
+            assert self.index_key is not None, f'provide the `index_key` to look up metadata for an item.'
         self.metadata: pd.DataFrame | None = None
         self.drop_nan_columns = drop_nan_columns
         self.split = split
@@ -133,7 +136,8 @@ class Coordinates(Dataset):
                 item['points'] = points
 
         if self.metadata is not None:
-            metadata_dict = ai4bmr_learn.utils.utils.to_dict()
+            index = item[self.index_key]
+            metadata_dict = self.metadata.loc[index].to_dict()
             item['metadata'] = metadata_dict
 
         if self.transform:

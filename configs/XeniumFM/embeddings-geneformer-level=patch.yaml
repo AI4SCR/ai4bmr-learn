@@ -68,6 +68,8 @@ data:
               init_args: &ds_kwargs
                 coords_path: /work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/splits/hest1k-tts=4-fvs=0-min_transcripts_per_patch=200/${oc.env:SPLIT}.json
                 cache_dir: /work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/cache
+                metadata_path: /work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/datasets/hest1k/metadata.parquet
+                index_key: global_id
                 with_image: false
             collate_fn:
               class_path: ai4bmr_learn.collators.geneformer.GeneformerCollate

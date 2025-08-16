@@ -64,7 +64,7 @@ data:
             dataset:
               class_path: ai4bmr_learn.datasets.embeddings.Embeddings
               init_args: &fit_kwargs
-                embeddings_dir: '/users/amarti51/prometex/data/benchmarking/embeddings/PCa/oee8hrej/fit'
+                data_dir: '/users/amarti51/prometex/data/benchmarking/embeddings/PCa/oee8hrej/fit'
       val:
         - class_path: ai4bmr_learn.datamodules.dataloader_collection.DataLoader
           init_args:
@@ -72,7 +72,7 @@ data:
               class_path: ai4bmr_learn.datasets.embeddings.Embeddings
               init_args:
                 <<: *fit_kwargs
-                embeddings_dir: '/users/amarti51/prometex/data/benchmarking/embeddings/PCa/oee8hrej/test'
+                data_dir: '/users/amarti51/prometex/data/benchmarking/embeddings/PCa/oee8hrej/test'
 optimizer: null
 lr_scheduler: null
 ckpt_path: null

@@ -4,10 +4,13 @@ from glom import glom
 from ai4bmr_learn.metrics.classification import get_metric_collection
 from ai4bmr_learn.callbacks.cache import TrainCache
 from loguru import logger
+from ai4bmr_learn.utils.pooling import pool
 
+# TODO: convert to genral Sklearn module that accepts any model
+# TODO: enable online learning
 class LogisticRegression(L.LightningModule):
 
-    def __init__(self, target_key: str, batch_key: str, num_classes: int | None, **kwargs):
+    def __init__(self, target_key: str, batch_key: str, num_classes: int | None, pooling: str | None = None, **kwargs):
         super().__init__()
         from sklearn.linear_model import LogisticRegression
         self.automatic_optimization = False  # needed if you do not want to return a loss in `training_step`
@@ -15,6 +18,7 @@ class LogisticRegression(L.LightningModule):
         # data keys
         self.batch_key = batch_key
         self.target_key = target_key
+        self.pooling = pooling
 
         # model
         self.model = LogisticRegression(**kwargs)
@@ -38,6 +42,8 @@ class LogisticRegression(L.LightningModule):
             targets = torch.concat(targets) if return_targets else None
         else:
             raise ValueError(f"Unsupported batch type: {type(batch)}")
+
+        data = pool(data, strategy=self.pooling)
 
         return data, targets
 
@@ -66,7 +72,7 @@ class LogisticRegression(L.LightningModule):
         y = torch.cat(y).numpy()
 
         # fit
-        logger.info('Fitting model...')
+        logger.info(f'Fitting model with X like {x.shape} and y like {y.shape}')
         self.model.fit(X=x, y=y)
 
         # metrics
