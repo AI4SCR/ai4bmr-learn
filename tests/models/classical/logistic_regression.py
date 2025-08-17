@@ -1,3 +1,4 @@
+import lightning.pytorch.loggers
 import torch
 from lightning import Trainer
 from torch.utils.data import DataLoader
@@ -5,7 +6,7 @@ from torch.utils.data import DataLoader
 from ai4bmr_learn.models.classical.logistic_regression import LogisticRegression
 from ai4bmr_learn.callbacks.cache import TrainCache, ValidationCache
 
-
+# %%
 X_train = torch.randn(10, 4)
 y_train = torch.randint(0, 2, (10,))
 train_ds = [{"x": X_train[i], "y": y_train[i]} for i in range(10)]
@@ -48,26 +49,30 @@ assert len(train_cache.outputs) == len(train_loader)
 preds = model.model.predict(X_val.numpy())
 assert preds.shape[0] == len(val_ds)
 
-
 # %%
+import pandas as pd
 import torch
+import lightning
 from lightning import Trainer
 from torch.utils.data import DataLoader
-
 from ai4bmr_learn.models.classical.logistic_regression import LogisticRegression
 from ai4bmr_learn.callbacks.cache import TrainCache, ValidationCache
 from ai4bmr_learn.datasets.embeddings import Embeddings
 from ai4bmr_learn.collators.concat import Concat
 from pathlib import Path
-ds = Embeddings(data_dir=Path('/users/amarti51/prometex/data/embeddings/geneformer/patch-level/test-0'))
-ds.setup()
-item = ds[0]
+
+ds_train = Embeddings(data_dir=Path('/users/amarti51/prometex/data/embeddings/geneformer/patch-level/train-0'))
+ds_val = Embeddings(data_dir=Path('/users/amarti51/prometex/data/embeddings/geneformer/patch-level/test-0'))
+
+ds_train.setup()
+ds_val.setup()
+item = ds_train[0]
 
 # if embeddings are batched I recommend to load them 1-by-1
 collate_fn = Concat()
 # batch = collate_fn.concat([item, item])
-train_loader = DataLoader(ds, batch_size = 2, collate_fn = collate_fn)
-val_loader = DataLoader(ds, batch_size = 1, collate_fn = collate_fn)
+train_loader = DataLoader(ds_train, batch_size=2, collate_fn=collate_fn)
+val_loader = DataLoader(ds_val, batch_size=2, collate_fn=collate_fn)
 batch = next(iter(train_loader))
 
 model = LogisticRegression(
@@ -78,14 +83,19 @@ model = LogisticRegression(
 )
 
 train_cache = TrainCache(num_samples=None)
+logger = lightning.pytorch.loggers.CSVLogger(save_dir='/work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn/logs')
 trainer = Trainer(
+    logger=logger,
     max_epochs=1,
     enable_checkpointing=False,
     enable_model_summary=False,
     log_every_n_steps=1,
     callbacks=[train_cache],
+    limit_train_batches=5,
+    limit_val_batches=5,
     # default_root_dir=tmp_path
 )
 
 # %%
 trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+metrics = pd.read_csv('/work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn/logs/lightning_logs/version_0/metrics.csv')

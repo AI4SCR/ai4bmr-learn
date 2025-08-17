@@ -79,17 +79,19 @@ def read_region(
         case '.zip':
             import zarr
             store = zarr.ZipStore(str(img_path), mode="r")
-            return zarr.open_array(store=store)
+            z = zarr.open_array(store=store)
+            return z[channel, y: y + height, x: x + width]
         case '.tiff':
-            import tifffile
-            return tifffile.imread(files=img_path, mode="r")
-        case '.tif':
-            import tifffile
-            return tifffile.imread(files=img_path, mode="r")
-        case '.openslide':
             import openslide
             slide = openslide.open_slide(str(img_path))
             img = slide.read_region(location=(x, y), level=level, size=(width, height))
+            img = img.convert("RGB")
+            return img
+        case '.tif':
+            import openslide
+            slide = openslide.open_slide(str(img_path))
+            img = slide.read_region(location=(x, y), level=level, size=(width, height))
+            img = img.convert("RGB")
             return img
 
 
