@@ -179,7 +179,7 @@ from ai4bmr_learn.data_models.Coordinate_v2 import SlideCoordinate, PatchCoordin
 from torchvision import tv_tensors
 from PIL.Image import Image
 
-def get_patch(coord: PatchCoordinate, as_tensor: bool = True) -> tv_tensors.Image | Image:
+def get_xenium_patch(coord: PatchCoordinate, as_tensor: bool = True) -> tv_tensors.Image | Image:
     import openslide
     from torchvision.transforms import v2
     import torch
@@ -197,33 +197,24 @@ def get_patch(coord: PatchCoordinate, as_tensor: bool = True) -> tv_tensors.Imag
     # TODO: is this more efficient than [...,:3]?
     patch = patch.convert("RGB")  # remove alpha channel
 
-    if isinstance(coord, SlideCoordinate):
-        level = coord.level
-        patch_height, patch_width = pair(coord.patch_size)
-        scale_factor = coord.scale_factor
+    level = coord.level
+    patch_height, patch_width = pair(coord.patch_size)
+    scale_factor = coord.scale_factor
 
-        assert np.isclose(kernel_width, patch_width * scale_factor)
-        assert np.isclose(kernel_height, patch_height * scale_factor)
-        assert np.isclose(coord.mpp * scale_factor, coord.patch_mpp)
-        assert patch_height == round(kernel_height / scale_factor)
-        assert patch_width == round(kernel_width / scale_factor)
+    assert np.isclose(kernel_width, patch_width * scale_factor)
+    assert np.isclose(kernel_height, patch_height * scale_factor)
+    assert np.isclose(coord.mpp * scale_factor, coord.patch_mpp)
+    assert patch_height == round(kernel_height / scale_factor)
+    assert patch_width == round(kernel_width / scale_factor)
 
-        # note: this order seems to perform the best, i.e. resize after ToImage
-        transform = v2.Compose([
-            v2.ToImage(),
-            v2.Resize((patch_height, patch_width)),
-            # v2.ToDtype(torch.float32, scale=True),
-        ])
+    # note: this order seems to perform the best, i.e. resize after ToImage
+    transform = v2.Compose([
+        v2.ToImage(),
+        v2.Resize((patch_height, patch_width)),
+        # v2.ToDtype(torch.float32, scale=True),
+    ])
 
-        patch = transform(patch) if as_tensor else patch.resize((patch_height, patch_width))
-
-    else:
-        transform = v2.Compose([
-            v2.ToImage(),
-            # v2.ToDtype(torch.float32, scale=True),
-        ])
-
-        patch = transform(patch) if as_tensor else patch
+    patch = transform(patch) if as_tensor else patch.resize((patch_height, patch_width))
 
     return patch
 

@@ -94,6 +94,9 @@ class XeniumCoordinate:
     target_mpp: float
     scale_factor: float
 
+    global_id: str
+    sample_id: str
+
     overlap: float | None = None
     uuid: str = field(default_factory=lambda: str(uuid4()))
 
