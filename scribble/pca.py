@@ -31,11 +31,12 @@ collate_fn = GeneformerCollate(
 
 coords_path = Path(
     "/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/splits/hest1k-tts=4-fvs=0-min_transcripts_per_patch=200/test-0.json")
-dataset = Coordinates(coords_path=coords_path, with_image=True,
-                      cache_dir=Path('/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/cache'),
-                      metadata_path=Path(
-                          '/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/datasets/hest1k/metadata.parquet'),
-                      index_key='global_id',
+dataset = Coordinates(coords_path=coords_path,
+                      cache_dir=Path('/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/cache-v2'),
+                      # with_image=True,
+                      # metadata_path=Path(
+                      #     '/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/datasets/hest1k/metadata.parquet'),
+                      # index_key='global_id',
                       # transform=transform
                       )
 dataset.setup()
