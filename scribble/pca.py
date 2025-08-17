@@ -8,6 +8,13 @@ from ai4bmr_learn.datasets.coordinates import Coordinates
 from ai4bmr_learn.collators.geneformer import GeneformerCollate
 from pathlib import Path
 from ai4bmr_learn.utils.device import batch_to_device
+from ai4bmr_learn.transforms.random_resize_crop import RandomResizeCrop
+
+# transform
+transform = RandomResizeCrop(size=224,
+                             scale=[1., 1.],
+                             ratio=[1., 1.],
+                             errors='clip')
 
 # Collator
 collate_fn = GeneformerCollate(
@@ -17,17 +24,20 @@ collate_fn = GeneformerCollate(
 )
 
 collate_fn = GeneformerCollate(
-    kernel_size=16,
-    stride=16,
+    kernel_size=14,
+    stride=14,
     model_name="gf-6L-30M-i2048"
 )
 
-
-coords_path=Path("/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/splits/hest1k-tts=4-fvs=0-min_transcripts_per_patch=200/test-0.json")
-dataset = Coordinates(coords_path=coords_path, with_image=False,
-                      cache_dir = Path('/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/cache'),
-                      metadata_path=Path('/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/datasets/hest1k/metadata.parquet'),
-                      index_key='global_id',
+coords_path = Path(
+    "/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/splits/hest1k-tts=4-fvs=0-min_transcripts_per_patch=200/test-0.json")
+dataset = Coordinates(coords_path=coords_path,
+                      cache_dir=Path('/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/cache-v2'),
+                      # with_image=True,
+                      # metadata_path=Path(
+                      #     '/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/datasets/hest1k/metadata.parquet'),
+                      # index_key='global_id',
+                      # transform=transform
                       )
 dataset.setup()
 item = dataset[0]
@@ -35,11 +45,13 @@ item.keys()
 
 # %%
 
+collate_fn([item])
+
 # Single DataLoader
 predict_loader = DataLoader(
     dataset=dataset,
     collate_fn=collate_fn,
-    batch_size = 10
+    batch_size=10
 )
 
 # Collection of DataLoaders (only predict in this case)
@@ -52,6 +64,7 @@ batch['expression']['input_ids'].shape
 batch = batch_to_device(batch, 'cuda')
 
 from ai4bmr_learn.modules.model_builder import ModelBuilder
+
 model = ModelBuilder(path='ai4bmr_learn.models.encoder.geneformer.Geneformer', as_kwargs=True, batch_key='expression')
 model.to('cuda')
 out = model(batch)

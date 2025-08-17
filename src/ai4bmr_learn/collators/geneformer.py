@@ -59,7 +59,8 @@ class BaseCollate:
 
     def convert_points_to_tokens(self, item: dict) -> pd.DataFrame:
         points = item['points']
-        patch_size = item['patch_size']
+        # patch_size = item['patch_size']  # TODO: make independent on image
+        patch_size = item['image'].shape[-1]
         return compute_points_tokens(
             points, patch_size=patch_size, kernel_size=self.kernel_size, stride=self.stride, group_by=self.group_by
         )

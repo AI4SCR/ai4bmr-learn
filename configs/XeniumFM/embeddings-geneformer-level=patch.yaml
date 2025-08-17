@@ -70,7 +70,7 @@ data:
                 cache_dir: /work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/cache
                 metadata_path: /work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/datasets/hest1k/metadata.parquet
                 index_key: global_id
-                with_image: false
+                with_image: true
             collate_fn:
               class_path: ai4bmr_learn.collators.geneformer.GeneformerCollate
               init_args:

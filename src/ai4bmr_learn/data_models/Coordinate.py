@@ -100,3 +100,4 @@ class XeniumCoordinate:
     overlap: float | None = None
     uuid: str = field(default_factory=lambda: str(uuid4()))
 
+

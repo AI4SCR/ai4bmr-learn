@@ -9,18 +9,18 @@ from loguru import logger
 from torch.utils.data import Dataset
 from torchvision import tv_tensors
 
-import ai4bmr_learn.utils.utils
 from ai4bmr_learn.data.splits import Split
 from ai4bmr_learn.data_models.Coordinate_v2 import PatchCoordinate
 from ai4bmr_learn.utils import io
 from ai4bmr_learn.utils.utils import pair
+from torchvision.transforms import v2
 
 to_img = lambda x: tv_tensors.Image(x)
 
+to_patch = lambda x, size: v2.Compose([to_img, v2.Resize(size=size)])(x)
 
 def get_points(coord):
     from shapely.affinity import translate, scale
-    from ai4bmr_learn.utils.utils import pair
 
     kernel_height, kernel_width = pair(coord.kernel_size)
 
@@ -53,9 +53,11 @@ def get_patch(coord: PatchCoordinate) -> tv_tensors.Image:
     x, y = coord.x, coord.y
     kernel_height, kernel_width = pair(coord.kernel_size)
     level = coord.level if hasattr(coord, 'level') else 0
+    patch_size = coord.patch_size
 
     patch = io.read_region(img_path=img_path, x=x, y=y, width=kernel_width, height=kernel_height, level=level)
-    return to_img(patch)
+    patch = to_patch(x=patch, size=patch_size)
+    return patch
 
 
 class Coordinates(Dataset):
@@ -212,6 +214,9 @@ class Coordinates(Dataset):
     def create_cache(self):
         from tqdm import tqdm
 
+        if self.transform is not None:
+            logger.warning(f'caching items while using a transform.')
+
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         num_coords = len(self.coords)
@@ -223,9 +228,6 @@ class Coordinates(Dataset):
             # if not patch_path.exists() or not points_path.exists():
             if not patch_path.exists():
                 item = self[i]
-                self.cache_dir = Path(item['image_path']).parent / 'patches'
-                self.cache_dir.mkdir(parents=True, exist_ok=True)
-
                 torch.save(item['image'], patch_path)
                 item['points'].to_parquet(points_path)
 
