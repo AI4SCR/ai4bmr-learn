@@ -36,7 +36,7 @@ dataset = Coordinates(coords_path=coords_path, with_image=True,
                       metadata_path=Path(
                           '/work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/datasets/hest1k/metadata.parquet'),
                       index_key='global_id',
-                      transform=transform
+                      # transform=transform
                       )
 dataset.setup()
 item = dataset[0]
