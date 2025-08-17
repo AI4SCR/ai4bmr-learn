@@ -132,8 +132,8 @@ import geopandas as gpd
 
 def filter_coords(coords: list, *, contours: gpd.GeoDataFrame, overlap: float = 0.25):
     filtered = []
-    for coord in coords:
-        bbox = coord_to_bbox(coord)
+    bboxs = coords_to_bboxs(coords)
+    for bbox, coord in zip(bboxs, coords):
         overlap_by_contour = contours.geometry.intersection(bbox).area / bbox.area
         if overlap_by_contour.sum() >= overlap:
             coord.overlap = overlap_by_contour.sum()

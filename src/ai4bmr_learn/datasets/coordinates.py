@@ -72,7 +72,7 @@ class Coordinates(Dataset):
             cache_dir: Path | None = None,
             drop_nan_columns: bool = False,
             with_image: bool = True,
-            with_points: bool = True,
+            with_points: bool = False,
             index_key: str | None = None
     ):
         """

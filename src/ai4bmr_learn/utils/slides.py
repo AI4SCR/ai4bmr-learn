@@ -1,6 +1,5 @@
 from openslide import OpenSlide
 import json
-from dataclasses import asdict
 from pathlib import Path
 from tqdm import tqdm
 import einops
@@ -114,11 +113,11 @@ def segment_slide(slide: openslide.OpenSlide,
 
     save_coords_path.parent.mkdir(parents=True, exist_ok=True)
     with open(save_coords_path, 'w') as f:
-        coords_dict = [asdict(i) for i in coords]
+        coords_dict = [i.model_dump() for i in coords]
         json.dump(coords_dict, f)
 
     # %% DATASET
-    ds = Coordinates.from_list(coords=coords, transform=transform)
+    ds = Coordinates.from_list(coords=coords, transform=transform, with_points=False)
     dl = torch.utils.data.DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=num_workers,
                                      pin_memory=num_workers > 0)
 

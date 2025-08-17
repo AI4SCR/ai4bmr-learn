@@ -30,11 +30,11 @@ class SlideCoordinate(BaseCoordinate):
     """
 
     mpp: float
-    level: int
     patch_size: int
     patch_stride: int | None = None
     patch_mpp: float
     target_mpp: float
     scale_factor: float
+    level: int = 0
     overlap: float = -1
 
