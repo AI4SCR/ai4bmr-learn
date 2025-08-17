@@ -1,4 +1,4 @@
-from ai4bmr_learn.data_models.Coordinate import BaseCoordinate
+from ai4bmr_learn.data_models.Coordinate import PatchCoordinate
 from ai4bmr_learn.utils.images import get_thumbnail, get_thumbnail_size_and_scale
 import openslide
 
@@ -7,7 +7,7 @@ from PIL.Image import Image
 
 def draw_coords(
     canvas: np.ndarray | Image,
-    coords: list[BaseCoordinate],
+    coords: list[PatchCoordinate],
     scale_factor: float = 1,
     thickness: int | None = None,
 ):

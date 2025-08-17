@@ -1,6 +1,6 @@
 import numpy as np
-from ai4bmr_learn.utils.utils import pair
 import openslide
+from ai4bmr_learn.utils.utils import pair
 
 
 def get_thumbnail_size_and_scale(size, max_size: int = 1000):
@@ -110,24 +110,7 @@ def get_coordinates_dict(height: int, width: int,
     return coords
 
 
-from ai4bmr_learn.data_models.Coordinate import BaseCoordinate, SlideCoordinate, XeniumCoordinate
-
-
-def coord_to_bbox(coord: BaseCoordinate | SlideCoordinate | XeniumCoordinate):
-    from shapely.geometry import box
-    x = coord.x
-    y = coord.y
-    kernel_size = coord.kernel_size
-
-    xmin, xmax = x, x + kernel_size
-    ymin, ymax = y, y + kernel_size
-
-    bbox_coords = [xmin, ymin, xmax, ymax]
-    bbox = box(*bbox_coords)
-    return bbox
-
-
-def coords_to_bboxs(coords: list[BaseCoordinate]):
+def coords_to_bboxs(coords: list):
     import numpy as np
     import shapely
 
@@ -147,8 +130,7 @@ def coords_to_bboxs(coords: list[BaseCoordinate]):
 import geopandas as gpd
 
 
-def filter_coords(coords: list[SlideCoordinate | XeniumCoordinate], *, contours: gpd.GeoDataFrame,
-                  overlap: float = 0.25):
+def filter_coords(coords: list, *, contours: gpd.GeoDataFrame, overlap: float = 0.25):
     filtered = []
     for coord in coords:
         bbox = coord_to_bbox(coord)
@@ -159,64 +141,20 @@ def filter_coords(coords: list[SlideCoordinate | XeniumCoordinate], *, contours:
 
     return filtered
 
-    records = []
-    for coord in coords:
-        box = coord_to_bbox(coord)
-        records.append({
-            'uuid': coord.uuid,
-            'geometry': box,
-        })
-
-    bboxes = gpd.GeoDataFrame(records, crs=contours.crs)
-    bboxes.sindex  # builds the spatial index
-    contours.sindex
-
-    joined = gpd.sjoin(bboxes, contours[['geometry']], how='inner', predicate='intersects')
-    joined = gpd.sjoin(bboxes, contours, how='inner', predicate='intersects')
-
-
-from ai4bmr_learn.data_models.Coordinate_v2 import SlideCoordinate, PatchCoordinate
-from torchvision import tv_tensors
-from PIL.Image import Image
-
-def get_xenium_patch(coord: PatchCoordinate, as_tensor: bool = True) -> tv_tensors.Image | Image:
-    import openslide
-    from torchvision.transforms import v2
-    import torch
-
-    img_path = coord.image_path
-    slide = openslide.OpenSlide(img_path)
-
-    x, y = coord.x, coord.y
-    kernel_height, kernel_width = pair(coord.kernel_size)
-    level = coord.level if hasattr(coord, 'level') else 0
-
-    patch = slide.read_region((x, y), level=level, size=(kernel_width, kernel_height))
-    slide.close()
-
-    # TODO: is this more efficient than [...,:3]?
-    patch = patch.convert("RGB")  # remove alpha channel
-
-    level = coord.level
-    patch_height, patch_width = pair(coord.patch_size)
-    scale_factor = coord.scale_factor
-
-    assert np.isclose(kernel_width, patch_width * scale_factor)
-    assert np.isclose(kernel_height, patch_height * scale_factor)
-    assert np.isclose(coord.mpp * scale_factor, coord.patch_mpp)
-    assert patch_height == round(kernel_height / scale_factor)
-    assert patch_width == round(kernel_width / scale_factor)
-
-    # note: this order seems to perform the best, i.e. resize after ToImage
-    transform = v2.Compose([
-        v2.ToImage(),
-        v2.Resize((patch_height, patch_width)),
-        # v2.ToDtype(torch.float32, scale=True),
-    ])
-
-    patch = transform(patch) if as_tensor else patch.resize((patch_height, patch_width))
-
-    return patch
+    # records = []
+    # for coord in coords:
+    #     box = coord_to_bbox(coord)
+    #     records.append({
+    #         'uuid': coord.uuid,
+    #         'geometry': box,
+    #     })
+    #
+    # bboxes = gpd.GeoDataFrame(records, crs=contours.crs)
+    # bboxes.sindex  # builds the spatial index
+    # contours.sindex
+    #
+    # joined = gpd.sjoin(bboxes, contours[['geometry']], how='inner', predicate='intersects')
+    # joined = gpd.sjoin(bboxes, contours, how='inner', predicate='intersects')
 
 
 def get_points(coord):

@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from shapely.geometry import box
 
-from ai4bmr_learn.data_models.Coordinate import BaseCoordinate
+from ai4bmr_learn.data_models.Coordinate import PatchCoordinate
 from ai4bmr_learn.utils.images import coords_to_bboxs, get_coordinates_dict
 from ai4bmr_learn.utils.utils import pair
 
@@ -11,7 +11,7 @@ from ai4bmr_learn.utils.utils import pair
 def generate_points_subsets(
     *,
     points: gpd.GeoDataFrame,
-    coords: list[BaseCoordinate],
+    coords: list[PatchCoordinate],
     col_name: str,
     predicate: str = 'intersects',
     allow_duplicates: bool = False,
@@ -22,7 +22,7 @@ def generate_points_subsets(
 
     Args:
         points (gpd.GeoDataFrame): GeoDataFrame containing transcript point geometries.
-        coords (list[BaseCoordinate]): List of coordinate objects defining patch regions (via `coord_to_bbox`).
+        coords (list[PatchCoordinate]): List of coordinate objects defining patch regions (via `coord_to_bbox`).
         col_name (str): Name of the column to store the patch ID assignment in the resulting DataFrame.
         predicate (str, optional): Spatial predicate for the join (e.g., 'within' or 'intersects'). Default is 'intersects'.
         allow_duplicates (bool, optional): If False, raises an error when transcript IDs are assigned to multiple patches. Default is False.
@@ -91,7 +91,7 @@ def compute_points_tokens(
         stride=stride,
     )
     assert len(token_coords_dicts) == (patch_height / kernel_size) * (patch_width / kernel_size)
-    token_coords = [BaseCoordinate(**i) for i in token_coords_dicts]
+    token_coords = [PatchCoordinate(**i) for i in token_coords_dicts]
 
     # compute expression subsets per token
     subsets = generate_points_subsets(
