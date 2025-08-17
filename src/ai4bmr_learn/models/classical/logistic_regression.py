@@ -6,6 +6,7 @@ from ai4bmr_learn.callbacks.cache import TrainCache
 from loguru import logger
 from ai4bmr_learn.utils.pooling import pool
 
+
 # TODO: convert to genral Sklearn module that accepts any model
 # TODO: enable online learning
 class LogisticRegression(L.LightningModule):
@@ -26,8 +27,8 @@ class LogisticRegression(L.LightningModule):
         # metrics
         metrics = get_metric_collection(num_classes=num_classes)
         self.train_metrics = metrics.clone(prefix="logistic_reg/train/")
-        self.val_metrics   = metrics.clone(prefix="logistic_reg/val/")
-        self.test_metrics  = metrics.clone(prefix="logistic_reg/test/")
+        self.val_metrics = metrics.clone(prefix="logistic_reg/val/")
+        self.test_metrics = metrics.clone(prefix="logistic_reg/test/")
 
     def get_data_and_targets(self, batch, return_targets: bool = True):
 
@@ -48,17 +49,17 @@ class LogisticRegression(L.LightningModule):
         return data, targets
 
     def training_step(self, batch, batch_idx):
-        # NOTE: here we could do online-learning with `partial_fit` if supported.
+        # NOTE: here we could do online-learning with `partial_fit` if supported by model.
         return batch
 
     def on_validation_start(self) -> None:
-        # NOTE: hooke order ➡️ https://lightning.ai/docs/pytorch/stable/common/lightning_module.html#hooks
+        # NOTE: hook order ➡️ https://lightning.ai/docs/pytorch/stable/common/lightning_module.html#hooks
 
         # find active TrainCache callback
         train_cache = next(cb for cb in self.trainer.callbacks if isinstance(cb, TrainCache))
         outputs = train_cache.outputs
 
-        x, y = [],  []
+        x, y = [], []
         for batch in outputs:
             x_, y_ = self.get_data_and_targets(batch)
             x.append(x_.cpu())
@@ -82,6 +83,14 @@ class LogisticRegression(L.LightningModule):
         self.train_metrics(preds, targets)
         self.log_dict(self.train_metrics, on_step=False, on_epoch=True)
 
+        # stats
+        stats = dict(
+            num_samples=len(x),
+            input_dim=x.shape[1],
+            num_classes=len(set(y))
+        )
+        self.log_dict({f'train/{k}':v for k, v in stats.items()}, on_step=False, on_epoch=True)
+
     def validation_step(self, batch, batch_idx):
 
         data, targets = self.get_data_and_targets(batch)
@@ -93,6 +102,14 @@ class LogisticRegression(L.LightningModule):
         preds = torch.tensor(preds, device=self.device)
         self.val_metrics(preds, targets)
         self.log_dict(self.val_metrics, on_step=False, on_epoch=True)
+
+        # stats
+        stats = dict(
+            num_samples=len(x),
+            input_dim=x.shape[1],
+            num_classes=len(set(y))
+        )
+        self.log_dict({f'val/{k}':v for k, v in stats.items()}, on_step=False, on_epoch=True)
 
     def test_step(self, batch, batch_idx):
         data, targets = self.get_data_and_targets(batch)
