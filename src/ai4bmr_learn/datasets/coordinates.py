@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 from torchvision import tv_tensors
 
 from ai4bmr_learn.data.splits import Split
-from ai4bmr_learn.data_models.Coordinate_v2 import PatchCoordinate
+from ai4bmr_learn.data_models.Coordinate import SlideCoordinate
 from ai4bmr_learn.utils import io
 from ai4bmr_learn.utils.utils import pair
 from torchvision.transforms import v2
@@ -47,7 +47,8 @@ def get_points(coord):
     return points
 
 
-def get_patch(coord: PatchCoordinate) -> tv_tensors.Image:
+def get_patch(coord: SlideCoordinate) -> tv_tensors.Image:
+    # TODO: How should we handle Slide or Patch Coordinates?
     img_path = Path(coord.image_path)
 
     x, y = coord.x, coord.y
@@ -85,7 +86,7 @@ class Coordinates(Dataset):
         # COORDS
         self.coords_path = Path(coords_path).expanduser().resolve()
         assert self.coords_path.exists(), f'coords_path {self.coords_path} does not exist'
-        self.coords: list[PatchCoordinate] | None = None
+        self.coords: list[SlideCoordinate] | None = None
         self.coord_ids: list[str] | None = None
         self.image_ids: list[str] | None = None
         self.with_image = with_image
@@ -151,7 +152,7 @@ class Coordinates(Dataset):
         logger.info(f'Setting up Patches dataset from coords_path: {self.coords_path}')
 
         with open(self.coords_path, 'r') as f:
-            self.coords = [PatchCoordinate(**i) for i in json.load(f)]
+            self.coords = [SlideCoordinate(**i) for i in json.load(f)]
             self.coord_ids = [i.uuid for i in self.coords]
             # FIX: this is not safe if coords for different location with the same name are loaded.
             self.image_ids = [Path(i.image_path).stem for i in self.coords]
@@ -234,3 +235,15 @@ class Coordinates(Dataset):
     def invalidate_cache(self):
         import shutil
         shutil.rmtree(self.cache_dir)
+
+    @classmethod
+    def from_list(cls, coords: list[SlideCoordinate], **kwargs):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            coords_path = Path(tmpdir) / 'coords.json'
+            with open(coords_path, 'w') as f:
+                json.dump([coord.model_dump() for coord in coords], f)
+
+            instance = cls(coords_path=coords_path, **kwargs)
+            instance.setup()
+            return instance

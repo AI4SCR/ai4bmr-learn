@@ -1,13 +1,9 @@
+import geopandas as gpd
 import matplotlib.pyplot as plt
+import numpy as np
 import openslide
-from PIL.ImageChops import add_modulo
-
-from ai4bmr_learn.data_models.Coordinate import BaseCoordinate
 from ai4bmr_learn.utils.images import get_thumbnail, get_thumbnail_size_and_scale
 from shapely.affinity import scale
-import geopandas as gpd
-import numpy as np
-from PIL.Image import Image
 
 
 def draw_contours(canvas: np.ndarray,
