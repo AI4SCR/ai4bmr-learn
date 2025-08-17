@@ -18,7 +18,7 @@ trainer:
     - class_path: ai4bmr_learn.callbacks.save_outputs.SaveOutputs
       init_args:
         step: predict
-        save_dir: /users/amarti51/prometex/data/embeddings/geneformer/patch-level/${oc.env:SPLIT}
+        save_dir: /users/amarti51/prometex/data/embeddings/geneformer/token-level/${oc.env:SPLIT}
         save_key: z
         force: true
         drop_keys:
@@ -68,12 +68,25 @@ data:
               init_args: &ds_kwargs
                 coords_path: /work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/splits/hest1k-tts=4-fvs=0-min_transcripts_per_patch=200/${oc.env:SPLIT}.json
                 cache_dir: /work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/cache
-                with_image: false
+                metadata_path: /work/PRTNR/CHUV/DIR/rgottar1/spatial/data/fmx/data/datasets/hest1k/metadata.parquet
+                index_key: global_id
+                with_image: true
+                with_points: true
+                transform:
+                  class_path: torchvision.transforms.v2.Compose
+                  init_args:
+                    transforms:  # note: patches are cached with size 256
+                      - class_path: ai4bmr_learn.transforms.random_resize_crop.RandomResizeCrop
+                        init_args:
+                          size: 224
+                          scale: [1., 1.]
+                          ratio: [1., 1.]
+                          errors: clip
             collate_fn:
               class_path: ai4bmr_learn.collators.geneformer.GeneformerCollate
               init_args:
-                kernel_size: 256
-                stride: 256
+                kernel_size: 14
+                stride: 14
                 model_name: &MODEL_NAME gf-6L-30M-i2048
           dict_kwargs:
             batch_size: 32
