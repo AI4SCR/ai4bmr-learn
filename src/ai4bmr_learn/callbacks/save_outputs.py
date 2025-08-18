@@ -6,6 +6,18 @@ import shutil
 import torch
 from loguru import logger
 
+def detach_and_to_cpu(item: Any) -> Any:
+    if isinstance(item, torch.Tensor):
+        return item.detach().cpu()
+    elif isinstance(item, dict):
+        return {k: detach_and_to_cpu(v) for k, v in item.items()}
+    elif isinstance(item, list):
+        return [detach_and_to_cpu(v) for v in item]
+    elif isinstance(item, tuple):
+        return tuple(detach_and_to_cpu(v) for v in item)
+    else:
+        return item
+
 class SaveOutputs(Callback):
 
     def __init__(self, step: str, save_dir: Path, save_key: str | None = None, drop_keys: list[str] | None = None, force: bool = False) -> None:
@@ -40,6 +52,7 @@ class SaveOutputs(Callback):
                     logger.error(f'Key "{key}" not found in batch. Available keys: {list(data.keys())}')
                     raise e
 
+        data = detach_and_to_cpu(data)
         save_path = self.save_dir / f'dl_idx={dataloader_idx}-batch_idx={batch_idx}.pt'
         torch.save(data, save_path)
 

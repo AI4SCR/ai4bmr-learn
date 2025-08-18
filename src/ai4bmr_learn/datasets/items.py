@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Callable
 
@@ -8,13 +9,12 @@ from loguru import logger
 from torch.utils.data import Dataset
 from torchvision import tv_tensors
 
-import ai4bmr_learn.utils.utils
-from ai4bmr_learn.data.splits import Split
+from ai4bmr_learn.datasets.utils import filter_items_and_metadata
 from ai4bmr_learn.utils import io
 from ai4bmr_learn.utils.utils import pair
-from copy import deepcopy
 
 to_img = lambda x: tv_tensors.Image(x)
+
 
 def get_patch(item: dict) -> tv_tensors.Image:
     img_path = Path(item['image_path'])
@@ -26,31 +26,36 @@ def get_patch(item: dict) -> tv_tensors.Image:
     patch = io.read_region(img_path=img_path, x=x, y=y, width=kernel_width, height=kernel_height, level=level)
     return to_img(patch)
 
+
 def get_image(item: dict) -> tv_tensors.Image:
     img_path = Path(item['image_path'])
     patch = io.imread(img_path=img_path)
     return to_img(patch)
 
+
 def get_mask(item):
     pass
+
 
 def get_graph(item):
     pass
 
+
 def get_annotation(item):
     pass
+
 
 class Items(Dataset):
 
     def __init__(
-        self,
-        items_path: Path,
-        metadata_path: Path | None = None,
-        split: str | None = None,
-        transform: Callable | None = None,
-        cache_dir: Path | None = None,
-        drop_nan_columns: bool = False,
-        id_key: str = 'uuid'
+            self,
+            items_path: Path,
+            metadata_path: Path | None = None,
+            split: str | None = None,
+            transform: Callable | None = None,
+            cache_dir: Path | None = None,
+            drop_nan_columns: bool = False,
+            id_key: str = 'uuid'
     ):
         """
         Args:
@@ -98,14 +103,13 @@ class Items(Dataset):
             item['image'] = image
 
         if self.metadata is not None:
-            metadata_dict = ai4bmr_learn.utils.utils.to_dict()
+            metadata_dict = self.metadata.loc[idx].to_dict()
             item['metadata'] = metadata_dict
 
         if self.transform:
             item = self.transform(item)
 
         return item
-
 
     def setup(self):
         logger.info(f'Setting up Items dataset from items_path: {self.items_path}')
@@ -117,34 +121,16 @@ class Items(Dataset):
             logger.info(f'Loaded {len(self.items)} items')
 
         if self.metadata_path is not None:
-            self.metadata = pd.read_parquet(self.metadata_path)
-
-            if self.split is not None:
-                keep = self.metadata[Split.COLUMN_NAME.value] == self.split
-                assert keep.sum() > 0, f'There are no items that belong to `split={self.split}`'
-                self.metadata = self.metadata[keep]
-
-                valid_uuids = set(self.metadata.index)
-                self.items = list(filter(lambda x: x[self.id_key] in valid_uuids, self.items))
-                self.item_ids = [i[self.id_key] for i in self.items]
-                assert len(self.metadata) == len(self.items), f'Metadata and items differ'
-                logger.info(f'Filtered items and metadata for `split={self.split}`. Found {len(self.items)} items.')
-
-            filter_ = self.metadata.isna().any()
-            cols_with_nan = self.metadata.columns[filter_].tolist()
-            if filter_.any():
-                self.metadata = self.metadata.drop(columns=cols_with_nan) if self.drop_nan_columns else self.metadata
-                msg = f"Detected NaN values in the metadata which is incompatible with `torch.DataLoader`. Affected columns: {cols_with_nan}. "
-                msg += "Dropping them." if self.drop_nan_columns else "Use `drop_nan_columns=True` to drop them."
-                logger.warning(msg)
-
-                if self.split is not None and Split.COLUMN_NAME.value in cols_with_nan:
-                    logger.warning(f'Detected NaN in column `split`. This is most likely a bug.')
+            item_ids = [i[self.id_key] for i in self.items]
+            metadata = pd.read_parquet(self.metadata_path)
+            self.item_ids, self.metadata = filter_items_and_metadata(item_ids=item_ids, metadata=metadata,
+                                                                     split=self.split,
+                                                                     drop_nan_columns=self.drop_nan_columns)
+            self.items = [i for i in self.items if i[self.id_key] in self.item_ids]
 
         if self.cache_dir and not self.has_cache():
             logger.info('No cache found. Creating...')
             self.create_cache()
-
 
     def has_cache(self, uuid: str | None = None) -> bool:
 
@@ -187,7 +173,6 @@ class Items(Dataset):
     def invalidate_cache(self):
         import shutil
         shutil.rmtree(self.cache_dir)
-
 
 # items = self = Items(
 #     items_path=Path('/users/amarti51/prometex/data/benchmarking/datasets/Cords2024/items/items.json'),
