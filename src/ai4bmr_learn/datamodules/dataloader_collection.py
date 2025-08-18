@@ -14,6 +14,11 @@ class DataLoaderCollection(L.LightningDataModule):
     def __init__(self, dataloaders: dict[str, list[DataLoader]]):
         super().__init__()
         self.dataloaders = dataloaders
+
+        VALID_KEYS = ['fit', 'val', 'test', 'predict']
+        invalid_keys = set(dataloaders) - VALID_KEYS
+        assert len(invalid_keys) == 0, f'invalid keys detected: {invalid_keys}. Valid keys are: {VALID_KEYS}'
+
         for k,v in dataloaders.items():
             assert isinstance(v, list), f'Please provide the datasets as lists under each key, i.e fit: [dataset1]'
             assert len(v) == 1, f'Only one dataloader per split supported at this time.'

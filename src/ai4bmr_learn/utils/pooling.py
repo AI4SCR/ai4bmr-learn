@@ -5,5 +5,7 @@ def pool(x, strategy: str):
         return x[:, 0]
     elif strategy == 'flatten':
         return x.flatten(start_dim=1)
+    elif strategy == 'avg':
+        return x.mean(dim=1)
     else:
         raise NotImplementedError(f'{strategy} is not implemented.')
