@@ -7,7 +7,7 @@ from loguru import logger
 from ai4bmr_learn.utils.pooling import pool
 
 
-# TODO: convert to genral Sklearn module that accepts any model
+# TODO: convert to general Sklearn module that accepts any model
 # TODO: enable online learning
 class LogisticRegression(L.LightningModule):
 
@@ -26,9 +26,9 @@ class LogisticRegression(L.LightningModule):
 
         # metrics
         metrics = get_metric_collection(num_classes=num_classes)
-        self.train_metrics = metrics.clone(prefix="logistic_reg/train/")
-        self.val_metrics = metrics.clone(prefix="logistic_reg/val/")
-        self.test_metrics = metrics.clone(prefix="logistic_reg/test/")
+        self.train_metrics = metrics.clone(prefix="train/")
+        self.val_metrics = metrics.clone(prefix="val/")
+        self.test_metrics = metrics.clone(prefix="test/")
 
     def get_data_and_targets(self, batch, return_targets: bool = True):
 
@@ -44,13 +44,14 @@ class LogisticRegression(L.LightningModule):
         else:
             raise ValueError(f"Unsupported batch type: {type(batch)}")
 
-        data = pool(data, strategy=self.pooling)
-
         return data, targets
 
     def training_step(self, batch, batch_idx):
         # NOTE: here we could do online-learning with `partial_fit` if supported by model.
         return batch
+
+    def log_shape(self, data: torch.Tensor, name: str):
+        self.trainer.logger.experiment.config.update({name: data.shape})
 
     def on_validation_start(self) -> None:
         # NOTE: hook order ➡️ https://lightning.ai/docs/pytorch/stable/common/lightning_module.html#hooks
@@ -59,41 +60,52 @@ class LogisticRegression(L.LightningModule):
         train_cache = next(cb for cb in self.trainer.callbacks if isinstance(cb, TrainCache))
         outputs = train_cache.outputs
 
-        x, y = [], []
-        for batch in outputs:
-            x_, y_ = self.get_data_and_targets(batch)
-            x.append(x_.cpu())
-            y.append(y_.cpu())
-
         if self.trainer.sanity_checking:
             return
 
+        data, targets = [], []
+        for i, batch in enumerate(outputs):
+            x, y = self.get_data_and_targets(batch)
+
+            shape_before_pool = x.shape
+            x = pool(x, strategy=self.pooling)
+            shape_after_pool = x.shape
+
+            if i == 0 and not self.trainer.fast_dev_run:
+                self.trainer.logger.experiment.config.update({'data_shape_before_pool': shape_before_pool})
+                self.trainer.logger.experiment.config.update({'data_shape_after_pool': shape_after_pool})
+
+            data.append(x.cpu())
+            targets.append(y.cpu())
+
         # collect samples
-        x = torch.cat(x).numpy()
-        y = torch.cat(y).numpy()
+        data = torch.cat(data).numpy()
+        targets = torch.cat(targets).numpy()
 
         # fit
-        logger.info(f'Fitting model with X like {x.shape} and y like {y.shape}')
-        self.model.fit(X=x, y=y)
+        logger.info(f'Fitting model with X like {data.shape} and targets like {targets.shape}')
+
+        self.model.fit(X=data, y=targets)
 
         # metrics
-        preds = self.model.predict(X=x)
+        preds = self.model.predict(X=data)
         preds = torch.tensor(preds, device=self.device)
-        targets = torch.tensor(y, device=self.device)
+        targets = torch.tensor(targets, device=self.device)
         self.train_metrics(preds, targets)
         self.log_dict(self.train_metrics, on_step=False, on_epoch=True)
 
         # stats
         stats = dict(
-            num_samples=len(x),
-            input_dim=x.shape[1],
-            num_classes=len(set(y))
+            num_samples=len(data),
+            input_dim=data.shape[1],
+            num_classes=len(set(targets.tolist()))
         )
         self.log_dict({f'train/{k}':v for k, v in stats.items()}, on_step=False, on_epoch=True)
 
     def validation_step(self, batch, batch_idx):
 
         data, targets = self.get_data_and_targets(batch)
+        data = pool(data, strategy=self.pooling)
 
         if self.trainer.sanity_checking:
             return
@@ -105,14 +117,15 @@ class LogisticRegression(L.LightningModule):
 
         # stats
         stats = dict(
-            num_samples=len(x),
-            input_dim=x.shape[1],
-            num_classes=len(set(y))
+            num_samples=len(data),
+            input_dim=data.shape[1],
+            num_classes=len(set(targets.tolist()))
         )
         self.log_dict({f'val/{k}':v for k, v in stats.items()}, on_step=False, on_epoch=True)
 
     def test_step(self, batch, batch_idx):
         data, targets = self.get_data_and_targets(batch)
+        data = pool(data, strategy=self.pooling)
 
         if self.trainer.sanity_checking:
             return
@@ -124,6 +137,8 @@ class LogisticRegression(L.LightningModule):
 
     def prediction_step(self, batch, batch_idx):
         data, _ = self.get_data_and_targets(batch, return_targets=False)
+        data = pool(data, strategy=self.pooling)
+
         preds = self.model.predict(data.cpu().numpy())
         return torch.tensor(preds, device=self.device)
 
