@@ -10,14 +10,14 @@ class DataLoader(torch.utils.data.DataLoader):
 
 
 class DataLoaderCollection(L.LightningDataModule):
+    VALID_KEYS = {'fit', 'val', 'test', 'predict'}
 
     def __init__(self, dataloaders: dict[str, list[DataLoader]]):
         super().__init__()
         self.dataloaders = dataloaders
 
-        VALID_KEYS = ['fit', 'val', 'test', 'predict']
-        invalid_keys = set(dataloaders) - VALID_KEYS
-        assert len(invalid_keys) == 0, f'invalid keys detected: {invalid_keys}. Valid keys are: {VALID_KEYS}'
+        invalid_keys = set(dataloaders) - self.VALID_KEYS
+        assert len(invalid_keys) == 0, f'invalid keys detected: {invalid_keys}. Valid keys are: {self.VALID_KEYS}'
 
         for k,v in dataloaders.items():
             assert isinstance(v, list), f'Please provide the datasets as lists under each key, i.e fit: [dataset1]'
