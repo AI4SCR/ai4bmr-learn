@@ -20,8 +20,7 @@ def get_thumbnail_size_and_scale(size, max_size: int = 1000):
     return size, scale
 
 
-def get_thumbnail(*, slide: openslide.OpenSlide = None, image: np.ndarray = None, max_size: int = 1000) -> tuple[
-    np.ndarray, float]:
+def get_thumbnail(*, slide: openslide.OpenSlide = None, image: np.ndarray = None, max_size: int = 1000) -> tuple[np.ndarray, float]:
     if slide is not None:
         size = slide.level_dimensions[0][:2]
         size, scale_factor = get_thumbnail_size_and_scale(size, max_size=max_size)
@@ -67,7 +66,7 @@ def get_slide_patcher_params(slide, patch_size: int, patch_stride: int, target_m
 
 
 def get_random_coordinates_dict(height: int, width: int, kernel_size: int | tuple[int, int], num_coords: int,
-                                seed: int | None = None, **kwargs) -> dict:
+                                seed: int | None = None, **kwargs) -> list[dict]:
     import numpy as np
     rng = np.random.default_rng(seed)
 
@@ -87,7 +86,7 @@ def get_random_coordinates_dict(height: int, width: int, kernel_size: int | tupl
 def get_coordinates_dict(height: int, width: int,
                          kernel_size: int | tuple[int, int], stride: int | tuple[int, int],
                          include_out_of_bounds: bool = False,
-                         **kwargs) -> dict:
+                         **kwargs) -> list[dict]:
     import numpy as np
     from itertools import product
 
