@@ -23,6 +23,8 @@ class DataLoaderCollection(L.LightningDataModule):
             assert isinstance(v, list), f'Please provide the datasets as lists under each key, i.e fit: [dataset1]'
             assert len(v) == 1, f'Only one dataloader per split supported at this time.'
 
+        # FIX: we need len(ds) to set certain dataloader parameters like `shuffle`
+
     def setup(self, stage: str | None = None):
 
         for stage, stage_loaders in self.dataloaders.items():
