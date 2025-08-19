@@ -22,7 +22,6 @@ class DataLoaderCollection(L.LightningDataModule):
         for k,v in dataloaders.items():
             assert isinstance(v, list), f'Please provide the datasets as lists under each key, i.e fit: [dataset1]'
             assert len(v) == 1, f'Only one dataloader per split supported at this time.'
-        self.save_hyperparameters()
 
     def setup(self, stage: str | None = None):
 
@@ -33,13 +32,21 @@ class DataLoaderCollection(L.LightningDataModule):
                     dataset.setup()
 
     def train_dataloader(self):
-        return self.dataloaders['fit'][0]
+        dl = self.dataloaders.get('fit', None)
+        dl = dl[0] if dl is not None else None
+        return dl
 
     def val_dataloader(self):
-        return self.dataloaders['val'][0]
+        dl = self.dataloaders.get('val', None)
+        dl = dl[0] if dl is not None else None
+        return dl
 
     def test_dataloader(self):
-        return self.dataloaders['test'][0]
+        dl = self.dataloaders.get('test', None)
+        dl = dl[0] if dl is not None else None
+        return dl
 
     def predict_dataloader(self):
-        return self.dataloaders['predict'][0]
+        dl = self.dataloaders.get('predict', None)
+        dl = dl[0] if dl is not None else None
+        return dl

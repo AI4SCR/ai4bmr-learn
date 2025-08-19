@@ -3,6 +3,7 @@ import torch.optim as optim
 import torch.nn as nn
 from ai4bmr_learn.metrics.classification import get_metric_collection
 from glom import glom
+from collections import Counter
 
 class Classifier(L.LightningModule):
     def __init__(self,
@@ -44,6 +45,10 @@ class Classifier(L.LightningModule):
         self.valid_metrics = metrics.clone(prefix="val/")
         self.test_metrics = metrics.clone(prefix="test/")
 
+        # STATS
+        self.train_stats = {'train/num_samples': 0, 'class_cnt': Counter()}
+        self.val_stats = {'val/num_samples': 0, 'class_cnt': Counter()}
+
     def shared_step(self, batch, batch_idx):
         data = glom(batch, self.batch_key) if self.batch_key is not None else batch
 
@@ -55,6 +60,20 @@ class Classifier(L.LightningModule):
         loss = self.criterion(logits, targets)
 
         return y, logits, targets, loss
+
+    def on_train_epoch_start(self):
+        self.train_stats['train/num_samples'] = 0
+        self.train_stats['class_cnt'] = Counter()
+
+    def on_train_epoch_end(self):
+        class_cnt = self.train_stats.pop('class_cnt')
+        class_counts = {f'train/class_{k}': v for k, v in class_cnt.items()}
+        self.train_stats.update(class_counts)
+
+        self.log_dict(self.train_stats)
+
+        self.train_stats['train/num_samples'] = 0
+        self.train_stats['class_cnt'] = Counter()
 
     def training_step(self, batch, batch_idx):
         y, logits, targets, loss = self.shared_step(batch, batch_idx)
@@ -68,9 +87,27 @@ class Classifier(L.LightningModule):
         # loss
         self.log("loss/train", loss, batch_size=batch_size)
 
+        # stats
+        self.train_stats['train/num_samples'] += batch_size
+        self.train_stats['class_cnt'].update(targets.tolist())
+
         batch['loss'] = loss
         batch['embedding'] = y.detach().cpu()
         return batch
+
+    def on_val_epoch_start(self):
+        self.val_stats['val/num_samples'] = 0
+        self.val_stats['class_cnt'] = Counter()
+
+    def on_val_epoch_end(self):
+        class_cnt = self.val_stats.pop('class_cnt')
+        class_counts = {f'val/class_{k}': v for k, v in class_cnt.items()}
+        self.val_stats.update(class_counts)
+
+        self.log_dict(self.val_stats)
+
+        self.val_stats['val/num_samples'] = 0
+        self.val_stats['class_cnt'] = Counter()
 
     def validation_step(self, batch, batch_idx):
         y, logits, targets, loss = self.shared_step(batch, batch_idx)
@@ -83,6 +120,10 @@ class Classifier(L.LightningModule):
 
         # loss
         self.log("loss/val", loss, batch_size=batch_size)
+
+        # stats
+        self.val_stats['val/num_samples'] += batch_size
+        self.val_stats['class_cnt'].update(targets.tolist())
 
         batch['loss'] = loss
         batch['embedding'] = y.detach().cpu()
