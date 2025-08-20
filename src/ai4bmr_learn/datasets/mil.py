@@ -71,7 +71,7 @@ class MILFromDataset(Dataset):
             self.dataset_bag_ids = getattr(self.dataset, self.bag_id_attr)
             self.bag_ids = sorted(set(self.dataset_bag_ids))
         else:
-            raise ValueError(f"Dataset must have {self.bag_id_attr} attribute that identifies the bag ids.")
+            raise ValueError(f"Expected dataset to have an attribute `{self.bag_id_attr}` that identifies the bag ids. Configure another attribut with `bag_ids_attr=<ATTRIBUTE_NAME>`.")
 
         if self.cache_dir is not None:
             self.cache_dir.mkdir(parents=True, exist_ok=True)

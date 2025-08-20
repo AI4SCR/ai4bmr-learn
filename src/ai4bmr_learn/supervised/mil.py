@@ -5,6 +5,13 @@ from ai4bmr_learn.metrics.classification import get_metric_collection
 from glom import glom
 import torch
 import numpy as np
+from ai4bmr_learn.utils.pooling import pool
+import torch.nn as nn
+
+def freeze(model: nn.Module):
+    for p in model.parameters():
+        p.requires_grad = False
+    return model
 
 class MIL(L.LightningModule):
     def __init__(self,
@@ -26,7 +33,10 @@ class MIL(L.LightningModule):
         super().__init__()
 
         # MODULES
+        self.freeze_backbone = freeze_backbone
         self.backbone = backbone
+        if self.freeze_backbone:
+            freeze(self.backbone)
         self.head = head
 
         # LOSS
@@ -69,11 +79,11 @@ class MIL(L.LightningModule):
             data = glom(bag, self.batch_key) if self.batch_key else bag
 
             z = self.backbone(**data) if self.as_kwargs else self.backbone(data)
-            z = self.pool(z)
+            z = pool(z, strategy=self.pooling)
             zs.append(z)
 
         zs = torch.stack(zs)  # B, M, R
-        targets = torch.tensor(targets)
+        targets = torch.tensor(targets, dtype=torch.long, device=self.device)
         assert zs.shape[0] == targets.shape[0]
 
         logits = self.head(zs)
@@ -90,7 +100,7 @@ class MIL(L.LightningModule):
             raise NotImplementedError('Bags must be pure tensors if you want to use padding. Use `collate_fn=list` and pad=False instead.')
 
         targets = glom(batch, self.target_key)
-        targets = torch.unique(targets, dim=1).squeeze()  # NOTE: we expect [B, M], #TODO: discuss this choice
+        targets = torch.unique(targets, dim=1).squeeze()  # NOTE: we expect [B, M], # TODO: discuss this choice
         assert targets.ndim == 1
 
         B, M, *D = bags.shape
@@ -102,11 +112,11 @@ class MIL(L.LightningModule):
                 attention = attentions[i]
                 bag = bag[attention]
 
-            z = self.backbone(bag)
-            z = self.pool(z)
+            z = self.backbone(**bag) if self.as_kwargs else self.backbone(bag)
+            z = pool(z, strategy=self.pooling)
             zs.append(z)
 
-        zs = torch.stack(zs)  # B, M, R
+        zs = torch.stack(zs)  # [B, D]
         assert zs.shape[0] == B and zs.shape[1] == M
 
         logits = self.head(zs)
@@ -129,7 +139,7 @@ class MIL(L.LightningModule):
         self.log_dict(self.train_metrics, batch_size=batch_size)
 
         # loss
-        self.log("train/loss", loss, batch_size=batch_size)
+        self.log("loss/train", loss, on_epoch=True, batch_size=batch_size)
 
 
         if isinstance(batch, list):
@@ -166,7 +176,7 @@ class MIL(L.LightningModule):
         self.log_dict(self.test_metrics, batch_size=batch_size)
 
         # loss
-        self.log("test/loss", loss, batch_size=batch_size)
+        self.log("loss/test", loss, batch_size=batch_size)
 
         batch['loss'] = loss
         batch['embedding'] = z.detach().cpu()
@@ -175,12 +185,15 @@ class MIL(L.LightningModule):
     def predict_step(self, batch, batch_idx):
         data = glom(batch, self.batch_key)
 
-        z = []
+        zs = []
         for bag in data:
-            z.append(self.pool(self.backbone(bag)))
-        z = torch.stack(z)
+            z = self.backbone(bag)
+            z = pool(z, strategy=self.pooling)
+            z.append(z)
+        zs = torch.stack(zs)
+        assert zs.shape[0] == B
 
-        logits = self.head(z)
+        logits = self.head(zs)
         preds = logits.argmax(dim=1)
 
         batch["prediction"] = preds.detach().cpu()
@@ -195,13 +208,3 @@ class MIL(L.LightningModule):
         ], weight_decay=self.weight_decay)
 
         return optimizer
-
-    def pool(self, x):
-        if self.pooling is None:
-            return x
-        elif self.pooling == 'cls':
-            return x[:, 0]
-        elif self.pooling == 'flatten':
-            return x.flatten(start_dim=1)
-        else:
-            raise NotImplementedError(f'{self.pooling} is not implemented.')

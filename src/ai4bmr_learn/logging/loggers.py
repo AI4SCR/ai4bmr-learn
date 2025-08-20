@@ -6,10 +6,16 @@ load_dotenv()
 
 class WandbLogger(wandb.WandbLogger):
 
-    def __init__(self, api_key_name: str | None = None, base_url_nameL: str | None = None, **kwargs):
-        if api_key_name is not None:
-            os.environ['WANDB_API_KEY'] = os.environ[api_key_name]
-        if base_url_nameL is not None:
-            os.environ['WANDB_BASE_URL'] = os.environ[api_key_name]
+    def __init__(
+        self,
+        api_key_env_var: str | None = None,
+        base_url_env_var: str | None = None,
+        **kwargs,
+    ):
+        # Set wandb-related env variables from the provided *env var names*
+        if api_key_env_var is not None:
+            os.environ["WANDB_API_KEY"] = os.environ[api_key_env_var]
+        if base_url_env_var is not None:
+            os.environ["WANDB_BASE_URL"] = os.environ[base_url_env_var]
 
         super().__init__(**kwargs)
