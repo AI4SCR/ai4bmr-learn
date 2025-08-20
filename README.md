@@ -13,3 +13,6 @@
 | PCa2025       | disease_progr | classification | patient | 153 |
 | PCa2025       | grade         | classification | patient | 153 |
 | BLCa2025      | cell_type     | regression     | patch   |  |
+
+# TODO's
+- Check how weight decay is applied to bias and norm layers. Exclude them.
