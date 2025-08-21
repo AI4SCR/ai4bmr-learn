@@ -100,8 +100,9 @@ class MIL(L.LightningModule):
             raise NotImplementedError('Bags must be pure tensors if you want to use padding. Use `collate_fn=list` and pad=False instead.')
 
         targets = glom(batch, self.target_key)
-        targets = torch.unique(targets, dim=1).squeeze()  # NOTE: we expect [B, M], # TODO: discuss this choice
-        assert targets.ndim == 1
+        targets = torch.unique(targets, dim=1) # NOTE: we expect [B, M], # TODO: discuss this choice
+        targets = targets.reshape(-1)
+        assert len(targets) == len(bags)
 
         B, M, *D = bags.shape
         zs = []
@@ -202,7 +203,7 @@ class MIL(L.LightningModule):
         return batch
 
     def configure_optimizers(self):
-        optimizer = optim.Adam([
+        optimizer = optim.AdamW([
             {'params': self.head.parameters(), 'lr': self.lr},
             {'params': filter(lambda p: p.requires_grad, self.backbone.parameters()), 'lr': self.lr_backbone}
         ], weight_decay=self.weight_decay)
