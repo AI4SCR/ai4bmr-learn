@@ -1,5 +1,5 @@
 from pathlib import Path
-
+import pickle
 import lightning as L
 import numpy as np
 import pandas as pd
@@ -12,6 +12,7 @@ import ai4bmr_learn.utils.utils
 from ai4bmr_learn.data.splits import generate_splits
 from ai4bmr_learn.utils import io
 
+from sklearn.decomposition import IncrementalPCA
 
 # %% HELPER
 def normalize(img, censoring=0.999, cofactor=1, exclude_zeros=True):
@@ -51,9 +52,13 @@ class PrepareDatasetFolder(L.LightningDataModule):
         # IMAGES
         self.image_version = self.dataset.image_version
         self.images_dir = self.save_dir / 'images' / self.image_version
+        self.images_3d_dir = self.save_dir / 'images' / '3d'
 
         # STATS
         self.stats_path = self.images_dir / 'stats.json'
+
+        # PCA
+        self.pca_path = self.images_3d_dir / 'pca.pkl'
 
         # MASKS
         self.mask_version = self.dataset.mask_version
@@ -213,9 +218,38 @@ class PrepareDatasetFolder(L.LightningDataModule):
 
         pd.Series(sr.__dict__).to_json(self.stats_path)
 
+    def prepare_3d_images(self):
+
+        if self.images_3d_dir.exists() and self.pca_path.exists() and not self.force:
+            return
+
+        logger.info(f'Preparing 3D images...')
+
+        sr = StatsRecorder()
+        pca = IncrementalPCA(n_components=3)
+        img_paths = sorted(self.images_dir.glob('*.zarr'))
+        for img_path in img_paths:
+            img = io.imread(img_path)
+            img = img.flatten(start_dim=1)
+            pca.partial_fit(img)
+
+        for img_path in img_paths:
+            img = io.imread(img_path)
+
+            C, H, W = img.shape
+            img = img.flatten(start_dim=1)
+
+            img = pca.transform(img)
+            img = img.reshape(C, H, W)
+
+            img = img.astype(np.float32)
+            sample_id = img_path.stem
+            save_image(img, save_path=self.images_3d_dir / f"{sample_id}.zarr", chunks=(img.shape[0], 512, 512))
+
+
     def prepare_coords(self):
         from ai4bmr_learn.utils.images import get_coordinates_dict
-        from ai4bmr_learn.data_models.Coordinate_v2 import PatchCoordinate
+        from ai4bmr_learn.data_models.Coordinate import PatchCoordinate
         import json
 
         if self.coords_path.exists() and not self.force:

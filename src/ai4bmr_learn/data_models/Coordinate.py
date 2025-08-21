@@ -17,8 +17,8 @@ class BaseCoordinate(BaseModel):
 class PatchCoordinate(BaseCoordinate):
     """Base class adding a ``stride`` field to ``BasicCoordinate``."""
 
-    kernel_size: int
     image_path: str
+    kernel_size: int
     stride: int | None = None
 
 
