@@ -4,7 +4,7 @@ from pathlib import Path
 from loguru import logger
 
 class ModuleCheckpoint(Callback):
-    def __init__(self, module_name: str = 'backbone.backbone', every_n_epochs: int = 1):
+    def __init__(self, module_name: str, every_n_epochs: int = 1):
         self.module_name = module_name
         self.every_n_epochs = every_n_epochs
 
