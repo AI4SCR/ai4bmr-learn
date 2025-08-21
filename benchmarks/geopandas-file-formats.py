@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 
 
 class GeoBenchmark:
-    def __init__(self, n_points=1e7, output_dir=None):
+    def __init__(self, n_points=1e7, height: int = 1000, width: int = 1000, output_dir=None):
         """
         Initialize the benchmark with specified number of points
 
@@ -27,6 +27,7 @@ class GeoBenchmark:
         self.n_points = n_points
         self.output_dir = Path(output_dir) if output_dir else Path(tempfile.mkdtemp())
         self.output_dir.mkdir(exist_ok=True)
+        self.height, self.width = height, width
         self.results = []
 
     def generate_test_data(self):
@@ -35,8 +36,8 @@ class GeoBenchmark:
 
         # Generate random coordinates (roughly covering a country-sized area)
         np.random.seed(42)  # For reproducible results
-        lons = np.random.uniform(-10, 10, self.n_points)
-        lats = np.random.uniform(40, 60, self.n_points)
+        lons = np.random.uniform(0, self.height, self.n_points)
+        lats = np.random.uniform(0, self.width, self.n_points)
 
         # Create some additional attributes
         ids = np.arange(self.n_points)
@@ -44,7 +45,7 @@ class GeoBenchmark:
         values = np.random.normal(100, 25, self.n_points)
 
         # Create GeoDataFrame
-        geometry = [Point(lon, lat) for lon, lat in zip(lons, lats)]
+        geometry = gpd.points_from_xy(lons, lats)
         self.gdf = gpd.GeoDataFrame({
             'id': ids,
             'category': categories,
