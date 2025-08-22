@@ -4,7 +4,7 @@ import numcodecs
 import numpy as np
 
 # Common compressor: Blosc with Zstd + shuffle
-BLOSC = numcodecs.Blosc(cname="zstd", clevel=3, shuffle=numcodecs.Blosc.SHUFFLE)
+BLOSC = numcodecs.Blosc(cname="zstd", clevel=3, shuffle="byte")
 
 def imread(img_path: Path, engine: str | None = None):
     engine = engine or img_path.suffix
@@ -18,10 +18,10 @@ def imread(img_path: Path, engine: str | None = None):
         case '.zip':
             import zarr
             store = zarr.ZipStore(str(img_path), mode="r")
-            data = zarr.open_array(store=store)
+            data = zarr.open(store=store)
         case '.zarr':
             import zarr
-            data = zarr.open_array(img_path)
+            data = zarr.open(img_path)
         case _:
             raise ValueError(f'Unknown image engine {engine} for {img_path}')
     return np.array(data)
@@ -42,11 +42,11 @@ def save_image(
     match engine:
         case '.zarr':
             import zarr
-            zarr.save_array(store=str(save_path), arr=img, compressor=compressor)
+            zarr.save(img, save_path, chunks=chunks, compressor=compressor)
         case '.zip':
             import zarr
-            store = zarr.ZipStore(str(save_path), mode="r")
-            zarr.open_array(store=store, arr=img, compressor=compressor)
+            store = zarr.ZipStore(str(save_path), mode="w")
+            zarr.save(img, store=store, chunks=chunks, compressor=compressor)
         case '.tiff':
             import tifffile
             tifffile.imwrite(save_path, img, tile=chunks, compression=compressor)
@@ -74,12 +74,12 @@ def read_region(
     match engine:
         case '.zarr':
             import zarr
-            z = zarr.open_array(str(img_path), mode='r')
+            z = zarr.open(img_path, mode='r')
             return z[channel, y: y + height, x: x + width]
         case '.zip':
             import zarr
             store = zarr.ZipStore(str(img_path), mode="r")
-            z = zarr.open_array(store=store)
+            z = zarr.open(store=store)
             return z[channel, y: y + height, x: x + width]
         case '.tiff':
             import openslide
