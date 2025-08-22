@@ -68,6 +68,10 @@ def generate_splits(
     metadata = metadata.copy()
     assert metadata.index.has_duplicates == False
     indices_universe = metadata.index.values
+    index_names = metadata.index.names
+
+    # metadata = metadata.reset_index()
+    # metadata.set_index(index_names, inplace=True)
 
     # FILTER DATA
     if target_column_name is not None:

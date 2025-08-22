@@ -5,7 +5,7 @@ from ai4bmr_learn.data.splits import Split
 
 
 def filter_items_and_metadata(
-        items_ids: list[str | int],
+        item_ids: list[str | int],
         metadata: pd.DataFrame,
         *,
         split: str | None = None,
