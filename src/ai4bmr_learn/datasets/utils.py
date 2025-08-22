@@ -26,7 +26,7 @@ def filter_items_and_metadata(
     else:
         valid_ids = set(metadata.index)
 
-    valid_item_ids = [i for i in items_ids if i in valid_ids]
+    valid_item_ids = [i for i in item_ids if i in valid_ids]
 
     assert len(metadata) == len(valid_item_ids), "Metadata and items differ"
     logger.info(f"Filtered items and metadata for split='{split}'. Found {len(valid_item_ids)} items.")
