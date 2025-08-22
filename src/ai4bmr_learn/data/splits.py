@@ -68,6 +68,10 @@ def generate_splits(
     metadata = metadata.copy()
     assert metadata.index.has_duplicates == False
     indices_universe = metadata.index.values
+    index_names = metadata.index.names
+
+    # metadata = metadata.reset_index()
+    # metadata.set_index(index_names, inplace=True)
 
     # FILTER DATA
     if target_column_name is not None:
@@ -88,7 +92,9 @@ def generate_splits(
 
     if encode_targets:
         mapping = {v:k for k, v in enumerate(targets.unique())}
+        metadata[target_column_name] = metadata[target_column_name].tolist()  #  note: get rid of category if any
         metadata.loc[:, target_column_name] = metadata[target_column_name].transform(lambda x: mapping.get(x, nan_value))
+        metadata[target_column_name] = metadata[target_column_name].fillna(nan_value)
         metadata = metadata.astype({target_column_name: int})
 
     if stratify and group_column_name is not None:

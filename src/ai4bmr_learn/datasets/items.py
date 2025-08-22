@@ -15,7 +15,6 @@ from ai4bmr_learn.utils.utils import pair
 
 to_img = lambda x: tv_tensors.Image(x)
 
-
 def get_patch(item: dict) -> tv_tensors.Image:
     img_path = Path(item['image_path'])
 
@@ -91,25 +90,7 @@ class Items(Dataset):
         return len(self.items)
 
     def __getitem__(self, idx) -> dict:
-        item = deepcopy(self.items[idx])
-        # item = item.model_dump()
-
-        if self.has_cache(uuid=item[self.id_key]):
-            cache_path = self.get_cache_path(item[self.id_key])
-            item = torch.load(cache_path, weights_only=False)
-            return item
-        else:
-            image = get_image(item)
-            item['image'] = image
-
-        if self.metadata is not None:
-            metadata_dict = self.metadata.loc[idx].to_dict()
-            item['metadata'] = metadata_dict
-
-        if self.transform:
-            item = self.transform(item)
-
-        return item
+        raise NotImplementedError('Use either `Images`, `Patches` or inherit to create your own subclass.')
 
     def setup(self):
         logger.info(f'Setting up Items dataset from items_path: {self.items_path}')
@@ -174,12 +155,53 @@ class Items(Dataset):
         import shutil
         shutil.rmtree(self.cache_dir)
 
-# items = self = Items(
-#     items_path=Path('/users/amarti51/prometex/data/benchmarking/datasets/Cords2024/items/items.json'),
-#     metadata_path=Path('/users/amarti51/prometex/data/benchmarking/datasets/Cords2024/splits/samples/clf-target=dx_name.parquet'),
-#     id_key='sample_id',
-#     split='fit',
-#     drop_nan_columns=True
-# )
-# items.setup()
-# items[0]['image']
+
+class Images(Items):
+
+    def __getitem__(self, idx) -> dict:
+        item = deepcopy(self.items[idx])
+        iid = item[self.id_key]
+        # item = item.model_dump()
+
+        if self.has_cache(uuid=iid):
+            cache_path = self.get_cache_path(iid)
+            item = torch.load(cache_path, weights_only=False)
+            return item
+        else:
+            image = get_image(item)
+            item['image'] = image
+
+        if self.metadata is not None:
+            metadata_dict = self.metadata.loc[iid].to_dict()
+            item['metadata'] = metadata_dict
+
+        if self.transform:
+            item = self.transform(item)
+
+        return item
+
+
+class Patches(Items):
+
+    def __getitem__(self, idx) -> dict:
+        item = deepcopy(self.items[idx])
+        iid = item[self.id_key]
+        # item = item.model_dump()
+
+        if self.has_cache(uuid=iid):
+            cache_path = self.get_cache_path(iid)
+            item = torch.load(cache_path, weights_only=False)
+            return item
+        else:
+            image = get_patch(item)
+            item['image'] = image
+
+        if self.metadata is not None:
+            metadata_dict = self.metadata.loc[iid].to_dict()
+            item['metadata'] = metadata_dict
+
+        if self.transform:
+            item = self.transform(item)
+
+        return item
+
