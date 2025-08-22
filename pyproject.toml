@@ -8,7 +8,7 @@ packages = [{ include = "ai4bmr_learn", from = "src" }]
 [tool.poetry.dependencies]
 python = ">=3.11"
 scikit-learn = "*"
-zarr = "<3"  # anndata
+#zarr = "<3"  # anndata
 loguru = "*"
 omegaconf = "*"
 wandb = "*"
