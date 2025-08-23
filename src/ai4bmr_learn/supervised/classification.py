@@ -4,6 +4,8 @@ import torch.nn as nn
 from ai4bmr_learn.metrics.classification import get_metric_collection
 from glom import glom
 from collections import Counter
+from ai4bmr_learn.utils.pooling import pool
+
 
 class Classifier(L.LightningModule):
     def __init__(self,
@@ -14,7 +16,7 @@ class Classifier(L.LightningModule):
                  lr_backbone: float = 1e-4,
                  weight_decay: float = 0.01,
                  freeze_backbone: bool = False,
-                 pooling: str = 'flatten',
+                 pooling: str | None = None,
                  batch_key: str | None = 'image',
                  target_key: str = 'label',
                  ):
@@ -53,7 +55,7 @@ class Classifier(L.LightningModule):
         data = glom(batch, self.batch_key) if self.batch_key is not None else batch
 
         y = self.backbone(data)
-        y = self.pool(y)
+        y = pool(y, strategy=self.pooling)
         logits = self.head(y)
         targets = glom(batch, self.target_key).long()
 
@@ -148,7 +150,7 @@ class Classifier(L.LightningModule):
     def predict_step(self, batch, batch_idx):
         images = batch['image']
         y = self.backbone(images)
-        y = self.pool(y)
+        y = pool(y, strategy=self.pooling)
         logits = self.head(y)
         preds = logits.argmax(dim=1)
 
@@ -164,13 +166,3 @@ class Classifier(L.LightningModule):
         ], weight_decay=self.weight_decay)
 
         return optimizer
-
-    def pool(self, x):
-        if self.pooling is None:
-            return x
-        elif self.pooling == 'cls':
-            return x[:, 0]
-        elif self.pooling == 'flatten':
-            return x.flatten(start_dim=1)
-        else:
-            raise NotImplementedError(f'{self.pooling} is not implemented.')

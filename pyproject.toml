@@ -1,53 +1,71 @@
-[tool.poetry]
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
 name = "ai4bmr-learn"
 version = "0.1.0"
 description = "Collection of learning methods"
-authors = ["Adriano Martinelli <adrianom@student.ethz.ch>"]
-packages = [{ include = "ai4bmr_learn", from = "src" }]
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Adriano Martinelli", email = "adrianom@student.ethz.ch" }]
 
-[tool.poetry.dependencies]
-python = ">=3.11"
-scikit-learn = "*"
-#zarr = "<3"  # anndata
-loguru = "*"
-omegaconf = "*"
-wandb = "*"
-umap-learn = { version = "*", extras = ["plot"] }
-scikit-image = "*"
-torch = "*"
-pyarrow = "*"
-torchvision = "*"
-torchinfo = "*"
-lightning = { version = "*", extras = ["pytorch-extra"] }
-matplotlib = "*"
-seaborn = "*"
-pandas = "*"
-einops = "*"
-timm = "*"
-jsonargparse = { version = "^4.24.1", extras = ["all"] }
-pydantic = "^2.6.1"
-igraph="*"
-leidenalg="*"
-geopandas="*"
-openslide-bin="*"
-openslide-python="*"
-lightly="*"
-rich="*"
+dependencies = [
+  "glom",
+  "scikit-learn",
+  "loguru",
+  "omegaconf",
+  "wandb",
+  "umap-learn[plot]",
+  "scikit-image",
+  "torch",
+  "pyarrow",
+  "torchvision",
+  "torchinfo",
+  "lightning[pytorch-extra]",
+  "matplotlib",
+  "seaborn",
+  "pandas",
+  "einops",
+  "timm",
+  "jsonargparse[all] >=4.24.1",
+  "pydantic >=2.6.1,<3.0.0",
+  "igraph",
+  "leidenalg",
+  "geopandas",
+  "openslide-bin",
+  "openslide-python",
+  "lightly",
+  "rich",
+]
 
-[tool.poetry.group.scanpy.dependencies]
-anndata="*"
-rapids-singlecell="*"
+# Console scripts (CLI)
+[project.scripts]
+learn = "ai4bmr_learn.cli.main:cli_main"
+# Optional extra alias:
+# ai4bmr-learn = "ai4bmr_learn.cli.main:cli_main"
 
-[tool.poetry.group.dev.dependencies]
-black = "*"
-pytest = "*"
+# Optional dependency groups (extras)
+[project.optional-dependencies]
+scanpy = [
+  "anndata",
+  "rapids-singlecell",
+]
+dev = [
+  "black",
+  "pytest",
+]
 
-[tool.poetry.scripts]
-learn = "clis.main:cli_main"
+[tool.setuptools]
+package-dir = {"" = "src"}
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+# Auto-discover packages under src/
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# If you ship non-.py files via MANIFEST.in, keep this true
+[tool.setuptools.dynamic]
+# (leave empty unless you dynamically load version/metadata)
 
 [tool.black]
 line-length = 120
