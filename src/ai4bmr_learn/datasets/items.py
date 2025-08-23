@@ -12,10 +12,11 @@ from torchvision import tv_tensors
 from ai4bmr_learn.datasets.utils import filter_items_and_metadata
 from ai4bmr_learn.utils import io
 from ai4bmr_learn.utils.utils import pair
+from torchvision.transforms import v2
+from PIL.Image import Image
 
-to_img = lambda x: tv_tensors.Image(x)
 
-def get_patch(item: dict) -> tv_tensors.Image:
+def get_patch(item: dict, to_tensor: bool = True, to_patch_size: bool = False) -> Image | tv_tensors.Image:
     img_path = Path(item['image_path'])
 
     x, y = item['x'], item['y']
@@ -23,13 +24,26 @@ def get_patch(item: dict) -> tv_tensors.Image:
     level = item['level'] if 'level' in item else 0
 
     patch = io.read_region(img_path=img_path, x=x, y=y, width=kernel_width, height=kernel_height, level=level)
-    return to_img(patch)
+
+    transform = []
+    if to_tensor:
+        transform.append(v2.ToImage())
+
+    if to_patch_size:
+        patch_size = item['patch_size']
+        transform.append(v2.Resize(size=patch_size))
+
+    if len(transform) > 0:
+        transform = v2.Compose(transform)
+        return transform(patch)
+    else:
+        return patch
 
 
 def get_image(item: dict) -> tv_tensors.Image:
     img_path = Path(item['image_path'])
     patch = io.imread(img_path=img_path)
-    return to_img(patch)
+    return tv_tensors.Image(patch)
 
 
 def get_mask(item):
@@ -45,6 +59,7 @@ def get_annotation(item):
 
 
 class Items(Dataset):
+    name: str = 'Items'
 
     def __init__(
             self,
@@ -54,7 +69,7 @@ class Items(Dataset):
             transform: Callable | None = None,
             cache_dir: Path | None = None,
             drop_nan_columns: bool = False,
-            id_key: str = 'uuid'
+            id_key: str | None = None,
     ):
         """
         Args:
@@ -69,6 +84,7 @@ class Items(Dataset):
         assert self.items_path.exists(), f'items_path {self.items_path} does not exist'
         self.items: list[dict] | None = None
         self.id_key = id_key
+        self.item_ids: list[str | int] | None = None
 
         # METADATA
         self.metadata_path = metadata_path
@@ -93,12 +109,12 @@ class Items(Dataset):
         raise NotImplementedError('Use either `Images`, `Patches` or inherit to create your own subclass.')
 
     def setup(self):
-        logger.info(f'Setting up Items dataset from items_path: {self.items_path}')
+        logger.info(f'Setting up {self.name} dataset from items_path: {self.items_path}')
 
         with open(self.items_path, 'r') as f:
             # self.items = [PatchCoordinate(**i) for i in json.load(f)]
             self.items = json.load(f)
-            self.item_ids = [i[self.id_key] for i in self.items]
+            self.item_ids = [i[self.id_key] for i in self.items] if self.id_key else None
             logger.info(f'Loaded {len(self.items)} items')
 
         if self.metadata_path is not None:
@@ -143,7 +159,7 @@ class Items(Dataset):
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         num_items = len(self.items)
-        for i in tqdm(range(num_items), total=num_items, desc='Caching items'):
+        for i in tqdm(range(num_items), total=num_items, desc=f'Caching {self.name}'):
             item = self.items[i]
             item_path = self.get_cache_path(item[self.id_key])
 
@@ -157,6 +173,7 @@ class Items(Dataset):
 
 
 class Images(Items):
+    name: str = 'Images'
 
     def __getitem__(self, idx) -> dict:
         item = deepcopy(self.items[idx])
@@ -182,13 +199,14 @@ class Images(Items):
 
 
 class Patches(Items):
+    name: str = 'Patches'
 
     def __getitem__(self, idx) -> dict:
         item = deepcopy(self.items[idx])
-        iid = item[self.id_key]
+        iid = item[self.id_key] if self.id_key else None
         # item = item.model_dump()
 
-        if self.has_cache(uuid=iid):
+        if self.cache_dir is not None and self.has_cache(uuid=iid):
             cache_path = self.get_cache_path(iid)
             item = torch.load(cache_path, weights_only=False)
             return item
@@ -205,3 +223,27 @@ class Patches(Items):
 
         return item
 
+
+class SlidePatches(Items):
+    name: str = 'SlidePatches'
+
+    def __getitem__(self, idx) -> dict:
+        item = deepcopy(self.items[idx])
+        iid = item[self.id_key] if self.id_key else None
+
+        if self.cache_dir is not None and self.has_cache(uuid=iid):
+            cache_path = self.get_cache_path(iid)
+            item = torch.load(cache_path, weights_only=False)
+            return item
+        else:
+            image = get_patch(item, to_tensor=True, to_patch_size=True)
+            item['image'] = image
+
+        if self.metadata is not None:
+            metadata_dict = self.metadata.loc[iid].to_dict()
+            item['metadata'] = metadata_dict
+
+        if self.transform:
+            item = self.transform(item)
+
+        return item

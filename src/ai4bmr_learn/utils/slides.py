@@ -6,7 +6,7 @@ import einops
 import openslide
 import torch
 from ai4bmr_learn.utils.device import get_device
-from ai4bmr_learn.datasets.coordinates import Coordinates
+from ai4bmr_learn.datasets.items import SlidePatches
 from ai4bmr_learn.plotting.contours import visualize_contours
 from ai4bmr_learn.plotting.patches import visualize_coords
 from ai4bmr_learn.preprocessing.padding import get_pad_for_kernel
@@ -117,7 +117,8 @@ def segment_slide(slide: openslide.OpenSlide,
         json.dump(coords_dict, f)
 
     # %% DATASET
-    ds = Coordinates.from_list(coords=coords, transform=transform, with_points=False)
+    ds = self = SlidePatches(items_path=save_coords_path, transform=transform)
+    ds.setup()
     dl = torch.utils.data.DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=num_workers,
                                      pin_memory=num_workers > 0)
 
