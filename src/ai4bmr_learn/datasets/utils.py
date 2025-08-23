@@ -40,7 +40,7 @@ def filter_items_and_metadata(
 
         msg = (
                 f"Detected NaN values in the metadata which is incompatible with torch.DataLoader. "
-                + ("Dropping them." if drop_nan_columns else "Use drop_nan_columns=True to drop them.")
+                + ("Dropping them. " if drop_nan_columns else "Use drop_nan_columns=True to drop them. ")
                 + f"Affected columns: {cols_with_nan}. "
         )
         logger.warning(msg)
