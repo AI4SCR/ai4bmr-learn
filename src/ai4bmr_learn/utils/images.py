@@ -1,7 +1,7 @@
 import numpy as np
 import openslide
 from ai4bmr_learn.utils.utils import pair
-
+from tqdm import tqdm
 
 def get_thumbnail_size_and_scale(size, max_size: int = 1000):
     import numpy as np
@@ -132,7 +132,7 @@ import geopandas as gpd
 def filter_coords(coords: list, *, contours: gpd.GeoDataFrame, overlap: float = 0.25):
     filtered = []
     bboxs = coords_to_bboxs(coords)
-    for bbox, coord in zip(bboxs, coords):
+    for bbox, coord in tqdm(zip(bboxs, coords), total=len(bboxs)):
         overlap_by_contour = contours.geometry.intersection(bbox).area / bbox.area
         if overlap_by_contour.sum() >= overlap:
             coord.overlap = overlap_by_contour.sum()

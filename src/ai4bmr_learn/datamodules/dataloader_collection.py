@@ -14,7 +14,7 @@ class DataLoader(torch.utils.data.DataLoader):
 @dataclass
 class DataloaderConfig:
     batch_size: int = 32
-    shuffle: bool = False
+    shuffle: bool = True
     num_workers: int = 0
     pin_memory: bool = True
     persistent_workers: bool = False
