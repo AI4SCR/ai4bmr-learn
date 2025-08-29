@@ -69,7 +69,7 @@ class DataLoaderCollection(L.LightningDataModule):
         dl = dl[0] if dl is not None else None
         return dl
 
-
+from ai4bmr_learn.utils.utils import to_dict
 class DatasetLoaderCollection(L.LightningDataModule):
     VALID_KEYS = {'fit', 'val', 'test', 'predict'}
 
@@ -98,6 +98,8 @@ class DatasetLoaderCollection(L.LightningDataModule):
         self.datasets = datasets
         self.dataloader_configs = dataloaders
         self.dataloaders = defaultdict(list)
+
+        self.save_hyperparameters()
 
     def setup(self, stage: str | None = None):
 

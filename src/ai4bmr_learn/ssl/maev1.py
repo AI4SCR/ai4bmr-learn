@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
 from ai4bmr_learn.models.decoder.masked_decoder import MaskedDecoderDefault, MaskedDecoder
 from ai4bmr_learn.ssl.utils import random_token_mask
 import torch.nn as nn
-
+from ai4bmr_learn.utils.pooling import pool
 
 class MAEv1(L.LightningModule):
     name = "MAEv1"
@@ -61,16 +61,6 @@ class MAEv1(L.LightningModule):
 
         self.save_hyperparameters(ignore=['backbone'])
 
-    def pool(self, x):
-        if self.pooling is None:
-            return x
-        elif self.pooling == 'cls':
-            return x[:, 0]
-        elif self.pooling == 'flatten':
-            return x.flatten(start_dim=1)
-        else:
-            raise NotImplementedError(f'{self.pooling} is not implemented.')
-
     def _shared_step(self, img):
         batch_size = img.shape[0]
 
@@ -124,7 +114,7 @@ class MAEv1(L.LightningModule):
 
         self.logger.experiment.log(
             {
-                "train/mae_loss_batch": loss.item(),
+                "loss/train_mae_batch": loss.item(),
                 "train/num_samples_batch": num_samples_batch,
                 "train/num_samples_total": self.num_samples_total,
                 "train/batch": self.batch,
@@ -133,12 +123,7 @@ class MAEv1(L.LightningModule):
             }
         )
 
-        self.log(
-            "train_loss_epoch",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            batch_size=batch_size,
+        self.log("loss/train", loss, on_step=True, on_epoch=True, batch_size=batch_size,
         )
         self.batch += 1
         return loss
@@ -151,7 +136,7 @@ class MAEv1(L.LightningModule):
         avg_loss = sum(self.losses) / len(self.losses)
         self.logger.experiment.log(
             {
-                "train/mae_loss_epoch": avg_loss,
+                "loss/train_mae_epoch": avg_loss,
                 "train/num_samples_epoch": self.num_samples_epoch,
                 "trainer/global_step": self.trainer.global_step,
                 "epoch": self.trainer.current_epoch,
@@ -178,18 +163,18 @@ class MAEv1(L.LightningModule):
 
         self.logger.experiment.log(
             {
-                "val/mae_loss_batch": loss.item(),
-                "val/mae_loss_masked_batch": loss_masked.item(),
+                "loss/val_mae_batch": loss.item(),
+                "loss/val_mae_masked_batch": loss_masked.item(),
                 "val/num_samples_batch": num_samples_batch,
                 "trainer/global_step": self.trainer.global_step,
             }
         )
-        self.log("val_loss_epoch", loss, on_step=False, on_epoch=True, batch_size=batch_size)
+        self.log("loss/val", loss, batch_size=batch_size)
 
         batch['loss'] = loss.item()
         batch['loss_masked'] = loss_masked.item()
         batch["image"] = images.detach().cpu()
-        batch['embedding'] = self.pool(z).detach().cpu()
+        batch['embedding'] = pool(z, strategy=self.pooling).detach().cpu()
         batch['mae'] = {'prediction': predictions.detach().cpu(),
                         'prediction_masked': predictions_masked.detach().cpu(),
                         'masks': masks.detach().cpu()}

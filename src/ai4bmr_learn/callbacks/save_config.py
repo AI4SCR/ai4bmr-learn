@@ -1,4 +1,5 @@
 from lightning.pytorch.cli import SaveConfigCallback
+from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.loggers import Logger
 import lightning as L
 from pathlib import Path
@@ -19,3 +20,5 @@ class LoggerSaveConfigCallback(SaveConfigCallback):
                 trainer.logger.experiment.config.update(config)
             except AttributeError:
                 logger.warning(f'Config could not be saved with used logger')
+
+

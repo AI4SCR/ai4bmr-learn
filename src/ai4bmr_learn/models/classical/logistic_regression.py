@@ -30,6 +30,8 @@ class LogisticRegression(L.LightningModule):
         self.val_metrics = metrics.clone(prefix="val/")
         self.test_metrics = metrics.clone(prefix="test/")
 
+        self.save_hyperparameters()
+
     def get_data_and_targets(self, batch, return_targets: bool = True):
 
         if isinstance(batch, dict):
@@ -96,9 +98,9 @@ class LogisticRegression(L.LightningModule):
 
         # stats
         stats = dict(
-            num_samples=len(data),
-            input_dim=data.shape[1],
-            num_classes=len(set(targets.tolist()))
+            batch_num_samples=len(data),
+            batch_input_dim=data.shape[1],
+            batch_num_classes=len(set(targets.tolist()))
         )
         self.log_dict({f'train/{k}':v for k, v in stats.items()}, on_step=False, on_epoch=True)
 
@@ -117,9 +119,9 @@ class LogisticRegression(L.LightningModule):
 
         # stats
         stats = dict(
-            num_samples=len(data),
-            input_dim=data.shape[1],
-            num_classes=len(set(targets.tolist()))
+            batch_num_samples=len(data),
+            batch_input_dim=data.shape[1],
+            batch_num_classes=len(set(targets.tolist()))
         )
         self.log_dict({f'val/{k}':v for k, v in stats.items()}, on_step=False, on_epoch=True)
 

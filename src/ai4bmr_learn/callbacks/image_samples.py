@@ -31,7 +31,7 @@ class ImageSamples(Callback):
             self.visualize(trainer=trainer, name='val', dataset=ds)
 
     def on_train_start(self, trainer, pl_module):
-        if trainer.fast_dev_run:
+        if trainer.current_epoch == 0 and trainer.fast_dev_run:
             return
 
         logger.info(f'Logging image samples from train [num_samples={self.num_samples}]')

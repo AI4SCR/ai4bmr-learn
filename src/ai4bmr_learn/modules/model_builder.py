@@ -5,7 +5,7 @@ from glom import glom
 from importlib import import_module
 from inspect import isclass, signature
 from typing import Any, Callable
-
+from pathlib import Path
 
 def resolve_dot_path(path: str) -> Callable[..., Any]:
     """Resolve 'pkg.module.func' to the actual callable."""
@@ -42,12 +42,19 @@ class ModelBuilder(L.LightningModule):
 
 class Model(L.LightningModule):
 
-    def __init__(self, model = nn.Module, batch_key: str | None = None, as_kwargs: bool = False, **kwargs):
+    def __init__(self, model = nn.Module, batch_key: str | None = None, as_kwargs: bool = False, ckpt_path: Path | None = None, **kwargs):
         super().__init__()
         self.model = model
         self.batch_key = batch_key
         self.as_kwargs = as_kwargs
-        self.save_hyperparameters()
+
+        self.ckpt_path = ckpt_path
+        if self.ckpt_path is not None:
+            raise NotImplementedError()
+        #     ckpt = torch.load(ckpt_path, map_location="cpu")
+        #     state_dict = ckpt["state_dict"] if "state_dict" in ckpt else ckpt
+        #     model.load_state_dict(state_dict=state_dict, strict=True)
+        self.save_hyperparameters(ignore=['model'])
 
     def forward(self, x) -> Any:
         x = glom(x, self.batch_key) if self.batch_key else x
