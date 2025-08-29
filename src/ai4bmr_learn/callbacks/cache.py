@@ -2,7 +2,7 @@ from lightning.pytorch.callbacks import Callback
 
 class Cache(Callback):
 
-    def __init__(self, num_samples: int | None):
+    def __init__(self, num_samples: int | None = None):
         self.num_samples = num_samples
         self.outputs = []
 

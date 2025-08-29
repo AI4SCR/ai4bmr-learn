@@ -33,7 +33,7 @@ def run_umap(data, n_neighbors= 15, min_dist=0.3, metric='euclidean', engine: st
             raise ValueError(f"Unknown engine: {engine}")
 
 def plot_umap(data, *,
-              n_neighbors: int = 15, min_dist: float = 0.3, metric: str = 'euclidean', engine: str = 'umap-learn', umap_kwargs: dict | None = None,
+              n_neighbors: int = 15, min_dist: float = 0.3, metric: str = 'euclidean', engine: str = 'umap-learn', umap_kwargs: dict | None = None, return_reducer: bool = False,
               ax: plt.Axes | None = None, labels: np.ndarray | list[str, int] | None = None, values: np.ndarray | list[int, float] | None = None, num_samples: int | None = None, show_legend: bool = True, **kwargs):
 
         import pandas as pd
@@ -80,7 +80,7 @@ def plot_umap(data, *,
                                  background='black', cmap='inferno',
                                  ax=ax, show_legend=show_legend, **kwargs)
 
-        return ax
+        return (ax, reducer) if return_reducer else ax
 
 def csr_to_precomputed_knn(csr, k):
     """
