@@ -5,10 +5,11 @@ from loguru import logger
 
 class ImageSamples(Callback):
 
-    def __init__(self, num_samples: int = 5, seed: int = 0, padding: int = 2):
+    def __init__(self, num_samples: int = 5, seed: int = 0, nrow: int = 5, padding: int = 2):
 
         self.num_samples = num_samples
         self.padding = padding
+        self.nrow = nrow
         self.rng = np.random.default_rng(seed=seed)
 
     def visualize(self, trainer, name: str, dataset):
@@ -20,9 +21,9 @@ class ImageSamples(Callback):
         items = [dataset[i] for i in idc]
         images = [i['image'] for i in items]
 
-        grid = make_grid(images, normalize=True, padding=self.padding)
+        grid = make_grid(images, normalize=True, padding=self.padding, nrow=self.nrow)
 
-        trainer.logger.log_image(key=f"image_samples/{name}", images=[grid])
+        trainer.logger.log_image(key=f"images/{name}", images=[grid])
 
     def on_validation_start(self, trainer, pl_module) -> None:
         if trainer.current_epoch == 0 and not trainer.fast_dev_run:

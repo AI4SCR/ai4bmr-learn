@@ -55,7 +55,11 @@ def plot_umap(data, *,
         if ax is None:
             _, ax = plt.subplots()
 
-        reducer = run_umap(data, n_neighbors=n_neighbors, min_dist=min_dist, metric=metric, engine=engine, **umap_kwargs)
+        reducer = run_umap(data,
+                           n_neighbors=n_neighbors,
+                           min_dist=min_dist,
+                           metric=metric,
+                           engine=engine, **umap_kwargs)
 
         match engine:
             case 'rapids-sc':
