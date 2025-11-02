@@ -216,7 +216,7 @@ def save_splits(
     num_val_splits = round(1 / val_size) if val_size is not None else None
 
     metadata = metadata.copy()
-    assert metadata.index.id_unique == False
+    assert metadata.index.is_unique, f'Index of metadata needs to be unique'
     universe = metadata.index.values
     index_names = metadata.index.names
 
@@ -277,27 +277,29 @@ def save_splits(
                 fit_indices = train_metadata.index[fit_indices]
                 val_indices = train_metadata.index[val_indices]
 
-                metadata = construct_split(metadata=metadata,
+                metadata = construct_split(metadata=metadata.copy(),
                                            universe=universe, indices=indices,
                                            test_indices=test_indices, train_indices=train_indices,
                                            fit_indices=fit_indices, val_indices=val_indices,
                                            use_filtered_targets_for_train=use_filtered_targets_for_train)
-                save_dir.mkdir(parents=True, exist_ok=False)
+                save_dir.mkdir(parents=True, exist_ok=True)
                 metadata.to_parquet(save_dir / f'outer={outer}-inner={inner}.parquet', engine='fastparquet')
-        else:
-            val_indices = []
-            fit_indices = train_indices
 
-        metadata = construct_split(metadata=metadata, universe=universe, indices=indices, test_indices=test_indices,
-                                   train_indices=train_indices, fit_indices=fit_indices, val_indices=val_indices,
+        val_indices = []
+        fit_indices = train_indices
+
+        metadata = construct_split(metadata=metadata.copy(), universe=universe, indices=indices,
+                                   test_indices=test_indices, train_indices=train_indices,
+                                   fit_indices=fit_indices, val_indices=val_indices,
                                    use_filtered_targets_for_train=use_filtered_targets_for_train)
-        save_dir.mkdir(parents=True, exist_ok=False)
+        save_dir.mkdir(parents=True, exist_ok=True)
         metadata.to_parquet(save_dir / f'outer={outer}.parquet', engine='fastparquet')
 
 
 def construct_split(*, metadata, universe, indices,
                     test_indices, train_indices, fit_indices, val_indices,
                     use_filtered_targets_for_train):
+
     if use_filtered_targets_for_train:
         excl_indices = set(universe) - set(fit_indices).union(val_indices).union(test_indices)
         fit_indices = list(set(fit_indices).union(excl_indices))

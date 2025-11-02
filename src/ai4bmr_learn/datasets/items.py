@@ -129,7 +129,7 @@ class Items(Dataset):
             logger.info('No cache found. Creating...')
             self.create_cache()
 
-    def has_cache(self, uuid: str | None = None) -> bool:
+    def has_cache(self, iid: str | None = None) -> bool:
 
         if self.cache_dir is None:
             return False
@@ -138,20 +138,20 @@ class Items(Dataset):
             logger.info(f'Gather cached ids...')
             self.cached_ids = set([i.stem for i in self.cache_dir.rglob('*.pt')])
 
-        if uuid is not None:
-            return uuid in self.cached_ids
+        if iid is not None:
+            return iid in self.cached_ids
         else:
-            uuids = set([item[self.id_key] for item in self.items])
+            iid = set([item[self.id_key] for item in self.items])
 
             # TODO: report subset matches
-            if uuids <= self.cached_ids:
-                logger.info(f'Found all {len(uuids)} cached patches in {self.items_path}')
+            if iid <= self.cached_ids:
+                logger.info(f'Found all {len(iid)} cached patches in {self.items_path}')
                 return True
             else:
                 return False
 
-    def get_cache_path(self, uuid: str):
-        return self.cache_dir / f'{uuid}.pt'
+    def get_cache_path(self, iid: str):
+        return self.cache_dir / f'{iid}.pt'
 
     def create_cache(self):
         from tqdm import tqdm
@@ -165,7 +165,7 @@ class Items(Dataset):
 
             if not item_path.exists():
                 item = self[i]
-                torch.save(item['image'], item_path)
+                torch.save(item, item_path)
 
     def invalidate_cache(self):
         import shutil
@@ -180,7 +180,7 @@ class Images(Items):
         iid = item[self.id_key]
         # item = item.model_dump()
 
-        if self.has_cache(uuid=iid):
+        if self.has_cache(iid=iid):
             cache_path = self.get_cache_path(iid)
             item = torch.load(cache_path, weights_only=False)
             return item
@@ -195,6 +195,7 @@ class Images(Items):
         if self.transform:
             item = self.transform(item)
 
+        assert item['image'].shape[0] < 45
         return item
 
 
@@ -206,7 +207,7 @@ class Patches(Items):
         iid = item[self.id_key] if self.id_key else None
         # item = item.model_dump()
 
-        if self.cache_dir is not None and self.has_cache(uuid=iid):
+        if self.cache_dir is not None and self.has_cache(iid=iid):
             cache_path = self.get_cache_path(iid)
             item = torch.load(cache_path, weights_only=False)
             return item
@@ -231,7 +232,7 @@ class SlidePatches(Items):
         item = deepcopy(self.items[idx])
         iid = item[self.id_key] if self.id_key else None
 
-        if self.cache_dir is not None and self.has_cache(uuid=iid):
+        if self.cache_dir is not None and self.has_cache(iid=iid):
             cache_path = self.get_cache_path(iid)
             item = torch.load(cache_path, weights_only=False)
             return item
@@ -247,3 +248,4 @@ class SlidePatches(Items):
             item = self.transform(item)
 
         return item
+
