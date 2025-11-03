@@ -1,34 +1,90 @@
 import lightning as L
 import torch.optim as optim
-import torch.nn as nn
 from ai4bmr_learn.metrics.classification import get_metric_collection
 from glom import glom
 from collections import Counter
 from ai4bmr_learn.utils.pooling import pool
 import torch
+from torch import nn
 
-class Aggregator(nn.Module):
-    """Attention-Based MIL for precomputed embeddings."""
-    def __init__(self, input_dim: int, use_projection: bool = False):
+import torch
+import torch.nn as nn
+
+
+class MIL(nn.Module):
+    def __init__(
+            self,
+            input_dim: int,
+            activ_dim: int = 0,  # if >0, project to this dim before attention
+            bag_norm: bool = False,  # z-score across instances in a bag
+            instance_norm: bool = False,  # LayerNorm per instance (feature-wise)
+            input_dropout: float = 0.0,
+            activ_dropout: float = 0.0,
+            attn_dropout: float = 0.0,
+    ):
         super().__init__()
-        self.use_projection = use_projection
-        self.proj = nn.Linear(input_dim, input_dim) if use_projection else nn.Identity()
-        self.act = nn.Tanh() if use_projection else nn.Identity()
-        self.attention = nn.Linear(input_dim, 1)
 
-    def forward(self, x: torch.Tensor):
-        attn = self.act(self.proj(x))
-        attn = self.attention(attn)
-        attn = torch.softmax(attn, dim=1)
-        z = torch.sum(attn * x, dim=1)
-        return z, attn.squeeze(-1)
+        # If we want activation dropout, we must actually have an activation layer
+        assert not (activ_dropout > 0.0 and activ_dim <= 0), \
+            "activ_dropout > 0 requires activ_dim > 0"
 
-class ABMIL(L.LightningModule):
+        self.activ_dim = activ_dim
+        self.attn_dim = activ_dim if activ_dim > 0 else input_dim
+        self.output_dim = self.attn_dim  # for compatibility with ABMIL
+
+        self.bag_norm = bag_norm
+        self.instance_norm = instance_norm
+
+        self.input_drop = nn.Dropout(input_dropout) if input_dropout > 0 else nn.Identity()
+        self.activ_drop = nn.Dropout(activ_dropout) if activ_dropout > 0 else nn.Identity()
+        self.attn_drop = nn.Dropout(attn_dropout) if attn_dropout > 0 else nn.Identity()
+
+        if activ_dim > 0:
+            self.activate = nn.Sequential(
+                nn.Linear(input_dim, activ_dim),
+                nn.Tanh(),
+                self.activ_drop,
+            )
+        else:
+            self.activate = nn.Identity()
+
+        # LayerNorm over features of each instance (last dim)
+        self.layer_norm = nn.LayerNorm(input_dim)
+
+        # Attention over the (possibly activated) features
+        self.attention = nn.Linear(self.attn_dim, 1)
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        x: [B, N, D]
+        Returns:
+            z:    [B, D_or_activ]  aggregated embeddings (matches attn input dim)
+            attn: [B, N]           attention weights
+        """
+        if self.bag_norm:
+            # Z-score within each bag across instances
+            mean = x.mean(dim=1, keepdim=True)
+            std = x.std(dim=1, keepdim=True, unbiased=False).clamp_min(1e-6)
+            x = (x - mean) / std
+
+        if self.instance_norm:
+            x = self.layer_norm(x)
+
+        x = self.input_drop(x)
+        x = self.activate(x)  # shape: [B, N, attn_dim]
+
+        logits = self.attention(x)  # [B, N, 1]
+        attn = torch.softmax(logits, dim=1)  # [B, N, 1]
+        attn = self.attn_drop(attn)  # dropout on probs
+
+        z = torch.sum(attn * x, dim=1)  # [B, attn_dim]
+        return z, attn.squeeze(-1)  # [B, attn_dim], [B, N]
+
+
+class MILTrainer(L.LightningModule):
     def __init__(self,
-                 # backbone: nn.Module,
-                 input_dim: int,
+                 mil: nn.Module,
                  num_classes: int,
-                 use_projection: bool = False,
                  lr_head: float = 1e-3,
                  lr_mil: float = 1e-4,
                  weight_decay: float = 0.01,
@@ -40,14 +96,14 @@ class ABMIL(L.LightningModule):
         super().__init__()
 
         self.save_hyperparameters(ignore=["mil"])
-        self.mil = Aggregator(input_dim, use_projection=use_projection)
+        self.mil = mil
 
         # self.backbone = backbone
         # if freeze_backbone:
         #     for param in self.backbone.parameters():
         #         param.requires_grad = False
 
-        self.head = nn.Linear(input_dim, num_classes)
+        self.head = nn.Linear(mil.output_dim, num_classes)
         # self.pooling = pooling
         self.batch_key = batch_key
         self.target_key = target_key

@@ -16,48 +16,6 @@ from torchvision.transforms import v2
 from PIL.Image import Image
 
 
-def get_patch(item: dict, to_tensor: bool = True, to_patch_size: bool = False) -> Image | tv_tensors.Image:
-    img_path = Path(item['image_path'])
-
-    x, y = item['x'], item['y']
-    kernel_height, kernel_width = pair(item['kernel_size'])
-    level = item['level'] if 'level' in item else 0
-
-    patch = io.read_region(img_path=img_path, x=x, y=y, width=kernel_width, height=kernel_height, level=level)
-
-    transform = []
-    if to_tensor:
-        transform.append(v2.ToImage())
-
-    if to_patch_size:
-        patch_size = item['patch_size']
-        transform.append(v2.Resize(size=patch_size))
-
-    if len(transform) > 0:
-        transform = v2.Compose(transform)
-        return transform(patch)
-    else:
-        return patch
-
-
-def get_image(item: dict) -> tv_tensors.Image:
-    img_path = Path(item['image_path'])
-    patch = io.imread(img_path=img_path)
-    return tv_tensors.Image(patch)
-
-
-def get_mask(item):
-    pass
-
-
-def get_graph(item):
-    pass
-
-
-def get_annotation(item):
-    pass
-
-
 class Items(Dataset):
     name: str = 'Items'
 
@@ -145,7 +103,7 @@ class Items(Dataset):
 
             # TODO: report subset matches
             if iid <= self.cached_ids:
-                logger.info(f'Found all {len(iid)} cached patches in {self.items_path}')
+                logger.info(f'Found all {len(iid)} cached items in {self.items_path}')
                 return True
             else:
                 return False
@@ -170,6 +128,48 @@ class Items(Dataset):
     def invalidate_cache(self):
         import shutil
         shutil.rmtree(self.cache_dir)
+
+
+def get_patch(item: dict, to_tensor: bool = True, to_patch_size: bool = False) -> Image | tv_tensors.Image:
+    img_path = Path(item['image_path'])
+
+    x, y = item['x'], item['y']
+    kernel_height, kernel_width = pair(item['kernel_size'])
+    level = item['level'] if 'level' in item else 0
+
+    patch = io.read_region(img_path=img_path, x=x, y=y, width=kernel_width, height=kernel_height, level=level)
+
+    transform = []
+    if to_tensor:
+        transform.append(v2.ToImage())
+
+    if to_patch_size:
+        patch_size = item['patch_size']
+        transform.append(v2.Resize(size=patch_size))
+
+    if len(transform) > 0:
+        transform = v2.Compose(transform)
+        return transform(patch)
+    else:
+        return patch
+
+
+def get_image(item: dict) -> tv_tensors.Image:
+    img_path = Path(item['image_path'])
+    patch = io.imread(img_path=img_path)
+    return tv_tensors.Image(patch)
+
+
+def get_mask(item):
+    pass
+
+
+def get_graph(item):
+    pass
+
+
+def get_annotation(item):
+    pass
 
 
 class Images(Items):
@@ -248,4 +248,3 @@ class SlidePatches(Items):
             item = self.transform(item)
 
         return item
-
