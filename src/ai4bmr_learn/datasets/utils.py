@@ -15,7 +15,7 @@ def filter_items_and_metadata(
     Filters a list of item dicts and metadata based on a split value and optionally drops
     NaN-containing columns in the metadata. Returns (items, item_ids, metadata).
     """
-    item_id = set(item_ids)
+    item_ids = set(item_ids)
 
     # filter item ids
     if split is not None:
