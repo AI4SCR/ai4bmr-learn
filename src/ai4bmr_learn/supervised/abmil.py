@@ -1,6 +1,7 @@
 import lightning as L
 import torch.optim as optim
 from ai4bmr_learn.metrics.classification import get_metric_collection
+from torchmetrics.classification import ConfusionMatrix
 from glom import glom
 from collections import Counter
 from ai4bmr_learn.utils.pooling import pool
@@ -92,6 +93,7 @@ class MILTrainer(L.LightningModule):
                  # pooling: str | None = None,
                  batch_key: str | None = 'image',
                  target_key: str = 'label',
+                 weight: torch.Tensor | None = None
                  ):
         super().__init__()
 
@@ -112,14 +114,21 @@ class MILTrainer(L.LightningModule):
         self.lr_mil = lr_mil
         self.weight_decay = weight_decay
 
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss(weight=weight)
 
         # METRICS
         self.num_classes = num_classes
+        task = "binary" if num_classes == 2 else "multiclass"
+
         metrics = get_metric_collection(num_classes=num_classes)
         self.train_metrics = metrics.clone(prefix="train/")
         self.valid_metrics = metrics.clone(prefix="val/")
         self.test_metrics = metrics.clone(prefix="test/")
+
+        normalize = None
+        self.cm_train = ConfusionMatrix(task=task, normalize=normalize, num_classes=num_classes)
+        self.cm_val = ConfusionMatrix(task=task, normalize=normalize, num_classes=num_classes)
+        self.cm_test = ConfusionMatrix(task=task, normalize=normalize, num_classes=num_classes)
 
         # STATS
         self.train_stats = {'train/num_samples': 0, 'class_cnt': Counter()}
@@ -150,6 +159,9 @@ class MILTrainer(L.LightningModule):
 
         self.log_dict(self.train_stats)
 
+        fig, ax = self.cm_train.plot()
+        self.logger.experiment.log({'train/confusion_matrix': fig})
+
         self.train_stats['train/num_samples'] = 0
         self.train_stats['class_cnt'] = Counter()
 
@@ -159,9 +171,12 @@ class MILTrainer(L.LightningModule):
 
         # metrics
         # logits = logits.argmax(dim=1) if self.num_classes == 2 else logits
-        logits = logits[:, 1] if self.num_classes == 2 else logits
+        preds = torch.argmax(logits, dim=1).long()
+        # logits = logits[:, 1] if self.num_classes == 2 else logits
         self.train_metrics(logits, targets)
         self.log_dict(self.train_metrics, on_step=True, on_epoch=True, batch_size=batch_size)
+
+        self.cm_train(preds, targets)
 
         # loss
         self.log("loss/train", loss, on_step=True, on_epoch=True, batch_size=batch_size)
@@ -174,16 +189,19 @@ class MILTrainer(L.LightningModule):
         batch['repr'] = z.detach().cpu()
         return batch
 
-    def on_val_epoch_start(self):
+    def on_validation_epoch_start(self):
         self.val_stats['val/num_samples'] = 0
         self.val_stats['class_cnt'] = Counter()
 
-    def on_val_epoch_end(self):
+    def on_validation_epoch_end(self):
         class_cnt = self.val_stats.pop('class_cnt')
         class_counts = {f'val/class_{k}': v for k, v in class_cnt.items()}
         self.val_stats.update(class_counts)
 
         self.log_dict(self.val_stats)
+
+        fig, ax = self.cm_val.plot()
+        self.logger.experiment.log({'val/confusion_matrix': fig})
 
         self.val_stats['val/num_samples'] = 0
         self.val_stats['class_cnt'] = Counter()
@@ -194,9 +212,12 @@ class MILTrainer(L.LightningModule):
 
         # metrics
         # logits = logits.argmax(dim=1) if self.num_classes == 2 else logits
-        logits = logits[:, 1] if self.num_classes == 2 else logits
+        preds = torch.argmax(logits, dim=1).long()
+        # logits = logits[:, 1] if self.num_classes == 2 else logits
         self.valid_metrics(logits, targets)
         self.log_dict(self.valid_metrics, on_step=False, on_epoch=True, batch_size=batch_size)
+
+        self.cm_val(preds, targets)
 
         # loss
         self.log("loss/val", loss, batch_size=batch_size)
@@ -215,9 +236,12 @@ class MILTrainer(L.LightningModule):
 
         # metrics
         # logits = logits.argmax(dim=1) if self.num_classes == 2 else logits
-        logits = logits[:, 1] if self.num_classes == 2 else logits
+        preds = torch.argmax(logits, dim=1).long()
+        # logits = logits[:, 1] if self.num_classes == 2 else logits
         self.test_metrics(logits, targets)
         self.log_dict(self.test_metrics, batch_size=batch_size)
+
+        self.cm_test(preds, targets)
 
         # loss
         self.log("loss/test", loss, batch_size=batch_size)
@@ -225,6 +249,10 @@ class MILTrainer(L.LightningModule):
         batch['loss'] = loss
         batch['repr'] = z.detach().cpu()
         return batch
+
+    def on_test_end(self) -> None:
+        fig, ax = self.cm_test.plot()
+        self.logger.experiment.log({'test/confusion_matrix': fig})
 
     def configure_optimizers(self):
         optimizer = optim.Adam([
