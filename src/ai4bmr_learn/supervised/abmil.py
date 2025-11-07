@@ -10,7 +10,7 @@ from torch import nn
 
 import torch
 import torch.nn as nn
-
+import matplotlib.pyplot as plt
 
 class MIL(nn.Module):
     def __init__(
@@ -160,7 +160,9 @@ class MILTrainer(L.LightningModule):
         self.log_dict(self.train_stats)
 
         fig, ax = self.cm_train.plot()
+        self.cm_train.reset()
         self.logger.experiment.log({'train/confusion_matrix': fig})
+        plt.close('all')
 
         self.train_stats['train/num_samples'] = 0
         self.train_stats['class_cnt'] = Counter()
@@ -201,7 +203,9 @@ class MILTrainer(L.LightningModule):
         self.log_dict(self.val_stats)
 
         fig, ax = self.cm_val.plot()
+        self.cm_val.reset()
         self.logger.experiment.log({'val/confusion_matrix': fig})
+        plt.close('all')
 
         self.val_stats['val/num_samples'] = 0
         self.val_stats['class_cnt'] = Counter()
@@ -252,7 +256,9 @@ class MILTrainer(L.LightningModule):
 
     def on_test_end(self) -> None:
         fig, ax = self.cm_test.plot()
+        self.cm_test.reset()
         self.logger.experiment.log({'test/confusion_matrix': fig})
+        plt.close('all')
 
     def configure_optimizers(self):
         optimizer = optim.Adam([
