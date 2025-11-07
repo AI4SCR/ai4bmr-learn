@@ -66,7 +66,7 @@ def generate_splits(
     # TODO: should we allow for re-splitting, i.e. check if `split_column_name` already exists in metadata?
 
     metadata = metadata.copy()
-    assert metadata.index.has_duplicates == False
+    assert metadata.index.has_duplicates == False, f'Index of metadata needs to be unique'
     indices_universe = metadata.index.values
     index_names = metadata.index.names
 
@@ -75,7 +75,7 @@ def generate_splits(
 
     # FILTER DATA
     if target_column_name is not None:
-        assert target_column_name in metadata
+        assert target_column_name in metadata, f'{target_column_name} not in metadata columns'
         targets = metadata[target_column_name]
         filter_ = targets.notna().values
         targets = targets[filter_]
@@ -140,15 +140,15 @@ def generate_splits(
     if use_filtered_targets_for_train:
         excl_indices = set(indices_universe) - set(fit_indices).union(val_indices).union(test_indices)
         fit_indices = list(set(fit_indices).union(excl_indices))
-        assert set(fit_indices).union(val_indices).union(test_indices) == set(indices_universe)
+        assert set(fit_indices).union(val_indices).union(test_indices) == set(indices_universe), f'Index sets do not match'
     else:
-        assert set(fit_indices).union(val_indices).union(test_indices) == set(indices)
+        assert set(fit_indices).union(val_indices).union(test_indices) == set(indices), f'Index sets do not match'
 
     # sanity check
-    assert set(train_indices).intersection(test_indices) == set()
-    assert set(val_indices).intersection(test_indices) == set()
-    assert set(fit_indices).intersection(test_indices) == set()
-    assert set(fit_indices).intersection(val_indices) == set()
+    assert set(train_indices).intersection(test_indices) == set(), f'Overlap between train and test indices'
+    assert set(val_indices).intersection(test_indices) == set(), f'Overlap between val and test indices'
+    assert set(fit_indices).intersection(test_indices) == set(), f'Overlap between fit and test indices'
+    assert set(fit_indices).intersection(val_indices) == set(), f'Overlap between fit and val indices'
 
     print_split_summary(metadata=metadata, fit_indices=fit_indices, test_indices=test_indices, val_indices=val_indices)
 
@@ -158,7 +158,7 @@ def generate_splits(
     metadata.loc[val_indices, Split.COLUMN_NAME.value] = Split.VAL.value
 
     if use_filtered_targets_for_train:
-        assert metadata[Split.COLUMN_NAME.value].isna().any() == False
+        assert metadata[Split.COLUMN_NAME.value].isna().any() == False, f'Some samples do not have a split assigned'
 
     dtype = pd.CategoricalDtype(categories=[Split.FIT.value, Split.VAL.value, Split.TEST.value], ordered=False)
     metadata[Split.COLUMN_NAME.value] = metadata[Split.COLUMN_NAME.value].astype(dtype)
@@ -222,7 +222,7 @@ def save_splits(
 
     # FILTER DATA
     if target_column_name is not None:
-        assert target_column_name in metadata
+        assert target_column_name in metadata, f'{target_column_name} not in metadata columns'
         targets = metadata[target_column_name]
         filter_ = targets.notna().values
         targets = targets[filter_]
@@ -308,10 +308,10 @@ def construct_split(*, metadata, universe, indices,
         assert set(fit_indices).union(val_indices).union(test_indices) == set(indices)
 
     # sanity checks
-    assert set(train_indices).intersection(test_indices) == set()
-    assert set(val_indices).intersection(test_indices) == set()
-    assert set(fit_indices).intersection(test_indices) == set()
-    assert set(fit_indices).intersection(val_indices) == set()
+    assert set(train_indices).intersection(test_indices) == set(), f'Overlap between train and test indices'
+    assert set(val_indices).intersection(test_indices) == set(), f'Overlap between val and test indices'
+    assert set(fit_indices).intersection(test_indices) == set(), f'Overlap between fit and test indices'
+    assert set(fit_indices).intersection(val_indices) == set(), f'Overlap between fit and val indices'
     print_split_summary(metadata=metadata,
                         fit_indices=fit_indices, test_indices=test_indices, val_indices=val_indices)
     # NOTE: we need to use the `.value` otherwise the column names is `Split.COLUM_NAME` after re-load
@@ -319,7 +319,7 @@ def construct_split(*, metadata, universe, indices,
     metadata.loc[fit_indices, Split.COLUMN_NAME.value] = Split.FIT.value
     metadata.loc[val_indices, Split.COLUMN_NAME.value] = Split.VAL.value
     if use_filtered_targets_for_train:
-        assert metadata[Split.COLUMN_NAME.value].isna().any() == False
+        assert metadata[Split.COLUMN_NAME.value].isna().any() == False, f'Some samples do not have a split assigned'
     dtype = pd.CategoricalDtype(categories=[Split.FIT.value, Split.VAL.value, Split.TEST.value], ordered=False)
     metadata[Split.COLUMN_NAME.value] = metadata[Split.COLUMN_NAME.value].astype(dtype)
     return metadata
