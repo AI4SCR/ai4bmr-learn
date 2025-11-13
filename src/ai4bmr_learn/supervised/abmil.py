@@ -16,6 +16,7 @@ class MIL(nn.Module):
     def __init__(
             self,
             input_dim: int,
+            gated: bool = False,
             activ_dim: int = 0,  # if >0, project to this dim before attention
             bag_norm: bool = False,  # z-score across instances in a bag
             instance_norm: bool = False,  # LayerNorm per instance (feature-wise)
@@ -32,6 +33,9 @@ class MIL(nn.Module):
         self.activ_dim = activ_dim
         self.attn_dim = activ_dim if activ_dim > 0 else input_dim
         self.output_dim = self.attn_dim  # for compatibility with ABMIL
+
+        self.gated = gated
+        self.gate = nn.Sequential(nn.Linear(self.attn_dim, self.attn_dim), nn.Sigmoid())
 
         self.bag_norm = bag_norm
         self.instance_norm = instance_norm
@@ -74,9 +78,14 @@ class MIL(nn.Module):
         x = self.input_drop(x)
         x = self.activate(x)  # shape: [B, N, attn_dim]
 
-        logits = self.attention(x)  # [B, N, 1]
+        if self.gated:
+            z = x * self.gate(x)
+        else:
+            z = x
+
+        logits = self.attention(z)  # [B, N, 1]
+        logits = self.attn_drop(logits)  # dropout on logits
         attn = torch.softmax(logits, dim=1)  # [B, N, 1]
-        attn = self.attn_drop(attn)  # dropout on probs
 
         z = torch.sum(attn * x, dim=1)  # [B, attn_dim]
         return z, attn.squeeze(-1)  # [B, attn_dim], [B, N]
