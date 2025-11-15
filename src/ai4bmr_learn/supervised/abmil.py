@@ -145,6 +145,7 @@ class MILTrainer(L.LightningModule):
         targets = glom(batch, self.target_key).long()
 
         loss = self.criterion(logits, targets)
+        assert not torch.isnan(loss), f"Loss is NaN for {batch['sample_id']}"
 
         return z, logits, targets, loss
 
