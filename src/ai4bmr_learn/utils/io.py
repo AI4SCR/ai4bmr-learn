@@ -170,7 +170,7 @@ def read_region(
             finally:
                 store.close()
 
-        case '.tiff' | '.tif':
+        case '.tiff' | '.tif' | '.ndpi':
             import openslide
             slide = openslide.open_slide(str(img_path))
             img = slide.read_region(
