@@ -10,12 +10,13 @@ from torch import nn
 
 import torch
 import torch.nn as nn
-
+import matplotlib.pyplot as plt
 
 class MIL(nn.Module):
     def __init__(
             self,
             input_dim: int,
+            gated: bool = False,
             activ_dim: int = 0,  # if >0, project to this dim before attention
             bag_norm: bool = False,  # z-score across instances in a bag
             instance_norm: bool = False,  # LayerNorm per instance (feature-wise)
@@ -32,6 +33,9 @@ class MIL(nn.Module):
         self.activ_dim = activ_dim
         self.attn_dim = activ_dim if activ_dim > 0 else input_dim
         self.output_dim = self.attn_dim  # for compatibility with ABMIL
+
+        self.gated = gated
+        self.gate = nn.Sequential(nn.Linear(self.attn_dim, self.attn_dim), nn.Sigmoid())
 
         self.bag_norm = bag_norm
         self.instance_norm = instance_norm
@@ -55,12 +59,13 @@ class MIL(nn.Module):
         # Attention over the (possibly activated) features
         self.attention = nn.Linear(self.attn_dim, 1)
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         x: [B, N, D]
         Returns:
             z:    [B, D_or_activ]  aggregated embeddings (matches attn input dim)
             attn: [B, N]           attention weights
+            logits: [B, N]         attention logits (before softmax)
         """
         if self.bag_norm:
             # Z-score within each bag across instances
@@ -74,12 +79,17 @@ class MIL(nn.Module):
         x = self.input_drop(x)
         x = self.activate(x)  # shape: [B, N, attn_dim]
 
-        logits = self.attention(x)  # [B, N, 1]
+        if self.gated:
+            z = x * self.gate(x)
+        else:
+            z = x
+
+        logits = self.attention(z)  # [B, N, 1]
+        logits = self.attn_drop(logits)  # dropout on logits
         attn = torch.softmax(logits, dim=1)  # [B, N, 1]
-        attn = self.attn_drop(attn)  # dropout on probs
 
         z = torch.sum(attn * x, dim=1)  # [B, attn_dim]
-        return z, attn.squeeze(-1)  # [B, attn_dim], [B, N]
+        return z, attn.squeeze(-1), logits.squeeze(-1)  # [B, attn_dim], [B, N], [B, N]
 
 
 class MILTrainer(L.LightningModule):
@@ -140,13 +150,14 @@ class MILTrainer(L.LightningModule):
         # y = self.backbone(data)
         # y = pool(y, strategy=self.pooling)
 
-        z, attn = self.mil(data)
+        z, attn, attn_logits = self.mil(data)
         logits = self.head(z)
         targets = glom(batch, self.target_key).long()
 
         loss = self.criterion(logits, targets)
+        assert not torch.isnan(loss), f"Loss is NaN for {batch['sample_id']}"
 
-        return z, logits, targets, loss
+        return z, logits, targets, loss, attn, attn_logits #added attn and attn_logits
 
     def on_train_epoch_start(self):
         self.train_stats['train/num_samples'] = 0
@@ -160,13 +171,15 @@ class MILTrainer(L.LightningModule):
         self.log_dict(self.train_stats)
 
         fig, ax = self.cm_train.plot()
+        self.cm_train.reset()
         self.logger.experiment.log({'train/confusion_matrix': fig})
+        plt.close('all')
 
         self.train_stats['train/num_samples'] = 0
         self.train_stats['class_cnt'] = Counter()
 
     def training_step(self, batch, batch_idx):
-        z, logits, targets, loss = self.shared_step(batch, batch_idx)
+        z, logits, targets, loss, attn, attn_logits = self.shared_step(batch, batch_idx) # added attn
         batch_size = targets.shape[0]
 
         # metrics
@@ -187,11 +200,14 @@ class MILTrainer(L.LightningModule):
 
         batch['loss'] = loss
         batch['repr'] = z.detach().cpu()
+        batch['attn'] = attn.detach().cpu()  # added attn
+        batch['attn_logits'] = attn_logits.detach().cpu()
         return batch
 
     def on_validation_epoch_start(self):
         self.val_stats['val/num_samples'] = 0
         self.val_stats['class_cnt'] = Counter()
+        self.validation_step_outputs = {}  # added to store attention weights
 
     def on_validation_epoch_end(self):
         class_cnt = self.val_stats.pop('class_cnt')
@@ -201,13 +217,29 @@ class MILTrainer(L.LightningModule):
         self.log_dict(self.val_stats)
 
         fig, ax = self.cm_val.plot()
+        self.cm_val.reset()
         self.logger.experiment.log({'val/confusion_matrix': fig})
+        plt.close('all')
+
+        #added code to save attention weights
+        # Save accumulated attention weights to disk
+        
+        if self.validation_step_outputs:
+            import os
+            # Try to get the logger's save directory (works for WandB)
+            save_dir = getattr(self.logger, "save_dir", ".")
+            if hasattr(self.logger, "experiment") and hasattr(self.logger.experiment, "dir"):
+                 save_dir = self.logger.experiment.dir
+            
+            save_path = os.path.join(save_dir, f"val_attn_epoch_{self.current_epoch}.pt")
+            torch.save(self.validation_step_outputs, save_path)
+            self.validation_step_outputs = {}  # Clear memory
 
         self.val_stats['val/num_samples'] = 0
         self.val_stats['class_cnt'] = Counter()
 
     def validation_step(self, batch, batch_idx):
-        z, logits, targets, loss = self.shared_step(batch, batch_idx)
+        z, logits, targets, loss, attn, attn_logits = self.shared_step(batch, batch_idx) # added attn
         batch_size = targets.shape[0]
 
         # metrics
@@ -228,10 +260,30 @@ class MILTrainer(L.LightningModule):
 
         batch['loss'] = loss
         batch['repr'] = z.detach().cpu()
+        batch['attn'] = attn.detach().cpu()  # added attn
+        batch['attn_logits'] = attn_logits.detach().cpu()
+        # Collect data for saving
+        try:
+            sample_ids = glom(batch, 'sample_id')
+        except:
+            sample_ids = None
+
+        if sample_ids is not None:
+            # Ensure iterable if it's a single string (though DataLoader usually gives list)
+            if isinstance(sample_ids, str):
+                sample_ids = [sample_ids]
+            
+            for i, sid in enumerate(sample_ids):
+                self.validation_step_outputs[sid] = {
+                    'attn': batch['attn'][i],
+                    'attn_logits': batch['attn_logits'][i],
+                    'targets': targets[i].detach().cpu(),
+                    'preds': preds[i].detach().cpu()
+                }
         return batch
 
     def test_step(self, batch, batch_idx):
-        z, logits, targets, loss = self.shared_step(batch, batch_idx)
+        z, logits, targets, loss, attn, attn_logits = self.shared_step(batch, batch_idx) # added attn
         batch_size = targets.shape[0]
 
         # metrics
@@ -248,11 +300,15 @@ class MILTrainer(L.LightningModule):
 
         batch['loss'] = loss
         batch['repr'] = z.detach().cpu()
+        batch['attn'] = attn.detach().cpu()  # added attn
+        batch['attn_logits'] = attn_logits.detach().cpu()
         return batch
 
     def on_test_end(self) -> None:
         fig, ax = self.cm_test.plot()
+        self.cm_test.reset()
         self.logger.experiment.log({'test/confusion_matrix': fig})
+        plt.close('all')
 
     def configure_optimizers(self):
         optimizer = optim.Adam([
