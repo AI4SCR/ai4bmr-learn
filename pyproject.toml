@@ -28,6 +28,7 @@ dependencies = [
   "pandas",
   "openpyxl",
   "einops",
+  "opencv-python",
   "timm",
   "jsonargparse[all]",
   "pydantic",
