@@ -28,7 +28,6 @@ dependencies = [
   "pandas",
   "openpyxl",
   "einops",
-  "opencv-python",
   "timm",
   "jsonargparse[all]",
   "pydantic",
@@ -40,7 +39,7 @@ dependencies = [
   "openslide-bin",
   "openslide-python",
   "opencv-python",
-  "lightly",
+#  "lightly",
   "rich",
   "fastparquet",
 ]
