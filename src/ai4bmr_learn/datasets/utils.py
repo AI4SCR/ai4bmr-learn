@@ -24,6 +24,7 @@ def filter_items_and_metadata(
 
         metadata = metadata[keep]
         valid_ids = set(metadata.index)
+        logger.info(f"Filtered items and metadata for split={split}.")
     else:
         valid_ids = set(metadata.index)
 
@@ -31,7 +32,7 @@ def filter_items_and_metadata(
         logger.warning(f'Not all items have metadata. Dropping items without metadata.')
 
     valid_item_ids = item_ids.intersection(valid_ids)
-    logger.info(f"Filtered items and metadata for split='{split}'. Found {len(valid_item_ids)} items with metadatas.")
+    logger.info(f"Found {len(valid_item_ids)} items with metadata.")
 
     # drop NaN
     filter_ = metadata.isna().any()
