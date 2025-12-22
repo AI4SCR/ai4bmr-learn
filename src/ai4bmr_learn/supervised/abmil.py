@@ -224,7 +224,7 @@ class MILTrainer(L.LightningModule):
         #added code to save attention weights
         # Save accumulated attention weights to disk
         
-        if self.validation_step_outputs:
+        if self.validation_step_outputs and not self.trainer.fast_dev_run:
             import os
             # Try to get the logger's save directory (works for WandB)
             save_dir = getattr(self.logger, "save_dir", ".")
