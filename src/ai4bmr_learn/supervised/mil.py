@@ -13,7 +13,7 @@ def freeze(model: nn.Module):
         p.requires_grad = False
     return model
 
-class MIL(L.LightningModule):
+class MILTrainerExtended(L.LightningModule):
     def __init__(self,
                  backbone: nn.Module,
                  head: nn.Module,
