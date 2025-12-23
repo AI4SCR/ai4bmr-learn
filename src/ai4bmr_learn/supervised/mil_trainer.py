@@ -99,10 +99,17 @@ class MILTrainerExtended(L.LightningModule):
 
     def shared_step(self, batch, batch_idx: int | None = None):
         bags = glom(batch, self.batch_key)
+        attentions = glom(batch, self.attention_key, default=None)
         assert isinstance(bags, torch.Tensor)
+        assert attentions is None or isinstance(attentions, torch.Tensor)
+        if attentions is not None and not isinstance(bags, torch.Tensor):
+            raise NotImplementedError(
+                'Bags must be pure tensors if you want to use padding. Use `collate_fn=list` and pad=False instead.')
 
         targets = glom(batch, self.target_key)
         assert targets.ndim == 1  # [B,]
+        # targets = torch.unique(targets, dim=1)  # NOTE: we expect [B, M], # TODO: discuss this choice
+        # targets = targets.reshape(-1)
         assert len(targets) == len(bags)
 
         B, M, *D = bags.shape
@@ -110,6 +117,10 @@ class MILTrainerExtended(L.LightningModule):
         zs = []
         # NOTE: we need to feed the bags separately to the backbone, since they are designed for [B, D] inputs
         for i, bag in enumerate(bags):
+
+            if attentions is not None:
+                attention = attentions[i]
+                bag = bag[attention]
 
             z = self.backbone(**bag) if self.as_kwargs else self.backbone(bag)
             z = pool(z, strategy=self.pooling)
@@ -146,15 +157,13 @@ class MILTrainerExtended(L.LightningModule):
         self.train_stats['class_cnt'] = Counter()
 
     def training_step(self, batch, batch_idx):
-        # if batch_idx == 0:
-        #     torch.save(batch, '/work/FAC/FBM/DBC/mrapsoma/prometex/projects/mesothelioma/workflow-xe-hne/2-mil-end-to-end/train-batch.pt')
         z, logits, targets, loss, attn, attn_logits = self.shared_step(batch)
         batch_size = targets.shape[0]
 
         # metrics
         preds = torch.argmax(logits, dim=1).long()
         self.train_metrics(logits, targets)
-        self.log_dict(self.train_metrics, on_step=True, on_epoch=False, batch_size=batch_size)
+        self.log_dict(self.train_metrics, on_step=False, on_epoch=True, batch_size=batch_size)
 
         self.cm_train(preds, targets)
 
@@ -172,7 +181,6 @@ class MILTrainerExtended(L.LightningModule):
     def on_validation_epoch_start(self):
         self.val_stats['val/num_samples'] = 0
         self.val_stats['class_cnt'] = Counter()
-        self.validation_step_outputs = {}  # added to store attention weights
 
     def on_validation_epoch_end(self):
         class_cnt = self.val_stats.pop('class_cnt')
@@ -190,8 +198,6 @@ class MILTrainerExtended(L.LightningModule):
         self.val_stats['class_cnt'] = Counter()
 
     def validation_step(self, batch, batch_idx):
-        # if batch_idx == 0:
-        #     torch.save(batch, '/work/FAC/FBM/DBC/mrapsoma/prometex/projects/mesothelioma/workflow-xe-hne/2-mil-end-to-end/val-batch.pt')
         z, logits, targets, loss, attn, attn_logits = self.shared_step(batch)
         batch_size = targets.shape[0]
 
@@ -203,7 +209,7 @@ class MILTrainerExtended(L.LightningModule):
         self.cm_val(preds, targets)
 
         # loss
-        self.log("loss/val", loss, on_epoch=True, batch_size=batch_size)
+        self.log("loss/val", loss, batch_size=batch_size)
 
         # stats
         self.val_stats['val/num_samples'] += batch_size
@@ -211,7 +217,35 @@ class MILTrainerExtended(L.LightningModule):
 
         batch['loss'] = loss
         batch['z'] = z.detach().cpu()
+        batch['attn'] = attn.detach().cpu()  # added attn
+        batch['attn_logits'] = attn_logits.detach().cpu()
         return batch
+
+    def test_step(self, batch, batch_idx):
+        z, logits, targets, loss, attn, attn_logits = self.shared_step(batch, batch_idx)
+        batch_size = targets.shape[0]
+
+        # metrics
+        preds = torch.argmax(logits, dim=1).long()
+        self.test_metrics(logits, targets)
+        self.log_dict(self.test_metrics, batch_size=batch_size)
+
+        self.cm_test(preds, targets)
+
+        # loss
+        self.log("loss/test", loss, batch_size=batch_size)
+
+        batch['loss'] = loss
+        batch['repr'] = z.detach().cpu()
+        batch['attn'] = attn.detach().cpu()  # added attn
+        batch['attn_logits'] = attn_logits.detach().cpu()
+        return batch
+
+    def on_test_end(self) -> None:
+        fig, ax = self.cm_test.plot()
+        self.cm_test.reset()
+        self.logger.experiment.log({'test/confusion_matrix': fig})
+        plt.close('all')
 
     def configure_optimizers(self):
         optimizer = optim.AdamW([
