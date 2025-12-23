@@ -21,6 +21,12 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
+def freeze_bn(m):
+    if isinstance(m, nn.modules.batchnorm._BatchNorm):
+        m.eval()
+        for p in m.parameters():
+            p.requires_grad = False
+
 def freeze(model: nn.Module):
     for p in model.parameters():
         p.requires_grad = False
@@ -52,6 +58,7 @@ class MILTrainerExtended(L.LightningModule):
         # MODULES
         self.freeze_backbone = freeze_backbone
         self.backbone = backbone
+        backbone.apply(freeze_bn)  # freeze BN due to small batch size
         if self.freeze_backbone:
             freeze(self.backbone)
         self.mil = mil
@@ -99,17 +106,10 @@ class MILTrainerExtended(L.LightningModule):
 
     def shared_step(self, batch, batch_idx: int | None = None):
         bags = glom(batch, self.batch_key)
-        attentions = glom(batch, self.attention_key, default=None)
         assert isinstance(bags, torch.Tensor)
-        assert attentions is None or isinstance(attentions, torch.Tensor)
-        if attentions is not None and not isinstance(bags, torch.Tensor):
-            raise NotImplementedError(
-                'Bags must be pure tensors if you want to use padding. Use `collate_fn=list` and pad=False instead.')
 
         targets = glom(batch, self.target_key)
         assert targets.ndim == 1  # [B,]
-        # targets = torch.unique(targets, dim=1)  # NOTE: we expect [B, M], # TODO: discuss this choice
-        # targets = targets.reshape(-1)
         assert len(targets) == len(bags)
 
         B, M, *D = bags.shape
@@ -118,15 +118,9 @@ class MILTrainerExtended(L.LightningModule):
         # NOTE: we need to feed the bags separately to the backbone, since they are designed for [B, D] inputs
         for i, bag in enumerate(bags):
 
-            if attentions is not None:
-                attention = attentions[i]
-                bag = bag[attention]
-
             z = self.backbone(**bag) if self.as_kwargs else self.backbone(bag)
             z = pool(z, strategy=self.pooling)
             zs.append(z)
-
-            del z
 
         zs = torch.stack(zs)  # [B, M, Z]
         assert zs.shape[0] == B and zs.shape[1] == M
@@ -136,6 +130,12 @@ class MILTrainerExtended(L.LightningModule):
         loss = self.criterion(logits, targets)
 
         return z, logits, targets, loss, attn, attn_logits
+
+    def on_train_start(self) -> None:
+        self.backbone.apply(freeze_bn)
+
+    def on_validation_start(self) -> None:
+        self.backbone.apply(freeze_bn)
 
     def on_train_epoch_start(self):
         self.train_stats['train/num_samples'] = 0
@@ -157,7 +157,7 @@ class MILTrainerExtended(L.LightningModule):
         self.train_stats['class_cnt'] = Counter()
 
     def training_step(self, batch, batch_idx):
-        z, logits, targets, loss, attn, attn_logits = self.shared_step(batch)
+        z, logits, targets, loss, attn, attn_logits = self.shared_step(batch) # z.max(), loss, targets, batch['x'].max(), batch['sample_id'], 0.5949, 0, 2.6226, XE_1G3X.01_HNE_1G3X-01
         batch_size = targets.shape[0]
 
         # metrics
@@ -198,7 +198,7 @@ class MILTrainerExtended(L.LightningModule):
         self.val_stats['class_cnt'] = Counter()
 
     def validation_step(self, batch, batch_idx):
-        z, logits, targets, loss, attn, attn_logits = self.shared_step(batch)
+        z, logits, targets, loss, attn, attn_logits = self.shared_step(batch)  # z.max(), loss, targets, batch['x'].max(), batch['sample_id']: 0.5949, 0, 2.6226, XE_1G3X.01_HNE_1G3X-01
         batch_size = targets.shape[0]
 
         # metrics

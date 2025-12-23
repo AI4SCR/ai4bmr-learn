@@ -1,10 +1,14 @@
-import lightning as L
-import torch.optim as optim
-import torch.nn as nn
-from ai4bmr_learn.metrics.classification import get_metric_collection
-from glom import glom
 from collections import Counter
+
+import lightning as L
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from ai4bmr_learn.metrics.classification import get_metric_collection
 from ai4bmr_learn.utils.pooling import pool
+from glom import glom
+from torchmetrics.classification import ConfusionMatrix
 
 
 class Classifier(L.LightningModule):
@@ -29,6 +33,7 @@ class Classifier(L.LightningModule):
             for param in self.backbone.parameters():
                 param.requires_grad = False
 
+        self.num_classes = num_classes
         self.head = nn.Linear(input_dim, num_classes)
         self.pooling = pooling
         self.batch_key = batch_key
@@ -41,13 +46,13 @@ class Classifier(L.LightningModule):
         self.criterion = nn.CrossEntropyLoss()
 
         # METRICS
-        self.num_classes = num_classes
         metrics = get_metric_collection(num_classes=num_classes)
         self.train_metrics = metrics.clone(prefix="train/")
         self.valid_metrics = metrics.clone(prefix="val/")
         self.test_metrics = metrics.clone(prefix="test/")
 
         normalize = None
+        task = "binary" if num_classes == 2 else "multiclass"
         self.cm_train = ConfusionMatrix(task=task, normalize=normalize, num_classes=num_classes)
         self.cm_val = ConfusionMatrix(task=task, normalize=normalize, num_classes=num_classes)
         self.cm_test = ConfusionMatrix(task=task, normalize=normalize, num_classes=num_classes)
@@ -58,12 +63,11 @@ class Classifier(L.LightningModule):
 
     def shared_step(self, batch, batch_idx):
         data = glom(batch, self.batch_key) if self.batch_key is not None else batch
+        targets = glom(batch, self.target_key).long()
 
         y = self.backbone(data)
         y = pool(y, strategy=self.pooling)
         logits = self.head(y)
-        targets = glom(batch, self.target_key).long()
-
         loss = self.criterion(logits, targets)
 
         return y, logits, targets, loss
