@@ -47,6 +47,11 @@ class Classifier(L.LightningModule):
         self.valid_metrics = metrics.clone(prefix="val/")
         self.test_metrics = metrics.clone(prefix="test/")
 
+        normalize = None
+        self.cm_train = ConfusionMatrix(task=task, normalize=normalize, num_classes=num_classes)
+        self.cm_val = ConfusionMatrix(task=task, normalize=normalize, num_classes=num_classes)
+        self.cm_test = ConfusionMatrix(task=task, normalize=normalize, num_classes=num_classes)
+
         # STATS
         self.train_stats = {'train/num_samples': 0, 'class_cnt': Counter()}
         self.val_stats = {'val/num_samples': 0, 'class_cnt': Counter()}
@@ -74,6 +79,11 @@ class Classifier(L.LightningModule):
 
         self.log_dict(self.train_stats)
 
+        fig, ax = self.cm_train.plot()
+        self.cm_train.reset()
+        self.logger.experiment.log({'train/confusion_matrix': fig})
+        plt.close('all')
+
         self.train_stats['train/num_samples'] = 0
         self.train_stats['class_cnt'] = Counter()
 
@@ -82,9 +92,11 @@ class Classifier(L.LightningModule):
         batch_size = targets.shape[0]
 
         # metrics
-        logits = logits.argmax(dim=1) if self.num_classes == 2 else logits
+        preds = torch.argmax(logits, dim=1).long()
         self.train_metrics(logits, targets)
-        self.log_dict(self.train_metrics, on_step=True, on_epoch=True, batch_size=batch_size)
+        self.log_dict(self.train_metrics, on_step=False, on_epoch=True, batch_size=batch_size)
+
+        self.cm_train(preds, targets)
 
         # loss
         self.log("loss/train", loss, on_step=True, on_epoch=True, batch_size=batch_size)
@@ -94,19 +106,24 @@ class Classifier(L.LightningModule):
         self.train_stats['class_cnt'].update(targets.tolist())
 
         batch['loss'] = loss
-        batch['embedding'] = y.detach().cpu()
+        batch['z'] = y.detach().cpu()
         return batch
 
-    def on_val_epoch_start(self):
+    def on_validation_epoch_start(self):
         self.val_stats['val/num_samples'] = 0
         self.val_stats['class_cnt'] = Counter()
 
-    def on_val_epoch_end(self):
+    def on_validation_epoch_end(self):
         class_cnt = self.val_stats.pop('class_cnt')
         class_counts = {f'val/class_{k}': v for k, v in class_cnt.items()}
         self.val_stats.update(class_counts)
 
         self.log_dict(self.val_stats)
+
+        fig, ax = self.cm_val.plot()
+        self.cm_val.reset()
+        self.logger.experiment.log({'val/confusion_matrix': fig})
+        plt.close('all')
 
         self.val_stats['val/num_samples'] = 0
         self.val_stats['class_cnt'] = Counter()
@@ -116,9 +133,11 @@ class Classifier(L.LightningModule):
         batch_size = targets.shape[0]
 
         # metrics
-        logits = logits.argmax(dim=1) if self.num_classes == 2 else logits
+        preds = torch.argmax(logits, dim=1).long()
         self.valid_metrics(logits, targets)
         self.log_dict(self.valid_metrics, on_step=False, on_epoch=True, batch_size=batch_size)
+
+        self.cm_val(preds, targets)
 
         # loss
         self.log("loss/val", loss, batch_size=batch_size)
@@ -128,7 +147,7 @@ class Classifier(L.LightningModule):
         self.val_stats['class_cnt'].update(targets.tolist())
 
         batch['loss'] = loss
-        batch['embedding'] = y.detach().cpu()
+        batch['z'] = y.detach().cpu()
         return batch
 
     def test_step(self, batch, batch_idx):
@@ -136,7 +155,7 @@ class Classifier(L.LightningModule):
         batch_size = targets.shape[0]
 
         # metrics
-        logits = logits.argmax(dim=1) if self.num_classes == 2 else logits
+        preds = torch.argmax(logits, dim=1).long()
         self.test_metrics(logits, targets)
         self.log_dict(self.test_metrics, batch_size=batch_size)
 
@@ -144,7 +163,7 @@ class Classifier(L.LightningModule):
         self.log("loss/test", loss, batch_size=batch_size)
 
         batch['loss'] = loss
-        batch['embedding'] = y.detach().cpu()
+        batch['z'] = y.detach().cpu()
         return batch
 
     def predict_step(self, batch, batch_idx):
