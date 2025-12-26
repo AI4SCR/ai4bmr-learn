@@ -187,7 +187,7 @@ class MILTrainer(L.LightningModule):
         preds = torch.argmax(logits, dim=1).long()
         # logits = logits[:, 1] if self.num_classes == 2 else logits
         self.train_metrics(logits, targets)
-        self.log_dict(self.train_metrics, on_step=True, on_epoch=True, batch_size=batch_size)
+        self.log_dict(self.train_metrics, on_step=False, on_epoch=True, batch_size=batch_size)
 
         self.cm_train(preds, targets)
 

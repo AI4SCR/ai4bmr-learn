@@ -1,7 +1,7 @@
 from lightning.pytorch.callbacks import Callback
 from loguru import logger
 
-default_keys = ['backbone', 'head',  # clf, mae
+default_keys = ['backbone', 'mil', 'head',  # clf, mae
                 'tokenizer', 'encoder', 'decoder', 'proj', # mae
                 'student_backbone', 'student_head', 'teacher_backbone', 'teacher_head'  # dino
                 ]

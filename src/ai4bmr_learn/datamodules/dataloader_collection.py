@@ -17,6 +17,7 @@ class DataloaderConfig:
     shuffle: bool = True
     num_workers: int = 0
     pin_memory: bool = True
+    prefetch_factor: int = 2
     persistent_workers: bool = False
     drop_last: bool = False
 
@@ -121,20 +122,20 @@ class DatasetLoaderCollection(L.LightningDataModule):
 
     def train_dataloader(self):
         dl = self.dataloaders.get('fit', None)
-        dl = dl[0] if dl is not None else None
+        dl = dl[0] if dl is not None else []
         return dl
 
     def val_dataloader(self):
         dl = self.dataloaders.get('val', None)
-        dl = dl[0] if dl is not None else None
+        dl = dl[0] if dl is not None else []
         return dl
 
     def test_dataloader(self):
         dl = self.dataloaders.get('test', None)
-        dl = dl[0] if dl is not None else None
+        dl = dl[0] if dl is not None else []
         return dl
 
     def predict_dataloader(self):
         dl = self.dataloaders.get('predict', None)
-        dl = dl[0] if dl is not None else None
+        dl = dl[0] if dl is not None else []
         return dl
