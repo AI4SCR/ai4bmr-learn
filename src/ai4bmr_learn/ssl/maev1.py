@@ -18,11 +18,10 @@ class MAEv1(L.LightningModule):
             decoder_kwargs: dict | None = None,
             mask_ratio: float = 0.75,
             lr: float = 1.5e-4,
-            global_batch_size: int = 512 * 8,
             weight_decay: float = 0.04,
             betas: tuple[float, float] = (0.9, 0.95),
             warmup_lr_epochs: int = 200,
-            max_epochs: int = 150,
+            max_epochs: int = 1500,
             pooling: str | None = 'cls',
     ):
         super().__init__()
@@ -46,7 +45,6 @@ class MAEv1(L.LightningModule):
 
         # OPTIMIZER
         self.lr = lr
-        self.global_batch_size = global_batch_size
         self.weight_decay = weight_decay
         self.betas = betas
         self.warmup_lr_epochs = warmup_lr_epochs
