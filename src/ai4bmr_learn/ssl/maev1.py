@@ -1,5 +1,6 @@
 from einops import repeat
 import lightning as L
+
 import torch
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
 
@@ -17,6 +18,8 @@ class MAEv1(L.LightningModule):
             backbone: nn.Module,
             decoder_kwargs: dict | None = None,
             mask_ratio: float = 0.75,
+            weight_loss_by_sparsity: bool = False,
+            norm_loss_target: bool = False,
             lr: float = 1.5e-4,
             weight_decay: float = 0.04,
             betas: tuple[float, float] = (0.9, 0.95),
@@ -43,6 +46,10 @@ class MAEv1(L.LightningModule):
 
         self.mask_ratio = mask_ratio
 
+        # LOSS
+        self.weight_loss_by_sparsity = weight_loss_by_sparsity
+        self.norm_loss_target = norm_loss_target
+
         # OPTIMIZER
         self.lr = lr
         self.weight_decay = weight_decay
@@ -57,7 +64,7 @@ class MAEv1(L.LightningModule):
         self.num_samples_total = 0
         self.batch = 0
 
-        self.save_hyperparameters(ignore=['backbone'])
+        self.save_hyperparameters(ignore=['tokenizer', 'encoder', 'decoder', 'backbone'])
 
     def _shared_step(self, img):
         batch_size = img.shape[0]
@@ -178,10 +185,53 @@ class MAEv1(L.LightningModule):
                         'masks': masks.detach().cpu()}
         return batch
 
-    def compute_loss(self, img, predicted_img, mask):
+    def compute_loss_legacy(self, img, predicted_img, mask):
+        # TODO: add loss with channel weights
+        # TODO: add per-patch normalization
         loss = torch.mean((predicted_img - img) ** 2 * mask) / self.mask_ratio  # L2
         # loss = torch.mean((predicted_img - img).abs() * mask) / self.mask_ratio  # L1
         return loss
+
+    def compute_loss(self, img, predicted_img, mask):
+        assert img.ndim == 4, f"Expected img to have 4 dims [B,C,H,W], got {img.shape}"
+        assert img.shape == mask.shape
+
+        target = img
+        B, C, H, W = target.shape
+
+        if self.weight_loss_by_sparsity:
+            # NOTE: this is computed over the whole image not only the masked pixels, design choice.
+            pc = (target > 0).mean(dim=(2, 3), dtype=torch.float32)
+
+            wc = 1 / ( pc.sqrt() + 1e-3 )
+            wc = wc.clamp(min=0.0, max=15.0)  # avoid extreme weights
+            wc = wc.to(target.device).float()
+            wc = wc / wc.mean(dim=1, keepdim=True)
+
+        else:
+            wc = torch.ones((B, C), device=target.device, dtype=torch.float32)
+
+        if self.norm_loss_target:
+            mean = target.mean(dim=(2, 3), keepdim=True)
+            var = target.var(dim=(2, 3), keepdim=True, unbiased=False)
+
+            std = torch.sqrt(var + 1e-6)
+            std = std.clamp(min=0.05)
+
+            target = (target - mean) / std
+
+        loss = (predicted_img - target) ** 2  # [B, C, H, W]
+
+        # loss on masked pixels scaled by the masking ratio
+        loss = (loss * mask)
+
+        loss = loss.mean(dim=(2, 3))  # per-channel loss [B, C]
+        loss = loss * wc
+
+        loss = loss.mean() / mask.mean(dtype=torch.float32)
+
+        return loss
+
 
     def predict_step(self, batch, batch_idx) -> dict:
         images = batch['image']
@@ -228,3 +278,25 @@ class MAEv1(L.LightningModule):
                 "frequency": 1,
             },
         }
+
+    def on_train_end(self) -> None:
+
+        if self.trainer.fast_dev_run:
+            return
+
+        # TODO: should be a callback
+        model_ckpt_cb = list(filter(lambda x: isinstance(x, L.pytorch.callbacks.ModelCheckpoint), self.trainer.callbacks))
+        if len(model_ckpt_cb) > 0:
+            cb = model_ckpt_cb[0]
+            best_model_path = cb.best_model_path
+            last_model_path = cb.last_model_path
+            self.trainer.logger.experiment.config.update({
+                'best_model_path': best_model_path,
+                'last_model_path': last_model_path,
+            })
+
+        # TODO: should be a callback
+        run_id = self.trainer.logger.experiment.id
+        run_name = self.trainer.logger.experiment.name
+        self.trainer.logger.experiment.config.update({'run_id': run_id, 'run_name': run_name})
+
