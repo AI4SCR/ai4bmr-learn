@@ -47,6 +47,7 @@ class Items(Dataset):
         # METADATA
         self.metadata_path = metadata_path
         if metadata_path is not None:
+            assert id_key is not None, 'id_key must be provided when metadata_path is provided'
             self.metadata_path = Path(metadata_path).expanduser().resolve()
             assert self.metadata_path.exists(), f'metadata_path {self.metadata_path} does not exist'
         self.metadata: pd.DataFrame | None = None

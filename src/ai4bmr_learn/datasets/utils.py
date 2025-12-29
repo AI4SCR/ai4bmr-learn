@@ -28,7 +28,7 @@ def filter_items_and_metadata(
     else:
         valid_ids = set(metadata.index)
 
-    if item_ids <= valid_ids:
+    if item_ids < valid_ids:
         logger.warning(f'Not all items have metadata. Dropping items without metadata.')
 
     valid_item_ids = item_ids.intersection(valid_ids)
