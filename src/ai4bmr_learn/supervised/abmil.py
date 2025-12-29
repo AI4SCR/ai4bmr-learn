@@ -108,7 +108,8 @@ class MILTrainer(L.LightningModule):
                  # pooling: str | None = None,
                  batch_key: str | None = 'image',
                  target_key: str = 'label',
-                 weight: torch.Tensor | None = None
+                 weight: torch.Tensor | None = None,
+                 collect_val_step_outputs: bool = False  # TODO: this should be handled with a ai4bmr_learn.callbacks.ValidationCache
                  ):
         super().__init__()
 
@@ -148,6 +149,8 @@ class MILTrainer(L.LightningModule):
         # STATS
         self.train_stats = {'train/num_samples': 0, 'class_cnt': Counter()}
         self.val_stats = {'val/num_samples': 0, 'class_cnt': Counter()}
+
+        self.collect_val_step_outputs = collect_val_step_outputs
 
     def shared_step(self, batch, batch_idx):
         data = glom(batch, self.batch_key) if self.batch_key is not None else batch
@@ -226,10 +229,9 @@ class MILTrainer(L.LightningModule):
         self.logger.experiment.log({'val/confusion_matrix': fig})
         plt.close('all')
 
-        #added code to save attention weights
+        # TODO: this should be handled with a ai4bmr_learn.callbacks.ValidationCache
         # Save accumulated attention weights to disk
-        
-        if self.validation_step_outputs and not self.trainer.fast_dev_run:
+        if self.collect_val_step_outputs and self.validation_step_outputs and not self.trainer.fast_dev_run:
             import os
             # Try to get the logger's save directory (works for WandB)
             save_dir = getattr(self.logger, "save_dir", ".")

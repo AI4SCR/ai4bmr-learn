@@ -9,19 +9,16 @@ from ai4bmr_learn.supervised.abmil import MIL
 class MuMoMIL(L.LightningModule):
     def __init__(self,
                  hne_dim: int, xe_dim: int,
-                 num_classes: int,
-                 gated: bool = False,
-                 activ_dim: int = 0,
                  mode: str = 'concat',  # 'add'
                  layer_norm: bool = False,
+                 **mil_kwargs,
                  ):
         super().__init__()
 
         self.mode = mode
 
-        self.num_classes = num_classes
-        self.hne_mil = MIL(input_dim=hne_dim, activ_dim=activ_dim, gated=gated)
-        self.xe_mil = MIL(input_dim=xe_dim, activ_dim=activ_dim, gated=gated)
+        self.hne_mil = MIL(input_dim=hne_dim, **mil_kwargs)
+        self.xe_mil = MIL(input_dim=xe_dim, **mil_kwargs)
 
         self.hne_layer_norm = nn.LayerNorm(hne_dim) if layer_norm else nn.Identity()
         self.xe_layer_norm = nn.LayerNorm(xe_dim) if layer_norm else nn.Identity()
