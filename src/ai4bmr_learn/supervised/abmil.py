@@ -59,7 +59,7 @@ class MIL(nn.Module):
         # Attention over the (possibly activated) features
         self.attention = nn.Linear(self.attn_dim, 1)
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor, return_attn_and_logits: bool = False) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         x: [B, N, D]
         Returns:
@@ -89,7 +89,12 @@ class MIL(nn.Module):
         attn = torch.softmax(logits, dim=1)  # [B, N, 1]
 
         z = torch.sum(attn * x, dim=1)  # [B, attn_dim]
-        return z, attn.squeeze(-1), logits.squeeze(-1)  # [B, attn_dim], [B, N], [B, N]
+        if return_attn_and_logits:
+            return z, attn.squeeze(-1).detach().cpu(), logits.squeeze(-1).detach().cpu()  # [B, attn_dim], [B, N], [B, N]
+        else:
+            return z
+
+
 
 
 class MILTrainer(L.LightningModule):
@@ -150,7 +155,7 @@ class MILTrainer(L.LightningModule):
         # y = self.backbone(data)
         # y = pool(y, strategy=self.pooling)
 
-        z, attn, attn_logits = self.mil(data)
+        z, attn, attn_logits = self.mil(data, return_attn_and_logits=True)
         logits = self.head(z)
         targets = glom(batch, self.target_key).long()
 
@@ -199,9 +204,9 @@ class MILTrainer(L.LightningModule):
         self.train_stats['class_cnt'].update(targets.tolist())
 
         batch['loss'] = loss
-        batch['repr'] = z.detach().cpu()
-        batch['attn'] = attn.detach().cpu()  # added attn
-        batch['attn_logits'] = attn_logits.detach().cpu()
+        batch['z'] = z
+        batch['attn'] = attn
+        batch['attn_logits'] = attn_logits
         return batch
 
     def on_validation_epoch_start(self):
@@ -259,9 +264,10 @@ class MILTrainer(L.LightningModule):
         self.val_stats['class_cnt'].update(targets.tolist())
 
         batch['loss'] = loss
-        batch['repr'] = z.detach().cpu()
-        batch['attn'] = attn.detach().cpu()  # added attn
-        batch['attn_logits'] = attn_logits.detach().cpu()
+        batch['z'] = z
+        batch['attn'] = attn
+        batch['attn_logits'] = attn_logits
+
         # Collect data for saving
         try:
             sample_ids = glom(batch, 'sample_id')
@@ -299,9 +305,9 @@ class MILTrainer(L.LightningModule):
         self.log("loss/test", loss, batch_size=batch_size)
 
         batch['loss'] = loss
-        batch['repr'] = z.detach().cpu()
-        batch['attn'] = attn.detach().cpu()  # added attn
-        batch['attn_logits'] = attn_logits.detach().cpu()
+        batch['z'] = z
+        batch['attn'] = attn
+        batch['attn_logits'] = attn_logits
         return batch
 
     def on_test_end(self) -> None:
