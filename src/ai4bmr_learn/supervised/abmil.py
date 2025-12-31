@@ -270,24 +270,25 @@ class MILTrainer(L.LightningModule):
         batch['attn'] = attn
         batch['attn_logits'] = attn_logits
 
-        # Collect data for saving
-        try:
-            sample_ids = glom(batch, 'sample_id')
-        except:
-            sample_ids = None
+        if self.collect_val_step_outputs:
+            # Collect data for saving
+            try:
+                sample_ids = glom(batch, 'sample_id')
+            except:
+                sample_ids = None
 
-        if sample_ids is not None:
-            # Ensure iterable if it's a single string (though DataLoader usually gives list)
-            if isinstance(sample_ids, str):
-                sample_ids = [sample_ids]
-            
-            for i, sid in enumerate(sample_ids):
-                self.validation_step_outputs[sid] = {
-                    'attn': batch['attn'][i],
-                    'attn_logits': batch['attn_logits'][i],
-                    'targets': targets[i].detach().cpu(),
-                    'preds': preds[i].detach().cpu()
-                }
+            if sample_ids is not None:
+                # Ensure iterable if it's a single string (though DataLoader usually gives list)
+                if isinstance(sample_ids, str):
+                    sample_ids = [sample_ids]
+
+                for i, sid in enumerate(sample_ids):
+                    self.validation_step_outputs[sid] = {
+                        'attn': batch['attn'][i],
+                        'attn_logits': batch['attn_logits'][i],
+                        'targets': targets[i].detach().cpu(),
+                        'preds': preds[i].detach().cpu()
+                    }
         return batch
 
     def test_step(self, batch, batch_idx):
