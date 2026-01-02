@@ -158,7 +158,8 @@ class MAEv1(L.LightningModule):
         x = x[:, 1:]
         x = self.head(x)
         predictions = self.tokenizer.tokens2img(x)
-        loss = self.compute_loss(img=images, predicted_img=predictions, mask=1)
+        mask = torch.ones_like(images)  # all pixels contribute to loss
+        loss = self.compute_loss(img=images, predicted_img=predictions, mask=mask)
 
         # MASKED PREDICTIONS
         predictions_masked, masks = self._shared_step(images)

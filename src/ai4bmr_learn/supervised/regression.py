@@ -1,39 +1,26 @@
-from __future__ import annotations
-
 import lightning as L
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from glom import glom
 from torchmetrics import MetricCollection
-from torchmetrics.regression import MeanAbsoluteError, MeanSquaredError, R2Score
+from torchmetrics.regression import MeanAbsoluteError, MeanSquaredError
 
 from ai4bmr_learn.utils.pooling import pool
 
 
-def get_regression_metric_collection() -> MetricCollection:
-    return MetricCollection(
-        {
-            "mae": MeanAbsoluteError(),
-            "mse": MeanSquaredError(squared=True),
-            "rmse": MeanSquaredError(squared=False),
-            # "r2": R2Score(),  # does not work with single batch
-        }
-    )
-
-
 class RegressionLit(L.LightningModule):
     def __init__(
-        self,
-        backbone: nn.Module,
-        lr_head: float = 1e-3,
-        lr_backbone: float = 1e-4,
-        weight_decay: float = 0.01,
-        freeze_backbone: bool = False,
-        pooling: str | None = None,
-        batch_key: str | None = "image",
-        target_key: str = "y",
-        loss: str = "mse",  # "mse" or "huber"
+            self,
+            backbone: nn.Module,
+            batch_key: str | None = "image",
+            target_key: str = "y",
+            lr_head: float = 1e-3,
+            lr_backbone: float = 1e-4,
+            weight_decay: float = 0.01,
+            freeze_backbone: bool = False,
+            pooling: str | None = None,
+            loss: str = "mse",  # "mse" or "huber"
     ):
         super().__init__()
 
@@ -53,7 +40,7 @@ class RegressionLit(L.LightningModule):
         self.lr_backbone = lr_backbone
         self.weight_decay = weight_decay
 
-        self.criterion = self.configure_loss()
+        self.criterion = self.configure_loss(loss=loss)
 
         metrics = self.get_metrics()
         self.train_metrics = metrics.clone(prefix="train/")
@@ -100,7 +87,7 @@ class RegressionLit(L.LightningModule):
         assert y_hat.ndim == 2 and y_hat.shape[1] == 1, f"Expected y_hat [B,1], got {tuple(y_hat.shape)}"
 
         loss = self.criterion(y_hat, y)
-        return z, y_hat, y, loss
+        return z.detach().cpu(), y_hat.detach().cpu(), y.detach().cpu(), loss
 
     def training_step(self, batch, batch_idx: int):
         z, y_hat, y, loss = self.shared_step(batch, batch_idx)
@@ -113,9 +100,9 @@ class RegressionLit(L.LightningModule):
         self.log_dict(self.train_metrics, on_step=False, on_epoch=True, batch_size=batch_size)
 
         batch["loss"] = loss
-        batch["y_hat"] = y_hat.detach().cpu()
-        batch["y"] = y.detach().cpu()
-        batch["z"] = z.detach().cpu()
+        batch["y_hat"] = y_hat
+        batch["y"] = y
+        batch["z"] = z
         return batch
 
     def validation_step(self, batch, batch_idx: int):
@@ -128,9 +115,9 @@ class RegressionLit(L.LightningModule):
         self.log_dict(self.valid_metrics, on_step=False, on_epoch=True, batch_size=batch_size)
 
         batch["loss"] = loss
-        batch["y_hat"] = y_hat.detach().cpu()
-        batch["y"] = y.detach().cpu()
-        batch["z"] = z.detach().cpu()
+        batch["y_hat"] = y_hat
+        batch["y"] = y
+        batch["z"] = z
         return batch
 
     def test_step(self, batch, batch_idx: int):
@@ -143,9 +130,9 @@ class RegressionLit(L.LightningModule):
         self.log_dict(self.test_metrics, on_step=False, on_epoch=True, batch_size=batch_size)
 
         batch["loss"] = loss
-        batch["y_hat"] = y_hat.detach().cpu()
-        batch["y"] = y.detach().cpu()
-        batch["z"] = z.detach().cpu()
+        batch["y_hat"] = y_hat
+        batch["y"] = y
+        batch["z"] = z
         return batch
 
     def predict_step(self, batch, batch_idx: int):
