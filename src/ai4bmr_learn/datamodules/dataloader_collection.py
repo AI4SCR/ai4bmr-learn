@@ -100,8 +100,6 @@ class DatasetLoaderCollection(L.LightningDataModule):
         self.dataloader_configs = dataloaders
         self.dataloaders = defaultdict(list)
 
-        self.save_hyperparameters()
-
     def setup(self, stage: str | None = None):
 
         for stage, datasets in self.datasets.items():

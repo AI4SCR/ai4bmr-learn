@@ -18,6 +18,9 @@ class MAEv1(L.LightningModule):
             backbone: nn.Module,
             decoder_kwargs: dict | None = None,
             mask_ratio: float = 0.75,
+            loss_type: str = 'classic',
+            channel_weights: list[float] | torch.Tensor | None = None,
+            activity_threshold: float = 0.02,
             weight_loss_by_sparsity: bool = False,
             norm_loss_target: bool = False,
             lr: float = 1.5e-4,
@@ -47,6 +50,9 @@ class MAEv1(L.LightningModule):
         self.mask_ratio = mask_ratio
 
         # LOSS
+        self.loss_type = loss_type
+        self.channel_weights = channel_weights
+        self.activity_threshold = activity_threshold
         self.weight_loss_by_sparsity = weight_loss_by_sparsity
         self.norm_loss_target = norm_loss_target
 
@@ -109,8 +115,9 @@ class MAEv1(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         images = batch["image"].to(self.device)
+        active_pixels = batch.get("active_pixel_mask", None)
         predicted_img, mask = self._shared_step(images)
-        loss = self.compute_loss(img=images, predicted_img=predicted_img, mask=mask)
+        loss = self.compute_loss(img=images, predicted_img=predicted_img, mask=mask, active_pixels=active_pixels)
 
         batch_size = num_samples_batch = images.shape[0]
         self.num_samples_epoch += num_samples_batch
@@ -141,7 +148,7 @@ class MAEv1(L.LightningModule):
         avg_loss = sum(self.losses) / len(self.losses)
         self.logger.experiment.log(
             {
-                "loss/train_mae_epoch": avg_loss,
+                # "loss/train_mae_epoch": avg_loss,
                 "train/num_samples_epoch": self.num_samples_epoch,
                 "trainer/global_step": self.trainer.global_step,
                 "epoch": self.trainer.current_epoch,
@@ -150,6 +157,7 @@ class MAEv1(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         images = batch["image"]
+        active_pixels = batch.get("active_pixel_mask", None)
 
         # UNMASKED PREDICTIONS
         z = self.backbone(images)
@@ -159,11 +167,12 @@ class MAEv1(L.LightningModule):
         x = self.head(x)
         predictions = self.tokenizer.tokens2img(x)
         mask = torch.ones_like(images)  # all pixels contribute to loss
-        loss = self.compute_loss(img=images, predicted_img=predictions, mask=mask)
+        loss = self.compute_loss(img=images, predicted_img=predictions, mask=mask, active_pixels=active_pixels)
 
         # MASKED PREDICTIONS
         predictions_masked, masks = self._shared_step(images)
-        loss_masked = self.compute_loss(img=images, predicted_img=predictions_masked, mask=masks)
+        loss_masked = self.compute_loss(img=images, predicted_img=predictions_masked,
+                                        mask=mask, active_pixels=active_pixels)
 
         batch_size = num_samples_batch = images.shape[0]
 
@@ -193,24 +202,42 @@ class MAEv1(L.LightningModule):
         # loss = torch.mean((predicted_img - img).abs() * mask) / self.mask_ratio  # L1
         return loss
 
-    def compute_loss(self, img, predicted_img, mask):
+    def compute_loss(self, img, predicted_img, mask, active_pixels=None):
+        match self.loss_type:
+            case 'classic':
+                return self.compute_classic_loss(img, predicted_img, mask, active_pixels)
+            case 'fg_bg':
+                return self.compute_foreground_background_loss(img, predicted_img, mask, active_pixels)
+            case _:
+                raise ValueError(f"Unknown loss_type={self.loss_type}")
+
+    def compute_classic_loss(self, img, predicted_img, mask, active_pixels=None):
         assert img.ndim == 4, f"Expected img to have 4 dims [B,C,H,W], got {img.shape}"
         assert img.shape == mask.shape
 
         target = img
         B, C, H, W = target.shape
 
+        if active_pixels is not None:
+            channel_activity = active_pixels.mean(dim=(2, 3), dtype=torch.float32)  # [B, C]
+
         if self.weight_loss_by_sparsity:
             # NOTE: this is computed over the whole image not only the masked pixels, design choice.
-            pc = (target > 0).mean(dim=(2, 3), dtype=torch.float32)
+            w = 1 / ( channel_activity.sqrt() + 1e-3 )
+            w = w.clamp(min=0.0, max=25.0)  # avoid extreme weights
 
-            wc = 1 / ( pc.sqrt() + 1e-3 )
-            wc = wc.clamp(min=0.0, max=15.0)  # avoid extreme weights
-            wc = wc.to(target.device).float()
-            wc = wc / wc.mean(dim=1, keepdim=True)
+            w = w / w.mean(dim=1, keepdim=True)
+            w = w.to(target.device).float()
+
+        elif self.channel_weights is not None:
+            # (channel_activity < 0.05).sum(dim=0)
+            # channel 18 (CD20) is the most sparse, almost never expressed over 0.025
+            w = self.channel_weights.to(device=target.device, dtype=torch.float32).clone()
+            # more than 2% of the pixels in each channel must be active to contribut to the loss
+            w = ( channel_activity > self.activity_threshold ) * w.unsqueeze(0)
 
         else:
-            wc = torch.ones((B, C), device=target.device, dtype=torch.float32)
+            w = torch.ones((B, C), device=target.device, dtype=torch.float32)
 
         if self.norm_loss_target:
             mean = target.mean(dim=(2, 3), keepdim=True)
@@ -221,15 +248,51 @@ class MAEv1(L.LightningModule):
 
             target = (target - mean) / std
 
+        # TODO: other potential losses could be soft masks over active_pixels
         loss = (predicted_img - target) ** 2  # [B, C, H, W]
+        loss = loss * mask
 
-        # loss on masked pixels scaled by the masking ratio
-        loss = (loss * mask)
+        # sum over H,W to get channel-wise loss
+        loss = loss.sum(dim=(2, 3))  # [B, C]
+        mask_sum = mask.sum(dim=(2, 3))  # [B, C]
+        loss = loss / (mask_sum + 1e-6)
 
-        loss = loss.mean(dim=(2, 3))  # per-channel loss [B, C]
-        loss = loss * wc
+        loss = loss * w  # channel weighting
+        loss = loss.mean()  # average over batch and channels
 
-        loss = loss.mean() / mask.mean(dtype=torch.float32)
+        return loss
+
+    def compute_foreground_background_loss(self, img, predicted_img, mask, active_pixels, alpha=0.8):
+        assert img.ndim == 4, f"Expected img to have 4 dims [B,C,H,W], got {img.shape}"
+        assert img.shape == mask.shape
+
+        mask = mask.bool()
+        active_pixels = active_pixels.bool()
+
+        target = img
+        B, C, H, W = target.shape
+
+        if self.channel_weights is not None:
+            w = self.channel_weights.to(device=target.device, dtype=torch.float32).clone()
+        else:
+            w = torch.ones((B, C), device=target.device, dtype=torch.float32)
+
+        per_pixel = (predicted_img - target) ** 2  # [B, C, H, W]
+
+        fg_mask = mask & active_pixels  # [B,C,H,W]
+        bg_mask = mask & (~active_pixels)  # [B,C,H,W]
+
+        fg_num = (per_pixel * fg_mask).sum(dim=(2, 3))  # [B,C]
+        fg_den = fg_mask.sum(dim=(2, 3)).clamp_min(1.0).to(per_pixel.dtype)  # [B,C]
+        fg_mean = fg_num / fg_den  # [B,C]
+
+        bg_num = (per_pixel * bg_mask).sum(dim=(2, 3))  # [B,C]
+        bg_den = bg_mask.sum(dim=(2, 3)).clamp_min(1.0).to(per_pixel.dtype)  # [B,C]
+        bg_mean = bg_num / bg_den
+
+        loss = alpha * fg_mean + (1 - alpha) * bg_mean
+        loss = loss * w  # channel weighting
+        loss = loss.mean()  # average over batch and channels
 
         return loss
 
@@ -279,25 +342,4 @@ class MAEv1(L.LightningModule):
                 "frequency": 1,
             },
         }
-
-    def on_train_end(self) -> None:
-
-        if self.trainer.fast_dev_run:
-            return
-
-        # TODO: should be a callback
-        model_ckpt_cb = list(filter(lambda x: isinstance(x, L.pytorch.callbacks.ModelCheckpoint), self.trainer.callbacks))
-        if len(model_ckpt_cb) > 0:
-            cb = model_ckpt_cb[0]
-            best_model_path = cb.best_model_path
-            last_model_path = cb.last_model_path
-            self.trainer.logger.experiment.config.update({
-                'best_model_path': best_model_path,
-                'last_model_path': last_model_path,
-            })
-
-        # TODO: should be a callback
-        run_id = self.trainer.logger.experiment.id
-        run_name = self.trainer.logger.experiment.name
-        self.trainer.logger.experiment.config.update({'run_id': run_id, 'run_name': run_name})
 
