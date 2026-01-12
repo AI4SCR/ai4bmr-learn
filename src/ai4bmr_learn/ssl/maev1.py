@@ -20,7 +20,7 @@ class MAEv1(L.LightningModule):
             mask_ratio: float = 0.75,
             loss_type: str = 'classic',
             channel_weights: list[float] | torch.Tensor | None = None,
-            activity_threshold: float = 0.02,
+            activity_threshold: float = 0,
             weight_loss_by_sparsity: bool = False,
             norm_loss_target: bool = False,
             lr: float = 1.5e-4,
@@ -202,8 +202,29 @@ class MAEv1(L.LightningModule):
         # loss = torch.mean((predicted_img - img).abs() * mask) / self.mask_ratio  # L1
         return loss
 
+    def compute_loss_simple(selfimg, predicted_img, mask):
+        assert img.ndim == 4, f"Expected img to have 4 dims [B,C,H,W], got {img.shape}"
+        assert img.shape == mask.shape
+
+        target = img
+        B, C, H, W = target.shape
+
+        loss = (predicted_img - target) ** 2  # [B, C, H, W]
+
+        # loss on masked pixels scaled by the masking ratio
+        loss = (loss * mask)
+
+        loss = loss.mean(dim=(2, 3))  # per-channel loss [B, C]
+
+        loss = loss.mean() / mask.mean(dtype=torch.float32)
+
+        return loss
+
+
     def compute_loss(self, img, predicted_img, mask, active_pixels=None):
         match self.loss_type:
+            case 'simple':
+                return self.compute_loss_simple(img, predicted_img, mask)
             case 'classic':
                 return self.compute_classic_loss(img, predicted_img, mask, active_pixels)
             case 'fg_bg':

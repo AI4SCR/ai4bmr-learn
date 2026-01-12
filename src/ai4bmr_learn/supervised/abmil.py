@@ -12,10 +12,12 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
+
 class MIL(nn.Module):
     def __init__(
             self,
             input_dim: int,
+            pooling: str = 'attn',
             gated: bool = False,
             activ_dim: int = 0,  # if >0, project to this dim before attention
             bag_norm: bool = False,  # z-score across instances in a bag
@@ -320,7 +322,7 @@ class MILTrainer(L.LightningModule):
         plt.close('all')
 
     def configure_optimizers(self):
-        optimizer = optim.Adam([
+        optimizer = optim.AdamW([
             {'params': self.head.parameters(), 'lr': self.lr_head},
             {'params': filter(lambda p: p.requires_grad, self.mil.parameters()), 'lr': self.lr_mil}
         ], weight_decay=self.weight_decay)
