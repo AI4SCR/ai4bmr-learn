@@ -18,24 +18,27 @@ class ConcordanceIndex(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.add_state("preds", default=[], dist_reduce_fx="cat")
+        self.add_state("target", default=[], dist_reduce_fx="cat")
         self.add_state("events", default=[], dist_reduce_fx="cat")
-        self.add_state("times", default=[], dist_reduce_fx="cat")
 
-    def update(self, preds: torch.Tensor, events: torch.Tensor, times: torch.Tensor) -> None:
+    def update(self, preds: torch.Tensor, target: torch.Tensor, events: torch.Tensor) -> None:
         self.preds.append(preds.detach().cpu())
         self.events.append(events.detach().cpu())
-        self.times.append(times.detach().cpu())
+        self.target.append(target.detach().cpu())
 
     def compute(self) -> torch.Tensor:
         from torchsurv.metrics.cindex import ConcordanceIndex
 
-        preds = torch.cat(self.preds).numpy()
-        events = torch.cat(self.events).numpy()
-        times = torch.cat(self.times).numpy()
+        preds = torch.cat(self.preds)
+        events = torch.cat(self.events).bool()
+        target = torch.cat(self.target)
 
-        res = ConcordanceIndex(preds, events, times)
-
-        return torch.tensor(res, dtype=torch.float32)
+        cindex = ConcordanceIndex()
+        try:
+            res = cindex(preds, events, target)
+            return torch.tensor(res, dtype=torch.float32).squeeze()
+        except:
+            return torch.tensor(0.0, dtype=torch.float32).squeeze()
 
 
 class SurvivalLit(L.LightningModule):
@@ -110,7 +113,9 @@ class SurvivalLit(L.LightningModule):
     def shared_step(self, batch: dict, batch_idx: int):
         x = glom(batch, self.batch_key) if self.batch_key is not None else batch
         y = glom(batch, self.target_key)
+
         events = glom(batch, self.event_key)
+        # events = events.unsqueeze(0) if events.ndim == 1 else events  # [B, 1]
 
         y = y.unsqueeze(1) if y.ndim == 1 else y  # [B, 1]
         y = y.float()
@@ -131,7 +136,7 @@ class SurvivalLit(L.LightningModule):
         self.log("loss/train", loss, on_step=True, on_epoch=True, batch_size=batch_size)
 
         # metrics
-        self.train_metrics.update(y_hat, y)
+        self.train_metrics.update(preds=y_hat, events=events, target=y)
 
         batch["loss"] = loss
         batch["y_hat"] = y_hat
@@ -150,7 +155,7 @@ class SurvivalLit(L.LightningModule):
 
         self.log("loss/val", loss, on_step=False, on_epoch=True, batch_size=batch_size)
 
-        self.valid_metrics.update(y_hat, y)
+        self.valid_metrics.update(preds=y_hat, events=events, target=y)
 
         batch["loss"] = loss
         batch["y_hat"] = y_hat
@@ -167,7 +172,7 @@ class SurvivalLit(L.LightningModule):
         batch_size = int(y.shape[0])
 
         self.log("loss/test", loss, on_step=False, on_epoch=True, batch_size=batch_size)
-        self.test_metrics.update(y_hat, y)
+        self.test_metrics.update(preds=y_hat, events=events, target=y)
 
         batch["loss"] = loss
         batch["y_hat"] = y_hat
@@ -215,7 +220,7 @@ class SurvivalLit(L.LightningModule):
         num_warmup_epochs = self.num_warmup_epochs
         warmup_scheduler = optim.lr_scheduler.LinearLR(
             optimizer,
-            start_factor=1e-3,
+            start_factor=1e-2,
             end_factor=1.0,
             total_iters=num_warmup_epochs,
         )
