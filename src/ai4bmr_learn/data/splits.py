@@ -180,6 +180,7 @@ def save_splits(
         group_column_name: str | None = None,
         random_state: int | None = None,
         verbose: int = 1,
+        overwrite: bool = False,
 ):
     """
     Generates a single train/test/validation split for a given metadata DataFrame.
@@ -210,7 +211,8 @@ def save_splits(
     Returns:
         None
     """
-    assert not save_dir.exists(), f'{save_dir} already exists.'
+    if not overwrite:
+        assert not save_dir.exists(), f'{save_dir} already exists.'
 
     num_test_splits = round(1 / test_size)
     num_val_splits = round(1 / val_size) if val_size is not None else None
@@ -283,7 +285,7 @@ def save_splits(
                                            fit_indices=fit_indices, val_indices=val_indices,
                                            use_filtered_targets_for_train=use_filtered_targets_for_train)
                 save_dir.mkdir(parents=True, exist_ok=True)
-                metadata.to_parquet(save_dir / f'outer={outer}-inner={inner}.parquet', engine='fastparquet')
+                metadata.to_parquet(save_dir / f'outer={outer}-inner={inner}-seed={random_state}.parquet', engine='fastparquet')
 
         val_indices = []
         fit_indices = train_indices
@@ -293,7 +295,7 @@ def save_splits(
                                    fit_indices=fit_indices, val_indices=val_indices,
                                    use_filtered_targets_for_train=use_filtered_targets_for_train)
         save_dir.mkdir(parents=True, exist_ok=True)
-        metadata.to_parquet(save_dir / f'outer={outer}.parquet', engine='fastparquet')
+        metadata.to_parquet(save_dir / f'outer={outer}-seed={random_state}.parquet', engine='fastparquet')
 
 
 def construct_split(*, metadata, universe, indices,
