@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 from glom import glom
 from torchmetrics import MetricCollection
-from torchmetrics.regression import MeanAbsoluteError, MeanSquaredError, R2Score
+from torchmetrics.regression import MeanAbsoluteError, MeanSquaredError, R2Score, SpearmanCorrCoef, PearsonCorrCoef
 
 from ai4bmr_learn.utils.pooling import pool
 
@@ -13,6 +13,7 @@ class RegressionLit(L.LightningModule):
     def __init__(
             self,
             backbone: nn.Module,
+            head: nn.Module | None = None,
             batch_key: str | None = "image",
             target_key: str = "y",
             lr_head: float = 1e-3,
@@ -34,7 +35,7 @@ class RegressionLit(L.LightningModule):
                 p.requires_grad = False
 
         input_dim = backbone.output_dim
-        self.head = nn.Linear(input_dim, 1)
+        self.head = head or nn.Linear(input_dim, 1)
 
         self.pooling = pooling
         self.batch_key = batch_key
@@ -74,6 +75,8 @@ class RegressionLit(L.LightningModule):
                 "mse": MeanSquaredError(squared=True),
                 "rmse": MeanSquaredError(squared=False),
                 "r2": R2Score(),  # does not work with single batch
+                "spearman": SpearmanCorrCoef(),  # does not work with single batch
+                "pearson": PearsonCorrCoef(),  # does not work with single batch
             }
         )
 
