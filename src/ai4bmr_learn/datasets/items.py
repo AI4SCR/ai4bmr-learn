@@ -77,6 +77,7 @@ class Items(Dataset):
             logger.info(f'Loaded {len(self.items)} items')
 
         if self.metadata_path is not None:
+            logger.info(f'Loading metadata from {self.metadata_path}')
             item_ids = [i[self.id_key] for i in self.items]
             metadata = pd.read_parquet(self.metadata_path)
             self.item_ids, self.metadata = filter_items_and_metadata(item_ids=item_ids, metadata=metadata,

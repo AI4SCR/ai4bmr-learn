@@ -14,6 +14,8 @@ class RegressionLit(L.LightningModule):
             self,
             backbone: nn.Module,
             head: nn.Module | None = None,
+            embed_dim: int | None = None,
+            num_outputs: int = 1,
             batch_key: str | None = "image",
             target_key: str = "y",
             lr_head: float = 1e-3,
@@ -26,6 +28,7 @@ class RegressionLit(L.LightningModule):
             freeze_backbone: bool = False,
             pooling: str | None = None,
             loss: str = "mse",  # "mse" or "huber"
+            save_hparams: bool = True,
     ):
         super().__init__()
 
@@ -34,8 +37,11 @@ class RegressionLit(L.LightningModule):
             for p in self.backbone.parameters():
                 p.requires_grad = False
 
-        input_dim = backbone.output_dim
-        self.head = head or nn.Linear(input_dim, 1)
+        if head is None:
+            input_dim = embed_dim or backbone.output_dim
+            head = nn.Linear(input_dim, 1)
+
+        self.head = head
 
         self.pooling = pooling
         self.batch_key = batch_key
@@ -47,7 +53,8 @@ class RegressionLit(L.LightningModule):
 
         self.criterion = self.configure_loss(loss=loss)
 
-        metrics = self.get_metrics()
+        self.num_outputs = num_outputs
+        metrics = self.get_metrics(num_outputs=num_outputs)
         self.train_metrics = metrics.clone(prefix="train/")
         self.valid_metrics = metrics.clone(prefix="val/")
         self.test_metrics = metrics.clone(prefix="test/")
@@ -58,7 +65,8 @@ class RegressionLit(L.LightningModule):
         self.max_epochs = max_epochs
         self.num_warmup_epochs = num_warmup_epochs
 
-        self.save_hyperparameters(ignore=["head", "backbone"])
+        if save_hparams:
+            self.save_hyperparameters(ignore=["head", "backbone"])
 
     def configure_loss(self, loss: str) -> nn.Module:
         if loss == "mse":
@@ -68,17 +76,26 @@ class RegressionLit(L.LightningModule):
         else:
             raise ValueError(f"Unknown loss: {loss}")
 
-    def get_metrics(self) -> MetricCollection:
+    def get_metrics(self, num_outputs: int) -> MetricCollection:
         return MetricCollection(
             {
-                "mae": MeanAbsoluteError(),
-                "mse": MeanSquaredError(squared=True),
-                "rmse": MeanSquaredError(squared=False),
-                "r2": R2Score(),  # does not work with single batch
-                "spearman": SpearmanCorrCoef(),  # does not work with single batch
-                "pearson": PearsonCorrCoef(),  # does not work with single batch
+                "mae": MeanAbsoluteError(num_outputs=num_outputs),
+                "mse": MeanSquaredError(num_outputs=num_outputs, squared=True),
+                "rmse": MeanSquaredError(num_outputs=num_outputs, squared=False),
+                # "r2": R2Score(num_outputs=num_outputs),  # does not work with single batch
+                "spearman": SpearmanCorrCoef(num_outputs=num_outputs),  # does not work with single batch
+                "pearson": PearsonCorrCoef(num_outputs=num_outputs),  # does not work with single batch
             }
         )
+
+    def reduce_log_reset(self, metrics: MetricCollection):
+        scores = metrics.compute()
+        metrics.reset()
+
+        means = {f'{k}_mean': v.mean() for k, v in scores.items()}
+        stds = {f'{k}_std': v.std() for k, v in scores.items()}
+        self.log_dict(means)
+        self.log_dict(stds)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z = self.backbone(x)
@@ -97,10 +114,11 @@ class RegressionLit(L.LightningModule):
         z = pool(z, strategy=self.pooling)
 
         y_hat = self.head(z)
-        assert y_hat.ndim == 2 and y_hat.shape[1] == 1, f"Expected y_hat [B,1], got {tuple(y_hat.shape)}"
+        assert y_hat.ndim == 2
+        # assert y_hat.shape[1] == 1, f"Expected y_hat [B,1], got {tuple(y_hat.shape)}"
 
         loss = self.criterion(y_hat, y)
-        return z.detach().cpu(), y_hat.detach().cpu(), y.detach().cpu(), loss
+        return z, y_hat, y, loss
 
     def training_step(self, batch, batch_idx: int):
         z, y_hat, y, loss = self.shared_step(batch, batch_idx)
@@ -112,15 +130,20 @@ class RegressionLit(L.LightningModule):
         self.train_metrics.update(y_hat, y)
 
         batch["loss"] = loss
-        batch["y_hat"] = y_hat
-        batch["y"] = y
-        batch["z"] = z
+        batch["y_hat"] = y_hat.detach().cpu()
+        batch["y"] = y.detach().cpu()
+        batch["z"] = z.detach().cpu()
         return batch
 
     def on_train_epoch_end(self) -> None:
         if not self.trainer.fast_dev_run:
             # NOTE: we log here to support metrics that are only defined for B > 1 (e.g., R2Score)
-            self.log_dict(self.train_metrics)
+            metrics = self.train_metrics
+            if self.num_outputs == 1:
+                self.log_dict(metrics)
+            else:
+                self.reduce_log_reset(metrics)
+
 
     def validation_step(self, batch, batch_idx: int):
         z, y_hat, y, loss = self.shared_step(batch, batch_idx)
@@ -131,14 +154,18 @@ class RegressionLit(L.LightningModule):
         self.valid_metrics.update(y_hat, y)
 
         batch["loss"] = loss
-        batch["y_hat"] = y_hat
-        batch["y"] = y
-        batch["z"] = z
+        batch["y_hat"] = y_hat.detach().cpu()
+        batch["y"] = y.detach().cpu()
+        batch["z"] = z.detach().cpu()
         return batch
 
     def on_validation_epoch_end(self) -> None:
         if not self.trainer.fast_dev_run:
-            self.log_dict(self.valid_metrics)
+            metrics = self.valid_metrics
+            if self.num_outputs == 1:
+                self.log_dict(metrics)
+            else:
+                self.reduce_log_reset(metrics)
 
     def test_step(self, batch, batch_idx: int):
         z, y_hat, y, loss = self.shared_step(batch, batch_idx)
@@ -148,14 +175,18 @@ class RegressionLit(L.LightningModule):
         self.test_metrics.update(y_hat, y)
 
         batch["loss"] = loss
-        batch["y_hat"] = y_hat
-        batch["y"] = y
-        batch["z"] = z
+        batch["y_hat"] = y_hat.detach().cpu()
+        batch["y"] = y.detach().cpu()
+        batch["z"] = z.detach().cpu()
         return batch
 
     def on_test_epoch_end(self) -> None:
         if not self.trainer.fast_dev_run:
-            self.log_dict(self.test_metrics)
+            metrics = self.test_metrics
+            if self.num_outputs == 1:
+                self.log_dict(metrics)
+            else:
+                self.reduce_log_reset(metrics)
 
     def predict_step(self, batch, batch_idx: int):
         x = glom(batch, self.batch_key) if self.batch_key is not None else batch
@@ -187,7 +218,9 @@ class RegressionLit(L.LightningModule):
 
         try:
             max_epochs = self.trainer.max_epochs
-        except AttributeError:
+            assert max_epochs is not None, "trainer.max_epochs is None"
+        except AttributeError or AssertionError as e:
+            logger.warning(f'`max_epoch not found in trainer ({e}), using module max_epochs={self.max_epochs}`')
             max_epochs = self.max_epochs
 
         num_warmup_epochs = self.num_warmup_epochs

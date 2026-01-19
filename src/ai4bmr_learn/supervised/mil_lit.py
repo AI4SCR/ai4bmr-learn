@@ -12,11 +12,13 @@ from ai4bmr_learn.metrics.classification import get_metric_collection
 
 
 class MILLit(L.LightningModule):
+
     def __init__(self,
-                 mil: nn.Module,
+                 backbone: nn.Module,
                  num_classes: int,
+                 head: nn.Module | None = None,
                  lr_head: float = 1e-3,
-                 lr_mil: float = 1e-4,
+                 lr_backbone: float = 1e-4,
                  weight_decay: float = 0.01,
                  batch_key: str | None = 'image',
                  target_key: str = 'label',
@@ -29,16 +31,16 @@ class MILLit(L.LightningModule):
                  ):
         super().__init__()
 
-        self.save_hyperparameters(ignore=["mil"])
-        self.mil = mil
+        self.save_hyperparameters(ignore=["backbone", "head"])
 
-        self.head = nn.Linear(mil.output_dim, num_classes)
+        self.backbone = backbone
+        self.head = head or nn.Linear(backbone.output_dim, num_classes)
 
         self.batch_key = batch_key
         self.target_key = target_key
 
         self.lr_head = lr_head
-        self.lr_mil = lr_mil
+        self.lr_backbone = lr_backbone
         self.weight_decay = weight_decay
 
         self.criterion = nn.CrossEntropyLoss(weight=weight)
@@ -72,7 +74,7 @@ class MILLit(L.LightningModule):
     def shared_step(self, batch, batch_idx):
         data = glom(batch, self.batch_key) if self.batch_key is not None else batch
 
-        z, attn, attn_logits = self.mil(data, return_attn_and_logits=True)
+        z, attn, attn_logits = self.backbone(data, return_attn_and_logits=True)
         logits = self.head(z)
         targets = glom(batch, self.target_key).long()
 
@@ -200,7 +202,7 @@ class MILLit(L.LightningModule):
     def configure_optimizers(self):
         optimizer = optim.AdamW([
             {'params': self.head.parameters(), 'lr': self.lr_head},
-            {'params': filter(lambda p: p.requires_grad, self.mil.parameters()), 'lr': self.lr_mil}
+            {'params': filter(lambda p: p.requires_grad, self.backbone.parameters()), 'lr': self.lr_backbone}
         ], weight_decay=self.weight_decay)
 
         if self.schedule is None:

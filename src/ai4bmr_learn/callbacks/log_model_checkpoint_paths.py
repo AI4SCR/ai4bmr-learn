@@ -3,7 +3,14 @@ from lightning.pytorch.callbacks import Callback, ModelCheckpoint
 from loguru import logger
 
 class LogCheckpointPathsCallback(Callback):
-    def on_fit_end(self, trainer: L.Trainer, pl_module):
+
+    def on_train_end(self, trainer, pl_module):
+        self.log_checkpoint_paths(trainer=trainer, pl_module=pl_module)
+
+    def on_validation_epoch_end(self, trainer: L.Trainer, pl_module):
+        self.log_checkpoint_paths(trainer=trainer, pl_module=pl_module)
+
+    def log_checkpoint_paths(self, trainer: L.Trainer, pl_module):
 
         if trainer.fast_dev_run:
             return
@@ -16,19 +23,17 @@ class LogCheckpointPathsCallback(Callback):
             logger.warning("You provided `LogCheckpointPathsCallback` but no ModelCheckpoint callback found in trainer.callbacks")
             return
 
-        ckpt_cb = ckpt_cbs[0]
 
-        best_model_path = ckpt_cb.best_model_path
-        last_model_path = ckpt_cb.last_model_path
+        for cb in ckpt_cbs:
 
-        logger = trainer.logger
-        if logger is None or not hasattr(logger, "experiment"):
-            return
+            upt = {}
+            if cb.best_model_path and cb.monitor is not None:
+                upt["best_model_path"] = cb.best_model_path
+            if cb.last_model_path and cb.monitor is None:
+                upt["last_model_path"] = cb.last_model_path
 
-        logger.experiment.config.update(
-            {
-                "best_model_path": best_model_path,
-                "last_model_path": last_model_path,
-            },
-            allow_val_change=True,
-        )
+            logger = trainer.logger
+            if logger is None or not hasattr(logger, "experiment"):
+                return
+
+            logger.experiment.config.update(upt, allow_val_change=True)
