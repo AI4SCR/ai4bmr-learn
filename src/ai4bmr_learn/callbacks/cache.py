@@ -29,7 +29,7 @@ class Cache(Callback):
         # self.state = {"epochs": 0, "batches": 0}
 
         if save_dir is not None:
-            save_dir = Path(save_dir).expanduser().resolve()
+            self.save_dir = Path(save_dir).expanduser().resolve()
             logger.info(f"Cache will save outputs to {self.save_dir}")
         self.save_dir = save_dir
 
