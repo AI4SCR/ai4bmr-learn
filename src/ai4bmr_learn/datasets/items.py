@@ -105,7 +105,7 @@ class Items(Dataset):
 
             # TODO: report subset matches
             if iid <= self.cached_ids:
-                logger.info(f'Found all {len(iid)} cached items in {self.items_path}')
+                logger.info(f'Found all {len(iid)} cached items in {self.cache_dir}')
                 return True
             else:
                 return False
