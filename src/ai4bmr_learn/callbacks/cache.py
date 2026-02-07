@@ -17,10 +17,12 @@ def move_to_cpu(output):
 class Cache(Callback):
     name: str = 'cache'
 
-    def __init__(self, num_samples: int | None = None, save_dir: Path | None = None,
+    def __init__(self, num_samples: int | None = None, save_dir: Path | None = None, fname: str | None = None,
                  exclude_keys: list[str] | None = None, ignore_missing: bool = False):
         super().__init__()
 
+        fname = fname or self.name
+        self.fname = f'{fname}.pkl'
         self.num_samples = num_samples
         self.outputs = []
         self.exclude_keys = exclude_keys
@@ -30,7 +32,6 @@ class Cache(Callback):
 
         if save_dir is not None:
             self.save_dir = Path(save_dir).expanduser().resolve()
-            logger.info(f"Cache will save outputs to {self.save_dir}")
         self.save_dir = save_dir
 
     def configure_save_dir(self, trainer):
@@ -45,7 +46,7 @@ class Cache(Callback):
             experiment_id = trainer.logger.experiment.id
 
             self.save_dir = Path(save_dir) / name / experiment_id / "cache"
-            logger.info(f"Cache will be saved to {self.save_dir}")
+            logger.info(f"Cache will be saved to {self.save_dir / self.fname}")
         else:
             logger.warning(f"Cache has no save_dir configured, outputs will not be saved to disk.")
 
@@ -65,10 +66,11 @@ class Cache(Callback):
         self.outputs = []
 
     def save_to_disk(self):
+        # TODO: include batch_idx, epoch, ...
         if self.save_dir is None:
             return
 
-        save_path = self.save_dir / f'{self.name}.pkl'
+        save_path = self.save_dir / self.fname
         save_path.parent.mkdir(parents=True, exist_ok=True)
         with open(save_path, "wb") as f:
             pickle.dump(self.outputs, f)
