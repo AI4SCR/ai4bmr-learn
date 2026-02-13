@@ -115,6 +115,8 @@ class MAEv1(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         images = batch["image"].to(self.device)
+        assert images.isnan().any() == False, "Input images contain NaNs"
+
         active_pixels = batch.get("active_pixel_mask", None)
         predicted_img, mask = self._shared_step(images)
         loss = self.compute_loss(img=images, predicted_img=predicted_img, mask=mask, active_pixels=active_pixels)
@@ -157,6 +159,8 @@ class MAEv1(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         images = batch["image"]
+        assert images.isnan().any() == False, "Input images contain NaNs"
+
         active_pixels = batch.get("active_pixel_mask", None)
 
         # UNMASKED PREDICTIONS
@@ -195,14 +199,14 @@ class MAEv1(L.LightningModule):
                         'masks': masks.detach().cpu()}
         return batch
 
-    def compute_loss_legacy(self, img, predicted_img, mask):
+    def compute_loss_legacy(self, *, img, predicted_img, mask):
         # TODO: add loss with channel weights
         # TODO: add per-patch normalization
         loss = torch.mean((predicted_img - img) ** 2 * mask) / self.mask_ratio  # L2
         # loss = torch.mean((predicted_img - img).abs() * mask) / self.mask_ratio  # L1
         return loss
 
-    def compute_loss_simple(selfimg, predicted_img, mask):
+    def compute_loss_simple(selfimg, *, img, predicted_img, mask):
         assert img.ndim == 4, f"Expected img to have 4 dims [B,C,H,W], got {img.shape}"
         assert img.shape == mask.shape
 
@@ -221,14 +225,14 @@ class MAEv1(L.LightningModule):
         return loss
 
 
-    def compute_loss(self, img, predicted_img, mask, active_pixels=None):
+    def compute_loss(self, *, img, predicted_img, mask, active_pixels=None):
         match self.loss_type:
             case 'simple':
-                return self.compute_loss_simple(img, predicted_img, mask)
+                return self.compute_loss_simple(img=img, predicted_img=predicted_img, mask=mask)
             case 'classic':
-                return self.compute_classic_loss(img, predicted_img, mask, active_pixels)
+                return self.compute_classic_loss(img=img, predicted_img=predicted_img, mask=mask, active_pixels=active_pixels)
             case 'fg_bg':
-                return self.compute_foreground_background_loss(img, predicted_img, mask, active_pixels)
+                return self.compute_foreground_background_loss(img=img, predicted_img=predicted_img, mask=mask, active_pixels=active_pixels)
             case _:
                 raise ValueError(f"Unknown loss_type={self.loss_type}")
 

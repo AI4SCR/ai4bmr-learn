@@ -21,7 +21,7 @@ class ClipLit(L.LightningModule):
             encoder_2_pool: str | None = None,
             mod_1_key: str = "modalities.image",
             mod_2_key: str = "modalities.expr_tokens",
-            lr: float = 1e-4,
+            lr: float = 1e-5,
             weight_decay: float = 0.01,
             eta: float = 0.0,
             schedule: str | None = None,
@@ -158,20 +158,27 @@ class ClipLit(L.LightningModule):
 
         return loss
 
-    def on_train_epoch_start(self) -> None:
-        assert self.logit_scale.requires_grad
-
+    def on_train_start(self) -> None:
         optimizer = self.optimizers()
         params_in_optimizer = [id(p) for group in optimizer.param_groups for p in group["params"]]
         assert id(self.logit_scale) in params_in_optimizer, (
             f"logit_scale (id: {id(self.logit_scale)}) is NOT in the optimizer!"
         )
 
+    def on_train_epoch_start(self) -> None:
+        # NOTE: we freeze the logit_scale during warmup
+        self.logit_scale.requires_grad = (self.current_epoch >= self.num_warmup_epochs)
+        # assert self.logit_scale.requires_grad
+
+
     def training_step(self, batch, batch_idx: int):
         return self._shared_step(batch, stage="train")
 
     def validation_step(self, batch, batch_idx: int):
         self._shared_step(batch, stage="val")
+
+    def test_step(self, batch, batch_idx: int):
+        self._shared_step(batch, stage="test")
 
     def configure_optimizers(self):
         decay = []
@@ -209,7 +216,7 @@ class ClipLit(L.LightningModule):
             max_epochs = self.max_epochs
 
         warmup = optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=1e-3, end_factor=1.0, total_iters=self.num_warmup_epochs
+            optimizer, start_factor=1e-2, end_factor=1.0, total_iters=self.num_warmup_epochs
         )
         t_max = max(1, max_epochs - self.num_warmup_epochs)
         cosine = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=t_max, eta_min=self.eta)

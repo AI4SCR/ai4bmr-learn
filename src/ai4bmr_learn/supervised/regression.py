@@ -226,7 +226,7 @@ class RegressionLit(L.LightningModule):
         num_warmup_epochs = self.num_warmup_epochs
         warmup_scheduler = optim.lr_scheduler.LinearLR(
             optimizer,
-            start_factor=1e-3,
+            start_factor=1e-2,
             end_factor=1.0,
             total_iters=num_warmup_epochs,
         )

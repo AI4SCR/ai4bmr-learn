@@ -16,7 +16,7 @@ def get_thumbnail_size_and_scale(size, max_size: int = 1000):
     # smaller dimension
     # TODO: maybe add flag to use round instead of ceil
     # size = (round(h * scale), round(w * scale))
-    size = np.ceil(h * scale), np.ceil(w * scale)
+    size = int(np.ceil(h * scale)), int(np.ceil(w * scale))
     return size, scale
 
 
