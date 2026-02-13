@@ -153,12 +153,7 @@ class MAEv2(L.LightningModule):
         prediction, mask, z = self._shared_step_unmasked(images)
         loss = self.compute_loss(img=images, predicted_img=prediction, mask=mask, active_pixels=active_pixels)
         self._log_stage(stage="val", loss=loss)
-
-        batch["loss"] = loss.item()
-        batch["image"] = images.detach().cpu()
-        batch["z"] = pool(z, strategy=self.pooling).detach().cpu()
-        batch["prediction"] = prediction.detach().cpu()
-        return batch
+        return loss
 
     def test_step(self, batch, batch_idx):
         images = batch["image"].to(self.device)
@@ -190,6 +185,7 @@ class MAEv2(L.LightningModule):
         batch["loss_masked"] = loss_masked.item()
         batch["image"] = images.cpu()
         batch["z"] = pool(z, strategy=self.pooling).cpu()
+        batch["mask"] = mask_masked.cpu()
         batch["prediction_masked"] = prediction_masked.cpu()
         batch["prediction_unmasked"] = prediction_unmasked.cpu()
         return batch
