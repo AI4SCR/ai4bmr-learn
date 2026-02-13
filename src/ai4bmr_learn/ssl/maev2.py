@@ -192,14 +192,11 @@ class MAEv2(L.LightningModule):
         self._log_stage(stage="test", loss=loss_unmasked)
         self.log("test/masked_recon_loss", loss_masked, on_step=False, on_epoch=True)
 
-        prediction_masked = self.tokenizer.tokens2img(
-            rearrange(prediction_masked_patches, "b n c kh kw -> b n (c kh kw)")
-        )
-        prediction_unmasked = self.tokenizer.tokens2img(
-            rearrange(prediction_unmasked_patches, "b n c kh kw -> b n (c kh kw)")
-        )
+        h, w = self.tokenizer.grid_size
+        prediction_masked = rearrange(prediction_masked_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
+        prediction_unmasked = rearrange(prediction_unmasked_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
         mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches_masked).to(torch.float32)
-        mask_img = self.tokenizer.tokens2img(rearrange(mask_patches, "b n c kh kw -> b n (c kh kw)"))
+        mask_img = rearrange(mask_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
 
         batch["loss"] = loss_unmasked.item()
         batch["loss_masked"] = loss_masked.item()
@@ -266,10 +263,11 @@ class MAEv2(L.LightningModule):
                     masked_patch=masked_patch,
                 )
             case "classic":
-                target_img = self.tokenizer.tokens2img(rearrange(target_patches, "b n c kh kw -> b n (c kh kw)"))
-                predicted_img = self.tokenizer.tokens2img(rearrange(predicted_patches, "b n c kh kw -> b n (c kh kw)"))
+                h, w = self.tokenizer.grid_size
+                target_img = rearrange(target_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
+                predicted_img = rearrange(predicted_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
                 mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches).to(torch.float32)
-                mask_img = self.tokenizer.tokens2img(rearrange(mask_patches, "b n c kh kw -> b n (c kh kw)"))
+                mask_img = rearrange(mask_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
                 return self.compute_classic_loss(
                     img=target_img,
                     predicted_img=predicted_img,
