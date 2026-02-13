@@ -105,15 +105,15 @@ class MAEv2(L.LightningModule):
         # 5. project to pixel-token space
         x = x[:, 1:]  # remove prefix tokens
         x = self.head(x)
+
         masked_patch = token_mask[:, num_prefix_tokens:]
+
+        kh, kw = self.tokenizer.kernel_size
         pred_patches = rearrange(
             x,
             "b n (c kh kw) -> b n c kh kw",
             c=self.tokenizer.num_channels,
-            kh=self.tokenizer.kernel_size[0],
-            kw=self.tokenizer.kernel_size[1],
-        )
-        kh, kw = self.tokenizer.kernel_size
+            kh=kh, kw=kw)
         target_patches = rearrange(img, "b c (h kh) (w kw) -> b (h w) c kh kw", kh=kh, kw=kw)
         return pred_patches, target_patches, masked_patch
 
@@ -123,14 +123,13 @@ class MAEv2(L.LightningModule):
         x = self.decoder.forward(x)
         x = x[:, 1:]
         x = self.head(x)
+
+        kh, kw = self.tokenizer.kernel_size
         pred_patches = rearrange(
             x,
             "b n (c kh kw) -> b n c kh kw",
             c=self.tokenizer.num_channels,
-            kh=self.tokenizer.kernel_size[0],
-            kw=self.tokenizer.kernel_size[1],
-        )
-        kh, kw = self.tokenizer.kernel_size
+            kh=kh, kw=kw)
         target_patches = rearrange(img, "b c (h kh) (w kw) -> b (h w) c kh kw", kh=kh, kw=kw)
         masked_patch = torch.ones(
             pred_patches.shape[:2],
@@ -357,7 +356,7 @@ class MAEv2(L.LightningModule):
         else:
             warmup_scheduler = LinearLR(
                 optimizer,
-                start_factor=0.01,
+                start_factor=0.1,
                 end_factor=1.0,
                 total_iters=self.warmup_steps,
             )
