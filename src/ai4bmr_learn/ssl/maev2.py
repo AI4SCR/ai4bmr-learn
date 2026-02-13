@@ -73,24 +73,22 @@ class MAEv2(L.LightningModule):
 
         self.save_hyperparameters(ignore=["tokenizer", "encoder", "decoder", "backbone"])
 
-    def _img_to_patch_tokens(self, img: torch.Tensor) -> torch.Tensor:
-        patches = patchify(
+    def _img_to_patches(self, img: torch.Tensor) -> torch.Tensor:
+        return patchify(
             img,
             kernel_size=self.tokenizer.kernel_size,
             stride=self.tokenizer.stride,
             fmt="b (h w) c kh kw",
         )
-        kh, kw = self.tokenizer.kernel_size
-        return rearrange(patches, "b n c kh kw -> b n (c kh kw)", kh=kh, kw=kw)
 
-    def _patch_tokens_to_patches(self, patch_tokens: torch.Tensor) -> torch.Tensor:
-        return rearrange(
-            patch_tokens,
-            "b n (c kh kw) -> b n c kh kw",
-            c=self.tokenizer.num_channels,
+    def _patches_to_img(self, patches: torch.Tensor) -> torch.Tensor:
+        patch_tokens = rearrange(
+            patches,
+            "b n c kh kw -> b n (c kh kw)",
             kh=self.tokenizer.kernel_size[0],
             kw=self.tokenizer.kernel_size[1],
         )
+        return self.tokenizer.tokens2img(patch_tokens)
 
     def _shared_step(self, img):
         batch_size = img.shape[0]
@@ -126,8 +124,15 @@ class MAEv2(L.LightningModule):
         x = x[:, 1:]  # remove prefix tokens
         x = self.head(x)
         masked_patch = token_mask[:, num_prefix_tokens:]
-        target_tokens = self._img_to_patch_tokens(img)
-        return x, target_tokens, masked_patch
+        pred_patches = rearrange(
+            x,
+            "b n (c kh kw) -> b n c kh kw",
+            c=self.tokenizer.num_channels,
+            kh=self.tokenizer.kernel_size[0],
+            kw=self.tokenizer.kernel_size[1],
+        )
+        target_patches = self._img_to_patches(img)
+        return pred_patches, target_patches, masked_patch
 
     def _shared_step_unmasked(self, img):
         z = self.backbone(img)
@@ -135,13 +140,20 @@ class MAEv2(L.LightningModule):
         x = self.decoder.forward(x)
         x = x[:, 1:]
         x = self.head(x)
-        target_tokens = self._img_to_patch_tokens(img)
+        pred_patches = rearrange(
+            x,
+            "b n (c kh kw) -> b n c kh kw",
+            c=self.tokenizer.num_channels,
+            kh=self.tokenizer.kernel_size[0],
+            kw=self.tokenizer.kernel_size[1],
+        )
+        target_patches = self._img_to_patches(img)
         masked_patch = torch.ones(
-            x.shape[:2],
-            device=x.device,
+            pred_patches.shape[:2],
+            device=pred_patches.device,
             dtype=torch.bool,
         )
-        return x, target_tokens, masked_patch, z
+        return pred_patches, target_patches, masked_patch, z
 
     def _log_stage(self, stage: str, loss: torch.Tensor):
         self.log(f"loss/{stage}", loss, on_step=stage == 'train', on_epoch=True)
@@ -153,10 +165,10 @@ class MAEv2(L.LightningModule):
         images = batch["image"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
 
-        prediction_tokens, target_tokens, masked_patch = self._shared_step(images)
+        prediction_patches, target_patches, masked_patch = self._shared_step(images)
         loss = self.compute_loss(
-            target_tokens=target_tokens,
-            predicted_tokens=prediction_tokens,
+            target_patches=target_patches,
+            predicted_patches=prediction_patches,
             masked_patch=masked_patch,
         )
         batch_size = images.shape[0]
@@ -168,10 +180,10 @@ class MAEv2(L.LightningModule):
         images = batch["image"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
 
-        prediction_tokens, target_tokens, masked_patch, _ = self._shared_step_unmasked(images)
+        prediction_patches, target_patches, masked_patch, _ = self._shared_step_unmasked(images)
         loss = self.compute_loss(
-            target_tokens=target_tokens,
-            predicted_tokens=prediction_tokens,
+            target_patches=target_patches,
+            predicted_patches=prediction_patches,
             masked_patch=masked_patch,
         )
         self._log_stage(stage="val", loss=loss)
@@ -181,26 +193,26 @@ class MAEv2(L.LightningModule):
         images = batch["image"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
 
-        prediction_masked_tokens, target_tokens_masked, masked_patch = self._shared_step(images)
+        prediction_masked_patches, target_patches_masked, masked_patch = self._shared_step(images)
         loss_masked = self.compute_loss(
-            target_tokens=target_tokens_masked,
-            predicted_tokens=prediction_masked_tokens,
+            target_patches=target_patches_masked,
+            predicted_patches=prediction_masked_patches,
             masked_patch=masked_patch,
         )
 
-        prediction_unmasked_tokens, target_tokens_unmasked, unmasked_patch, z = self._shared_step_unmasked(images)
+        prediction_unmasked_patches, target_patches_unmasked, unmasked_patch, z = self._shared_step_unmasked(images)
         loss_unmasked = self.compute_loss(
-            target_tokens=target_tokens_unmasked,
-            predicted_tokens=prediction_unmasked_tokens,
+            target_patches=target_patches_unmasked,
+            predicted_patches=prediction_unmasked_patches,
             masked_patch=unmasked_patch,
         )
         self._log_stage(stage="test", loss=loss_unmasked)
         self.log("test/masked_recon_loss", loss_masked, on_step=False, on_epoch=True)
 
-        prediction_masked = self.tokenizer.tokens2img(prediction_masked_tokens)
-        prediction_unmasked = self.tokenizer.tokens2img(prediction_unmasked_tokens)
-        mask_tokens = masked_patch[:, :, None].expand_as(target_tokens_masked).to(torch.float32)
-        mask_img = self.tokenizer.tokens2img(mask_tokens)
+        prediction_masked = self._patches_to_img(prediction_masked_patches)
+        prediction_unmasked = self._patches_to_img(prediction_unmasked_patches)
+        mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches_masked).to(torch.float32)
+        mask_img = self._patches_to_img(mask_patches)
 
         batch["loss"] = loss_unmasked.item()
         batch["loss_masked"] = loss_masked.item()
@@ -211,18 +223,16 @@ class MAEv2(L.LightningModule):
         batch["prediction_unmasked"] = prediction_unmasked.cpu()
         return batch
 
-    def compute_loss_simple(self, *, target_tokens, predicted_tokens, masked_patch):
-        assert target_tokens.ndim == 3, f"Expected target_tokens to have 3 dims [B,N,D], got {target_tokens.shape}"
-        assert predicted_tokens.shape == target_tokens.shape, (
-            f"Expected predicted_tokens shape {target_tokens.shape}, got {predicted_tokens.shape}"
+    def compute_loss_simple(self, *, target_patches, predicted_patches, masked_patch):
+        assert target_patches.ndim == 5, f"Expected target_patches to have 5 dims [B,N,C,Kh,Kw], got {target_patches.shape}"
+        assert predicted_patches.shape == target_patches.shape, (
+            f"Expected predicted_patches shape {target_patches.shape}, got {predicted_patches.shape}"
         )
-        assert masked_patch.shape == target_tokens.shape[:2], (
-            f"Expected masked_patch shape {target_tokens.shape[:2]}, got {masked_patch.shape}"
+        assert masked_patch.shape == target_patches.shape[:2], (
+            f"Expected masked_patch shape {target_patches.shape[:2]}, got {masked_patch.shape}"
         )
         assert masked_patch.any().item(), "Mask must contain at least one masked patch"
 
-        predicted_patches = self._patch_tokens_to_patches(predicted_tokens)
-        target_patches = self._patch_tokens_to_patches(target_tokens)
         sq_error = (predicted_patches - target_patches) ** 2  # [B, N, C, Kh, Kw]
         loss_per_patch_channel = sq_error.mean(dim=(3, 4))  # [B, N, C]
 
@@ -234,19 +244,16 @@ class MAEv2(L.LightningModule):
         loss_per_channel = channel_num / channel_den
         return loss_per_channel.mean()
 
-    def compute_loss_mae_plus(self, *, target_tokens, predicted_tokens, masked_patch):
-        assert target_tokens.ndim == 3, f"Expected target_tokens to have 3 dims [B,N,D], got {target_tokens.shape}"
-        assert predicted_tokens.shape == target_tokens.shape, (
-            f"Expected predicted_tokens shape {target_tokens.shape}, got {predicted_tokens.shape}"
+    def compute_loss_mae_plus(self, *, target_patches, predicted_patches, masked_patch):
+        assert target_patches.ndim == 5, f"Expected target_patches to have 5 dims [B,N,C,Kh,Kw], got {target_patches.shape}"
+        assert predicted_patches.shape == target_patches.shape, (
+            f"Expected predicted_patches shape {target_patches.shape}, got {predicted_patches.shape}"
         )
-        assert masked_patch.shape == target_tokens.shape[:2], (
-            f"Expected masked_patch shape {target_tokens.shape[:2]}, got {masked_patch.shape}"
+        assert masked_patch.shape == target_patches.shape[:2], (
+            f"Expected masked_patch shape {target_patches.shape[:2]}, got {masked_patch.shape}"
         )
         assert 0.0 <= self.fourier_alpha <= 1.0, f"Expected fourier_alpha in [0,1], got {self.fourier_alpha}"
         assert masked_patch.any().item(), "No masked patches found for MAE+ loss"
-
-        target_patches = self._patch_tokens_to_patches(target_tokens)
-        predicted_patches = self._patch_tokens_to_patches(predicted_tokens)
         mae_per_patch = ((predicted_patches - target_patches) ** 2).mean(dim=(2, 3, 4))
         loss_mae = mae_per_patch[masked_patch].mean()
 
@@ -257,25 +264,25 @@ class MAEv2(L.LightningModule):
 
         return (1 - self.fourier_alpha) * loss_mae + self.fourier_alpha * loss_ft
 
-    def compute_loss(self, *, target_tokens, predicted_tokens, masked_patch):
+    def compute_loss(self, *, target_patches, predicted_patches, masked_patch):
         match self.loss_type:
             case "simple":
                 return self.compute_loss_simple(
-                    target_tokens=target_tokens,
-                    predicted_tokens=predicted_tokens,
+                    target_patches=target_patches,
+                    predicted_patches=predicted_patches,
                     masked_patch=masked_patch,
                 )
             case "mae_plus":
                 return self.compute_loss_mae_plus(
-                    target_tokens=target_tokens,
-                    predicted_tokens=predicted_tokens,
+                    target_patches=target_patches,
+                    predicted_patches=predicted_patches,
                     masked_patch=masked_patch,
                 )
             case "classic":
-                target_img = self.tokenizer.tokens2img(target_tokens)
-                predicted_img = self.tokenizer.tokens2img(predicted_tokens)
-                mask_tokens = masked_patch[:, :, None].expand_as(target_tokens).to(torch.float32)
-                mask_img = self.tokenizer.tokens2img(mask_tokens)
+                target_img = self._patches_to_img(target_patches)
+                predicted_img = self._patches_to_img(predicted_patches)
+                mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches).to(torch.float32)
+                mask_img = self._patches_to_img(mask_patches)
                 return self.compute_classic_loss(
                     img=target_img,
                     predicted_img=predicted_img,
