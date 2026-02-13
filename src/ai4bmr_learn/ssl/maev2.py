@@ -197,13 +197,11 @@ class MAEv2(L.LightningModule):
         batch["prediction"] = prediction.detach().cpu()
         return batch
 
-    def compute_loss_legacy(self, *, img, predicted_img, mask):
-        loss = torch.mean((predicted_img - img) ** 2 * mask) / self.mask_ratio  # L2
-        return loss
-
     def compute_loss_simple(self, *, img, predicted_img, mask):
         assert img.ndim == 4, f"Expected img to have 4 dims [B,C,H,W], got {img.shape}"
+        assert predicted_img.shape == img.shape, f"Expected predicted_img shape {img.shape}, got {predicted_img.shape}"
         assert img.shape == mask.shape
+        assert mask.mean(dtype=torch.float32) > 0, "Mask must contain at least one active element"
 
         target = img
 
@@ -356,7 +354,7 @@ class MAEv2(L.LightningModule):
         else:
             warmup_scheduler = LinearLR(
                 optimizer,
-                start_factor=0.1,
+                start_factor=0.01,
                 end_factor=1.0,
                 total_iters=self.warmup_steps,
             )
