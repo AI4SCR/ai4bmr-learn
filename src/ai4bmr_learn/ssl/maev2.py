@@ -67,7 +67,6 @@ class MAEv2(L.LightningModule):
 
         # TRACKING
         self.num_samples_total = 0
-        self.batch = 0
 
         self.save_hyperparameters(ignore=["tokenizer", "encoder", "decoder", "backbone"])
 
@@ -122,27 +121,12 @@ class MAEv2(L.LightningModule):
         mask = torch.ones_like(img)
         return prediction, mask, z
 
-    def _log_stage(self, stage: str, loss: torch.Tensor, batch_idx: int, num_samples: int | None = None):
+    def _log_stage(self, stage: str, loss: torch.Tensor):
         metrics = {f"loss/{stage}": loss}
+        self.log(f"loss/{stage}", loss, on_step=stage == 'train', on_epoch=True)
 
         if stage == "train":
-            self.num_samples_total += num_samples
-            metrics.update(
-                {
-                    "train/num_samples_total": self.num_samples_total,
-                    "train/batch": self.batch,
-                    "train/batch_idx": batch_idx,
-                }
-            )
-
-        self.log_dict(
-            metrics,
-            on_step=True,
-            on_epoch=False,
-            prog_bar=False,
-            logger=True,
-            batch_size=num_samples,
-        )
+            self.log("train/num_samples_total", self.num_samples_total, on_step=True, on_epoch=False)
 
     def training_step(self, batch, batch_idx):
         images = batch["image"].to(self.device)
@@ -155,8 +139,8 @@ class MAEv2(L.LightningModule):
         prediction, mask = self._shared_step(images)
         loss = self.compute_loss(img=images, predicted_img=prediction, mask=mask, active_pixels=active_pixels)
         batch_size = images.shape[0]
-        self._log_stage(stage="train", loss=loss, batch_idx=batch_idx, num_samples=batch_size)
-        self.batch += 1
+        self.num_samples_total += batch_size
+        self._log_stage(stage="train", loss=loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -169,8 +153,7 @@ class MAEv2(L.LightningModule):
 
         prediction, mask, z = self._shared_step_unmasked(images)
         loss = self.compute_loss(img=images, predicted_img=prediction, mask=mask, active_pixels=active_pixels)
-        batch_size = images.shape[0]
-        self._log_stage(stage="val", loss=loss, batch_idx=batch_idx, num_samples=batch_size)
+        self._log_stage(stage="val", loss=loss)
 
         batch["loss"] = loss.item()
         batch["image"] = images.detach().cpu()
@@ -186,15 +169,17 @@ class MAEv2(L.LightningModule):
         if active_pixels is not None:
             active_pixels = active_pixels.to(self.device)
 
-        prediction, mask, z = self._shared_step_unmasked(images)
+        prediction_masked, mask = self._shared_step(images)
         loss = self.compute_loss(img=images, predicted_img=prediction, mask=mask, active_pixels=active_pixels)
-        batch_size = images.shape[0]
-        self._log_stage(stage="test", loss=loss, batch_idx=batch_idx, num_samples=batch_size)
+        self._log_stage(stage="test", loss=loss)
+
+        prediction_unmasked, _, z = self._shared_step_unmasked(images)
 
         batch["loss"] = loss.item()
-        batch["image"] = images.detach().cpu()
-        batch["z"] = pool(z, strategy=self.pooling).detach().cpu()
-        batch["prediction"] = prediction.detach().cpu()
+        batch["image"] = images.cpu()
+        batch["z"] = pool(z, strategy=self.pooling).cpu()
+        batch["prediction_masked"] = prediction_masked.cpu()
+        batch["prediction_unmasked"] = prediction_unmasked.cpu()
         return batch
 
     def compute_loss_simple(self, *, img, predicted_img, mask):
