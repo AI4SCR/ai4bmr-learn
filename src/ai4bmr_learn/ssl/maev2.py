@@ -8,7 +8,6 @@ from ai4bmr_learn.models.decoder.masked_decoder import MaskedDecoderDefault, Mas
 from ai4bmr_learn.ssl.utils import random_token_mask
 import torch.nn as nn
 from ai4bmr_learn.utils.pooling import pool
-from ai4bmr_learn.models.tokenizer.utils import patchify
 
 
 class MAEv2(L.LightningModule):
@@ -73,23 +72,6 @@ class MAEv2(L.LightningModule):
 
         self.save_hyperparameters(ignore=["tokenizer", "encoder", "decoder", "backbone"])
 
-    def _img_to_patches(self, img: torch.Tensor) -> torch.Tensor:
-        return patchify(
-            img,
-            kernel_size=self.tokenizer.kernel_size,
-            stride=self.tokenizer.stride,
-            fmt="b (h w) c kh kw",
-        )
-
-    def _patches_to_img(self, patches: torch.Tensor) -> torch.Tensor:
-        patch_tokens = rearrange(
-            patches,
-            "b n c kh kw -> b n (c kh kw)",
-            kh=self.tokenizer.kernel_size[0],
-            kw=self.tokenizer.kernel_size[1],
-        )
-        return self.tokenizer.tokens2img(patch_tokens)
-
     def _shared_step(self, img):
         batch_size = img.shape[0]
 
@@ -131,7 +113,8 @@ class MAEv2(L.LightningModule):
             kh=self.tokenizer.kernel_size[0],
             kw=self.tokenizer.kernel_size[1],
         )
-        target_patches = self._img_to_patches(img)
+        kh, kw = self.tokenizer.kernel_size
+        target_patches = rearrange(img, "b c (h kh) (w kw) -> b (h w) c kh kw", kh=kh, kw=kw)
         return pred_patches, target_patches, masked_patch
 
     def _shared_step_unmasked(self, img):
@@ -147,7 +130,8 @@ class MAEv2(L.LightningModule):
             kh=self.tokenizer.kernel_size[0],
             kw=self.tokenizer.kernel_size[1],
         )
-        target_patches = self._img_to_patches(img)
+        kh, kw = self.tokenizer.kernel_size
+        target_patches = rearrange(img, "b c (h kh) (w kw) -> b (h w) c kh kw", kh=kh, kw=kw)
         masked_patch = torch.ones(
             pred_patches.shape[:2],
             device=pred_patches.device,
@@ -209,10 +193,14 @@ class MAEv2(L.LightningModule):
         self._log_stage(stage="test", loss=loss_unmasked)
         self.log("test/masked_recon_loss", loss_masked, on_step=False, on_epoch=True)
 
-        prediction_masked = self._patches_to_img(prediction_masked_patches)
-        prediction_unmasked = self._patches_to_img(prediction_unmasked_patches)
+        prediction_masked = self.tokenizer.tokens2img(
+            rearrange(prediction_masked_patches, "b n c kh kw -> b n (c kh kw)")
+        )
+        prediction_unmasked = self.tokenizer.tokens2img(
+            rearrange(prediction_unmasked_patches, "b n c kh kw -> b n (c kh kw)")
+        )
         mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches_masked).to(torch.float32)
-        mask_img = self._patches_to_img(mask_patches)
+        mask_img = self.tokenizer.tokens2img(rearrange(mask_patches, "b n c kh kw -> b n (c kh kw)"))
 
         batch["loss"] = loss_unmasked.item()
         batch["loss_masked"] = loss_masked.item()
@@ -279,10 +267,10 @@ class MAEv2(L.LightningModule):
                     masked_patch=masked_patch,
                 )
             case "classic":
-                target_img = self._patches_to_img(target_patches)
-                predicted_img = self._patches_to_img(predicted_patches)
+                target_img = self.tokenizer.tokens2img(rearrange(target_patches, "b n c kh kw -> b n (c kh kw)"))
+                predicted_img = self.tokenizer.tokens2img(rearrange(predicted_patches, "b n c kh kw -> b n (c kh kw)"))
                 mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches).to(torch.float32)
-                mask_img = self._patches_to_img(mask_patches)
+                mask_img = self.tokenizer.tokens2img(rearrange(mask_patches, "b n c kh kw -> b n (c kh kw)"))
                 return self.compute_classic_loss(
                     img=target_img,
                     predicted_img=predicted_img,
