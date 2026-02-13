@@ -1,4 +1,4 @@
-from einops import repeat
+from einops import rearrange
 import lightning as L
 
 import torch
@@ -8,6 +8,7 @@ from ai4bmr_learn.models.decoder.masked_decoder import MaskedDecoderDefault, Mas
 from ai4bmr_learn.ssl.utils import random_token_mask
 import torch.nn as nn
 from ai4bmr_learn.utils.pooling import pool
+from ai4bmr_learn.models.tokenizer.utils import patchify
 
 
 class MAEv2(L.LightningModule):
@@ -30,6 +31,7 @@ class MAEv2(L.LightningModule):
             warmup_steps: int = 2000,
             max_epochs: int = 1500,
             pooling: str | None = "cls",
+            fourier_alpha: float = 0.01,
     ):
         super().__init__()
 
@@ -64,11 +66,31 @@ class MAEv2(L.LightningModule):
         self.warmup_steps = warmup_steps
         self.max_epochs = max_epochs
         self.pooling = pooling
+        self.fourier_alpha = fourier_alpha
 
         # TRACKING
         self.num_samples_total = 0
 
         self.save_hyperparameters(ignore=["tokenizer", "encoder", "decoder", "backbone"])
+
+    def _img_to_patch_tokens(self, img: torch.Tensor) -> torch.Tensor:
+        patches = patchify(
+            img,
+            kernel_size=self.tokenizer.kernel_size,
+            stride=self.tokenizer.stride,
+            fmt="b (h w) c kh kw",
+        )
+        kh, kw = self.tokenizer.kernel_size
+        return rearrange(patches, "b n c kh kw -> b n (c kh kw)", kh=kh, kw=kw)
+
+    def _patch_tokens_to_patches(self, patch_tokens: torch.Tensor) -> torch.Tensor:
+        return rearrange(
+            patch_tokens,
+            "b n (c kh kw) -> b n c kh kw",
+            c=self.tokenizer.num_channels,
+            kh=self.tokenizer.kernel_size[0],
+            kw=self.tokenizer.kernel_size[1],
+        )
 
     def _shared_step(self, img):
         batch_size = img.shape[0]
@@ -100,16 +122,12 @@ class MAEv2(L.LightningModule):
         # 4. decode masked patch tokens
         x = self.decoder.forward_masked(x, idx_keep=idx_keep)
 
-        # 5. project to pixel space
+        # 5. project to pixel-token space
         x = x[:, 1:]  # remove prefix tokens
         x = self.head(x)
-        mask = repeat(token_mask[:, num_prefix_tokens:], "b k -> b k d", d=x.shape[-1])
-
-        # 6. convert tokens to image
-        mask = self.tokenizer.tokens2img(mask)
-        x = self.tokenizer.tokens2img(x)
-
-        return x, mask
+        masked_patch = token_mask[:, num_prefix_tokens:]
+        target_tokens = self._img_to_patch_tokens(img)
+        return x, target_tokens, masked_patch
 
     def _shared_step_unmasked(self, img):
         z = self.backbone(img)
@@ -117,9 +135,13 @@ class MAEv2(L.LightningModule):
         x = self.decoder.forward(x)
         x = x[:, 1:]
         x = self.head(x)
-        prediction = self.tokenizer.tokens2img(x)
-        mask = torch.ones_like(img)
-        return prediction, mask, z
+        target_tokens = self._img_to_patch_tokens(img)
+        masked_patch = torch.ones(
+            x.shape[:2],
+            device=x.device,
+            dtype=torch.bool,
+        )
+        return x, target_tokens, masked_patch, z
 
     def _log_stage(self, stage: str, loss: torch.Tensor):
         self.log(f"loss/{stage}", loss, on_step=stage == 'train', on_epoch=True)
@@ -131,12 +153,12 @@ class MAEv2(L.LightningModule):
         images = batch["image"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
 
-        active_pixels = batch.get("active_pixel_mask", None)
-        if active_pixels is not None:
-            active_pixels = active_pixels.to(self.device)
-
-        prediction, mask = self._shared_step(images)
-        loss = self.compute_loss(img=images, predicted_img=prediction, mask=mask, active_pixels=active_pixels)
+        prediction_tokens, target_tokens, masked_patch = self._shared_step(images)
+        loss = self.compute_loss(
+            target_tokens=target_tokens,
+            predicted_tokens=prediction_tokens,
+            masked_patch=masked_patch,
+        )
         batch_size = images.shape[0]
         self.num_samples_total += batch_size
         self._log_stage(stage="train", loss=loss)
@@ -146,12 +168,12 @@ class MAEv2(L.LightningModule):
         images = batch["image"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
 
-        active_pixels = batch.get("active_pixel_mask", None)
-        if active_pixels is not None:
-            active_pixels = active_pixels.to(self.device)
-
-        prediction, mask, z = self._shared_step_unmasked(images)
-        loss = self.compute_loss(img=images, predicted_img=prediction, mask=mask, active_pixels=active_pixels)
+        prediction_tokens, target_tokens, masked_patch, _ = self._shared_step_unmasked(images)
+        loss = self.compute_loss(
+            target_tokens=target_tokens,
+            predicted_tokens=prediction_tokens,
+            masked_patch=masked_patch,
+        )
         self._log_stage(stage="val", loss=loss)
         return loss
 
@@ -159,95 +181,121 @@ class MAEv2(L.LightningModule):
         images = batch["image"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
 
-        active_pixels = batch.get("active_pixel_mask", None)
-        if active_pixels is not None:
-            active_pixels = active_pixels.to(self.device)
-
-        prediction_masked, mask_masked = self._shared_step(images)
+        prediction_masked_tokens, target_tokens_masked, masked_patch = self._shared_step(images)
         loss_masked = self.compute_loss(
-            img=images,
-            predicted_img=prediction_masked,
-            mask=mask_masked,
-            active_pixels=active_pixels,
+            target_tokens=target_tokens_masked,
+            predicted_tokens=prediction_masked_tokens,
+            masked_patch=masked_patch,
         )
 
-        prediction_unmasked, mask_unmasked, z = self._shared_step_unmasked(images)
+        prediction_unmasked_tokens, target_tokens_unmasked, unmasked_patch, z = self._shared_step_unmasked(images)
         loss_unmasked = self.compute_loss(
-            img=images,
-            predicted_img=prediction_unmasked,
-            mask=mask_unmasked,
-            active_pixels=active_pixels,
+            target_tokens=target_tokens_unmasked,
+            predicted_tokens=prediction_unmasked_tokens,
+            masked_patch=unmasked_patch,
         )
         self._log_stage(stage="test", loss=loss_unmasked)
         self.log("test/masked_recon_loss", loss_masked, on_step=False, on_epoch=True)
+
+        prediction_masked = self.tokenizer.tokens2img(prediction_masked_tokens)
+        prediction_unmasked = self.tokenizer.tokens2img(prediction_unmasked_tokens)
+        mask_tokens = masked_patch[:, :, None].expand_as(target_tokens_masked).to(torch.float32)
+        mask_img = self.tokenizer.tokens2img(mask_tokens)
 
         batch["loss"] = loss_unmasked.item()
         batch["loss_masked"] = loss_masked.item()
         batch["image"] = images.cpu()
         batch["z"] = pool(z, strategy=self.pooling).cpu()
-        batch["mask"] = mask_masked.cpu()
+        batch["mask"] = mask_img.cpu()
         batch["prediction_masked"] = prediction_masked.cpu()
         batch["prediction_unmasked"] = prediction_unmasked.cpu()
         return batch
 
-    def compute_loss_simple(self, *, img, predicted_img, mask):
-        assert img.ndim == 4, f"Expected img to have 4 dims [B,C,H,W], got {img.shape}"
-        assert predicted_img.shape == img.shape, f"Expected predicted_img shape {img.shape}, got {predicted_img.shape}"
-        assert img.shape == mask.shape
-        assert mask.mean(dtype=torch.float32) > 0, "Mask must contain at least one active element"
+    def compute_loss_simple(self, *, target_tokens, predicted_tokens, masked_patch):
+        assert target_tokens.ndim == 3, f"Expected target_tokens to have 3 dims [B,N,D], got {target_tokens.shape}"
+        assert predicted_tokens.shape == target_tokens.shape, (
+            f"Expected predicted_tokens shape {target_tokens.shape}, got {predicted_tokens.shape}"
+        )
+        assert masked_patch.shape == target_tokens.shape[:2], (
+            f"Expected masked_patch shape {target_tokens.shape[:2]}, got {masked_patch.shape}"
+        )
+        assert masked_patch.any().item(), "Mask must contain at least one masked patch"
 
-        target = img
+        predicted_patches = self._patch_tokens_to_patches(predicted_tokens)
+        target_patches = self._patch_tokens_to_patches(target_tokens)
+        sq_error = (predicted_patches - target_patches) ** 2  # [B, N, C, Kh, Kw]
+        loss_per_patch_channel = sq_error.mean(dim=(3, 4))  # [B, N, C]
 
-        loss = (predicted_img - target) ** 2  # [B, C, H, W]
+        patch_weights = masked_patch.to(loss_per_patch_channel.dtype).unsqueeze(-1)  # [B, N, 1]
+        channel_num = (loss_per_patch_channel * patch_weights).sum(dim=1)  # [B, C]
+        channel_den = patch_weights.sum(dim=1)  # [B, 1]
+        assert (channel_den > 0).all().item(), "Each sample must contain at least one masked patch"
 
-        # loss on masked pixels scaled by the masking ratio
-        loss = loss * mask
-        loss = loss.mean(dim=(2, 3))  # per-channel loss [B, C]
-        loss = loss.mean() / mask.mean(dtype=torch.float32)
+        loss_per_channel = channel_num / channel_den
+        return loss_per_channel.mean()
 
-        return loss
+    def compute_loss_mae_plus(self, *, target_tokens, predicted_tokens, masked_patch):
+        assert target_tokens.ndim == 3, f"Expected target_tokens to have 3 dims [B,N,D], got {target_tokens.shape}"
+        assert predicted_tokens.shape == target_tokens.shape, (
+            f"Expected predicted_tokens shape {target_tokens.shape}, got {predicted_tokens.shape}"
+        )
+        assert masked_patch.shape == target_tokens.shape[:2], (
+            f"Expected masked_patch shape {target_tokens.shape[:2]}, got {masked_patch.shape}"
+        )
+        assert 0.0 <= self.fourier_alpha <= 1.0, f"Expected fourier_alpha in [0,1], got {self.fourier_alpha}"
+        assert masked_patch.any().item(), "No masked patches found for MAE+ loss"
 
-    def compute_loss(self, *, img, predicted_img, mask, active_pixels=None):
+        target_patches = self._patch_tokens_to_patches(target_tokens)
+        predicted_patches = self._patch_tokens_to_patches(predicted_tokens)
+        mae_per_patch = ((predicted_patches - target_patches) ** 2).mean(dim=(2, 3, 4))
+        loss_mae = mae_per_patch[masked_patch].mean()
+
+        fft_target = torch.fft.fft2(target_patches, dim=(-2, -1))
+        fft_pred = torch.fft.fft2(predicted_patches, dim=(-2, -1))
+        ft_per_patch = (fft_pred.abs() - fft_target.abs()).abs().mean(dim=(2, 3, 4))
+        loss_ft = ft_per_patch[masked_patch].mean()
+
+        return (1 - self.fourier_alpha) * loss_mae + self.fourier_alpha * loss_ft
+
+    def compute_loss(self, *, target_tokens, predicted_tokens, masked_patch):
         match self.loss_type:
             case "simple":
-                return self.compute_loss_simple(img=img, predicted_img=predicted_img, mask=mask)
-            case "classic":
-                return self.compute_classic_loss(
-                    img=img,
-                    predicted_img=predicted_img,
-                    mask=mask,
-                    active_pixels=active_pixels,
+                return self.compute_loss_simple(
+                    target_tokens=target_tokens,
+                    predicted_tokens=predicted_tokens,
+                    masked_patch=masked_patch,
                 )
-            case "fg_bg":
-                return self.compute_foreground_background_loss(
-                    img=img,
+            case "mae_plus":
+                return self.compute_loss_mae_plus(
+                    target_tokens=target_tokens,
+                    predicted_tokens=predicted_tokens,
+                    masked_patch=masked_patch,
+                )
+            case "classic":
+                target_img = self.tokenizer.tokens2img(target_tokens)
+                predicted_img = self.tokenizer.tokens2img(predicted_tokens)
+                mask_tokens = masked_patch[:, :, None].expand_as(target_tokens).to(torch.float32)
+                mask_img = self.tokenizer.tokens2img(mask_tokens)
+                return self.compute_classic_loss(
+                    img=target_img,
                     predicted_img=predicted_img,
-                    mask=mask,
-                    active_pixels=active_pixels,
+                    mask=mask_img,
                 )
             case _:
                 raise ValueError(f"Unknown loss_type={self.loss_type}")
 
-    def compute_classic_loss(self, img, predicted_img, mask, active_pixels=None):
+    def compute_classic_loss(self, img, predicted_img, mask):
         assert img.ndim == 4, f"Expected img to have 4 dims [B,C,H,W], got {img.shape}"
         assert img.shape == mask.shape
 
         target = img
         batch_size, num_channels, _, _ = target.shape
 
-        if active_pixels is not None:
-            channel_activity = active_pixels.mean(dim=(2, 3), dtype=torch.float32)  # [B, C]
-
         if self.weight_loss_by_sparsity:
-            # NOTE: this is computed over the whole image not only the masked pixels, design choice.
-            w = 1 / (channel_activity.sqrt() + 1e-3)
-            w = w.clamp(min=0.0, max=25.0)  # avoid extreme weights
-            w = w / w.mean(dim=1, keepdim=True)
-            w = w.to(target.device).float()
+            raise ValueError("weight_loss_by_sparsity is disabled in MAEv2")
         elif self.channel_weights is not None:
-            # more than activity_threshold of pixels in each channel must be active to contribute to the loss
             w = self.channel_weights.to(device=target.device, dtype=torch.float32).clone()
-            w = (channel_activity > self.activity_threshold) * w.unsqueeze(0)
+            w = w.unsqueeze(0).expand(batch_size, -1)
         else:
             w = torch.ones((batch_size, num_channels), device=target.device, dtype=torch.float32)
 
@@ -267,39 +315,6 @@ class MAEv2(L.LightningModule):
         mask_sum = mask.sum(dim=(2, 3))  # [B, C]
         loss = loss / (mask_sum + 1e-6)
 
-        loss = loss * w
-        loss = loss.mean()
-        return loss
-
-    def compute_foreground_background_loss(self, img, predicted_img, mask, active_pixels, alpha=0.8):
-        assert img.ndim == 4, f"Expected img to have 4 dims [B,C,H,W], got {img.shape}"
-        assert img.shape == mask.shape
-
-        mask = mask.bool()
-        active_pixels = active_pixels.bool()
-
-        target = img
-        batch_size, num_channels, _, _ = target.shape
-
-        if self.channel_weights is not None:
-            w = self.channel_weights.to(device=target.device, dtype=torch.float32).clone()
-        else:
-            w = torch.ones((batch_size, num_channels), device=target.device, dtype=torch.float32)
-
-        per_pixel = (predicted_img - target) ** 2  # [B, C, H, W]
-
-        fg_mask = mask & active_pixels  # [B,C,H,W]
-        bg_mask = mask & (~active_pixels)  # [B,C,H,W]
-
-        fg_num = (per_pixel * fg_mask).sum(dim=(2, 3))  # [B,C]
-        fg_den = fg_mask.sum(dim=(2, 3)).clamp_min(1.0).to(per_pixel.dtype)  # [B,C]
-        fg_mean = fg_num / fg_den  # [B,C]
-
-        bg_num = (per_pixel * bg_mask).sum(dim=(2, 3))  # [B,C]
-        bg_den = bg_mask.sum(dim=(2, 3)).clamp_min(1.0).to(per_pixel.dtype)  # [B,C]
-        bg_mean = bg_num / bg_den
-
-        loss = alpha * fg_mean + (1 - alpha) * bg_mean
         loss = loss * w
         loss = loss.mean()
         return loss
