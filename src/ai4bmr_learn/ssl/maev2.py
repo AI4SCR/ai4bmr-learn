@@ -19,7 +19,7 @@ class MAEv2(L.LightningModule):
             backbone: nn.Module,
             decoder_kwargs: dict | None = None,
             mask_ratio: float = 0.75,
-            loss_type: str = "classic",
+            loss_type: str = "simple",
             channel_weights: list[float] | torch.Tensor | None = None,
             activity_threshold: float = 0,
             weight_loss_by_sparsity: bool = False,
@@ -123,14 +123,11 @@ class MAEv2(L.LightningModule):
         return prediction, mask, z
 
     def _log_stage(self, stage: str, loss: torch.Tensor, batch_idx: int, num_samples: int | None = None):
-        payload = {
-            f"loss/{stage}": loss.item(),
-            "trainer/global_step": self.trainer.global_step,
-        }
+        metrics = {f"loss/{stage}": loss}
 
         if stage == "train":
             self.num_samples_total += num_samples
-            payload.update(
+            metrics.update(
                 {
                     "train/num_samples_total": self.num_samples_total,
                     "train/batch": self.batch,
@@ -138,35 +135,42 @@ class MAEv2(L.LightningModule):
                 }
             )
 
-        self.logger.experiment.log(payload)
+        self.log_dict(
+            metrics,
+            on_step=True,
+            on_epoch=False,
+            prog_bar=False,
+            logger=True,
+            batch_size=num_samples,
+        )
 
-    def _run_shared_step(self, batch, batch_idx: int, stage: str, masked: bool):
+    def training_step(self, batch, batch_idx):
         images = batch["image"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
 
         active_pixels = batch.get("active_pixel_mask", None)
         if active_pixels is not None:
             active_pixels = active_pixels.to(self.device)
-        if masked:
-            prediction, mask = self._shared_step(images)
-            z = None
-        else:
-            prediction, mask, z = self._shared_step_unmasked(images)
 
+        prediction, mask = self._shared_step(images)
         loss = self.compute_loss(img=images, predicted_img=prediction, mask=mask, active_pixels=active_pixels)
         batch_size = images.shape[0]
+        self._log_stage(stage="train", loss=loss, batch_idx=batch_idx, num_samples=batch_size)
+        self.batch += 1
+        return loss
 
-        self._log_stage(stage=stage, loss=loss, batch_idx=batch_idx, num_samples=batch_size)
+    def validation_step(self, batch, batch_idx):
+        images = batch["image"].to(self.device)
+        assert not images.isnan().any(), "Input images contain NaNs"
 
-        if stage == "train":
-            self.log("loss/train", loss, on_step=True, on_epoch=True, batch_size=batch_size)
-            self.batch += 1
-            return loss
+        active_pixels = batch.get("active_pixel_mask", None)
+        if active_pixels is not None:
+            active_pixels = active_pixels.to(self.device)
 
-        if stage == "val":
-            self.log("loss/val", loss, batch_size=batch_size)
-        elif stage == "test":
-            self.log("loss/test", loss, batch_size=batch_size)
+        prediction, mask, z = self._shared_step_unmasked(images)
+        loss = self.compute_loss(img=images, predicted_img=prediction, mask=mask, active_pixels=active_pixels)
+        batch_size = images.shape[0]
+        self._log_stage(stage="val", loss=loss, batch_idx=batch_idx, num_samples=batch_size)
 
         batch["loss"] = loss.item()
         batch["image"] = images.detach().cpu()
@@ -174,14 +178,24 @@ class MAEv2(L.LightningModule):
         batch["prediction"] = prediction.detach().cpu()
         return batch
 
-    def training_step(self, batch, batch_idx):
-        return self._run_shared_step(batch=batch, batch_idx=batch_idx, stage="train", masked=True)
-
-    def validation_step(self, batch, batch_idx):
-        return self._run_shared_step(batch=batch, batch_idx=batch_idx, stage="val", masked=False)
-
     def test_step(self, batch, batch_idx):
-        return self._run_shared_step(batch=batch, batch_idx=batch_idx, stage="test", masked=False)
+        images = batch["image"].to(self.device)
+        assert not images.isnan().any(), "Input images contain NaNs"
+
+        active_pixels = batch.get("active_pixel_mask", None)
+        if active_pixels is not None:
+            active_pixels = active_pixels.to(self.device)
+
+        prediction, mask, z = self._shared_step_unmasked(images)
+        loss = self.compute_loss(img=images, predicted_img=prediction, mask=mask, active_pixels=active_pixels)
+        batch_size = images.shape[0]
+        self._log_stage(stage="test", loss=loss, batch_idx=batch_idx, num_samples=batch_size)
+
+        batch["loss"] = loss.item()
+        batch["image"] = images.detach().cpu()
+        batch["z"] = pool(z, strategy=self.pooling).detach().cpu()
+        batch["prediction"] = prediction.detach().cpu()
+        return batch
 
     def compute_loss_legacy(self, *, img, predicted_img, mask):
         loss = torch.mean((predicted_img - img) ** 2 * mask) / self.mask_ratio  # L2
@@ -314,11 +328,23 @@ class MAEv2(L.LightningModule):
                 f"estimated_stepping_batches ({total_steps}) must be > warmup_steps ({self.warmup_steps})"
             )
 
+        decay_params = []
+        no_decay_params = []
+        for name, param in self.named_parameters():
+            if not param.requires_grad:
+                continue
+            if param.ndim == 1 or name.endswith(".bias"):
+                no_decay_params.append(param)
+            else:
+                decay_params.append(param)
+
         optimizer = torch.optim.AdamW(
-            self.parameters(),
+            [
+                {"params": decay_params, "weight_decay": self.weight_decay},
+                {"params": no_decay_params, "weight_decay": 0.0},
+            ],
             lr=self.lr,
             betas=self.betas,
-            weight_decay=self.weight_decay,
         )
 
         if self.warmup_steps == 0:
