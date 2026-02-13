@@ -163,12 +163,23 @@ class MAEv2(L.LightningModule):
         images = batch["image"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
 
-        prediction_patches, target_patches, masked_patch, _ = self._shared_step_unmasked(images)
-        loss = self.compute_loss(
-            target_patches=target_patches,
-            predicted_patches=prediction_patches,
+        prediction_masked_patches, target_patches_masked, masked_patch = self._shared_step(images)
+        loss_masked = self.compute_loss(
+            target_patches=target_patches_masked,
+            predicted_patches=prediction_masked_patches,
             masked_patch=masked_patch,
         )
+
+        prediction_unmasked_patches, target_patches_unmasked, unmasked_patch, _ = self._shared_step_unmasked(images)
+        loss_unmasked = self.compute_loss(
+            target_patches=target_patches_unmasked,
+            predicted_patches=prediction_unmasked_patches,
+            masked_patch=unmasked_patch,
+        )
+
+        self.log("loss/val_masked", loss_masked, on_step=False, on_epoch=True)
+        self.log("loss/val_unmasked", loss_unmasked, on_step=False, on_epoch=True)
+        loss = loss_unmasked
         self._log_stage(stage="val", loss=loss)
         return loss
 
