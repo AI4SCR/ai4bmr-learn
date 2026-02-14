@@ -23,7 +23,7 @@ class MAEv2(L.LightningModule):
             channel_weights: list[float] | torch.Tensor | None = None,
             activity_threshold: float = 0,
             weight_loss_by_sparsity: bool = False,
-            norm_loss_target: bool = False,
+            norm_pix_loss: bool = False,
             lr: float = 1.5e-4,
             weight_decay: float = 0.04,
             betas: tuple[float, float] = (0.9, 0.95),
@@ -56,7 +56,7 @@ class MAEv2(L.LightningModule):
         self.channel_weights = channel_weights
         self.activity_threshold = activity_threshold
         self.weight_loss_by_sparsity = weight_loss_by_sparsity
-        self.norm_loss_target = norm_loss_target
+        self.norm_pix_loss = norm_pix_loss
 
         # OPTIMIZER
         self.lr = lr
@@ -241,6 +241,14 @@ class MAEv2(L.LightningModule):
         loss_per_channel = channel_num / channel_den
         return loss_per_channel.mean()
 
+    def _normalize_target_patches(self, target_patches: torch.Tensor) -> torch.Tensor:
+        assert target_patches.ndim == 5, (
+            f"Expected target_patches to have 5 dims [B,N,C,Kh,Kw], got {target_patches.shape}"
+        )
+        mean = target_patches.mean(dim=(3, 4), keepdim=True)
+        var = target_patches.var(dim=(3, 4), keepdim=True, unbiased=False)
+        return (target_patches - mean) / torch.sqrt(var + 1e-6)
+
     def compute_loss_mae_plus(self, *, target_patches, predicted_patches, masked_patch):
         assert target_patches.ndim == 5, f"Expected target_patches to have 5 dims [B,N,C,Kh,Kw], got {target_patches.shape}"
         assert predicted_patches.shape == target_patches.shape, (
@@ -275,6 +283,9 @@ class MAEv2(L.LightningModule):
         return loss_per_channel.mean()
 
     def compute_loss(self, *, target_patches, predicted_patches, masked_patch):
+        if self.norm_pix_loss:
+            target_patches = self._normalize_target_patches(target_patches)
+
         match self.loss_type:
             case "simple":
                 return self.compute_loss_simple(
@@ -316,14 +327,6 @@ class MAEv2(L.LightningModule):
             w = w.unsqueeze(0).expand(batch_size, -1)
         else:
             w = torch.ones((batch_size, num_channels), device=target.device, dtype=torch.float32)
-
-        if self.norm_loss_target:
-            mean = target.mean(dim=(2, 3), keepdim=True)
-            var = target.var(dim=(2, 3), keepdim=True, unbiased=False)
-
-            std = torch.sqrt(var + 1e-6)
-            std = std.clamp(min=0.05)
-            target = (target - mean) / std
 
         loss = (predicted_img - target) ** 2  # [B, C, H, W]
         loss = loss * mask
