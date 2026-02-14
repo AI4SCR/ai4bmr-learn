@@ -29,9 +29,10 @@ class MAEv2(L.LightningModule):
             max_epochs: int = 1500,
             pooling: str | None = "cls",
             fourier_alpha: float = 0.01,
-            activity_q: float = 0.5,
+            activity_weights: bool = False,
+            activity_q: float = 0.01,
             activity_k: float = 10.0,
-            activity_phi_0: float = 0.25,
+            activity_phi_0: float = 0.2,
     ):
         super().__init__()
 
@@ -52,10 +53,17 @@ class MAEv2(L.LightningModule):
 
         self.mask_ratio = mask_ratio
 
+        self.pooling = pooling
+
         # LOSS
         self.loss_type = loss_type
         self.channel_weights = channel_weights
         self.norm_pix_loss = norm_pix_loss
+        self.fourier_alpha = fourier_alpha
+        self.activity_weights = activity_weights
+        self.activity_q = activity_q
+        self.activity_k = activity_k
+        self.activity_phi_0 = activity_phi_0
 
         # OPTIMIZER
         self.lr = lr
@@ -63,11 +71,6 @@ class MAEv2(L.LightningModule):
         self.betas = betas
         self.warmup_steps = warmup_steps
         self.max_epochs = max_epochs
-        self.pooling = pooling
-        self.fourier_alpha = fourier_alpha
-        self.activity_q = activity_q
-        self.activity_k = activity_k
-        self.activity_phi_0 = activity_phi_0
 
         # TRACKING
         self.num_samples_total = 0
@@ -222,31 +225,6 @@ class MAEv2(L.LightningModule):
         batch["prediction_unmasked"] = prediction_unmasked.cpu()
         return batch
 
-    def compute_loss_simple(self, *, target_patches, predicted_patches, masked_patch, activity_weights):
-        assert target_patches.ndim == 5, f"Expected target_patches to have 5 dims [B,N,C,Kh,Kw], got {target_patches.shape}"
-        assert predicted_patches.shape == target_patches.shape, (
-            f"Expected predicted_patches shape {target_patches.shape}, got {predicted_patches.shape}"
-        )
-        assert masked_patch.shape == target_patches.shape[:2], (
-            f"Expected masked_patch shape {target_patches.shape[:2]}, got {masked_patch.shape}"
-        )
-        assert activity_weights.shape == target_patches.shape[:3], (
-            f"Expected activity_weights shape {target_patches.shape[:3]}, got {activity_weights.shape}"
-        )
-        assert masked_patch.any().item(), "Mask must contain at least one masked patch"
-
-        sq_error = (predicted_patches - target_patches) ** 2  # [B, N, C, Kh, Kw]
-        loss_per_patch_channel = sq_error.mean(dim=(3, 4))  # [B, N, C]
-        loss_per_patch_channel = loss_per_patch_channel * activity_weights
-
-        patch_weights = masked_patch.to(loss_per_patch_channel.dtype).unsqueeze(-1)  # [B, N, 1]
-        channel_num = (loss_per_patch_channel * patch_weights).sum(dim=1)  # [B, C]
-        channel_den = patch_weights.sum(dim=1)  # [B, 1]
-        assert (channel_den > 0).all().item(), "Each sample must contain at least one masked patch"
-
-        loss_per_channel = channel_num / channel_den
-        return loss_per_channel.mean()
-
     def _normalize_target_patches(self, target_patches: torch.Tensor) -> torch.Tensor:
         assert target_patches.ndim == 5, (
             f"Expected target_patches to have 5 dims [B,N,C,Kh,Kw], got {target_patches.shape}"
@@ -263,16 +241,26 @@ class MAEv2(L.LightningModule):
         assert self.activity_k > 0.0, f"Expected activity_k > 0, got {self.activity_k}"
 
         vals = rearrange(target_patches, "b n c kh kw -> c (b n kh kw)")
-        thresholds = torch.quantile(vals, q=self.activity_q, dim=1)  # [C]
+        vals[vals == 0] = torch.nan
+        thresholds = torch.nanquantile(vals, q=self.activity_q, dim=1)  # [C]
         active = target_patches > thresholds[None, None, :, None, None]
 
         phi = active.to(target_patches.dtype).mean(dim=(3, 4))  # [B, N, C]
         s = torch.sigmoid(self.activity_k * (phi - self.activity_phi_0))
         weights = 1.0 + s
         assert (weights >= 1.0).all().item() and (weights <= 2.0).all().item(), "Activity weights must be in [1, 2]"
-        return weights
 
-    def compute_loss_mae_plus(self, *, target_patches, predicted_patches, masked_patch, activity_weights):
+        # channel-balancing
+        channel_weight = weights.sum(dim=(0, 1))
+        weights = weights / (channel_weight[None, None, :] + 1e-6)
+        weights = weights * channel_weight.mean()  # scale back
+
+        self.log_dict({f'quantile/{i}': q for i, q in enumerate(thresholds)}, on_step=True, on_epoch=False)
+        self.log_dict({f'channel_weight/{i}': w for i, w in enumerate(channel_weight)}, on_step=True, on_epoch=False)
+
+        return weights  # [B, N, C]
+
+    def compute_loss_simple(self, *, target_patches, predicted_patches, masked_patch, weights: torch.Tensor | None):
         assert target_patches.ndim == 5, f"Expected target_patches to have 5 dims [B,N,C,Kh,Kw], got {target_patches.shape}"
         assert predicted_patches.shape == target_patches.shape, (
             f"Expected predicted_patches shape {target_patches.shape}, got {predicted_patches.shape}"
@@ -280,8 +268,33 @@ class MAEv2(L.LightningModule):
         assert masked_patch.shape == target_patches.shape[:2], (
             f"Expected masked_patch shape {target_patches.shape[:2]}, got {masked_patch.shape}"
         )
-        assert activity_weights.shape == target_patches.shape[:3], (
-            f"Expected activity_weights shape {target_patches.shape[:3]}, got {activity_weights.shape}"
+        assert weights is None or weights.shape == target_patches.shape[:3], (
+            f"Expected weights shape {target_patches.shape[:3]}, got {weights.shape}"
+        )
+        assert masked_patch.any().item(), "Mask must contain at least one masked patch"
+
+        sq_error = (predicted_patches - target_patches) ** 2  # [B, N, C, Kh, Kw]
+        loss_per_patch_channel = sq_error.mean(dim=(3, 4))  # [B, N, C]
+        loss_per_patch_channel = loss_per_patch_channel * weights
+
+        patch_weights = masked_patch.to(loss_per_patch_channel.dtype).unsqueeze(-1)  # [B, N, 1]
+        channel_num = (loss_per_patch_channel * patch_weights).sum(dim=1)  # [B, C]
+        channel_den = patch_weights.sum(dim=1)  # [B, 1]
+        assert (channel_den > 0).all().item(), "Each sample must contain at least one masked patch"
+
+        loss_per_channel = channel_num / channel_den
+        return loss_per_channel.mean()
+
+    def compute_loss_mae_plus(self, *, target_patches, predicted_patches, masked_patch, weights: torch.Tensor | None):
+        assert target_patches.ndim == 5, f"Expected target_patches to have 5 dims [B,N,C,Kh,Kw], got {target_patches.shape}"
+        assert predicted_patches.shape == target_patches.shape, (
+            f"Expected predicted_patches shape {target_patches.shape}, got {predicted_patches.shape}"
+        )
+        assert masked_patch.shape == target_patches.shape[:2], (
+            f"Expected masked_patch shape {target_patches.shape[:2]}, got {masked_patch.shape}"
+        )
+        assert weights is None or weights.shape == target_patches.shape[:3], (
+            f"Expected weights shape {target_patches.shape[:3]}, got {weights.shape}"
         )
         assert 0.0 <= self.fourier_alpha <= 1.0, f"Expected fourier_alpha in [0,1], got {self.fourier_alpha}"
         assert masked_patch.any().item(), "No masked patches found for MAE+ loss"
@@ -295,7 +308,7 @@ class MAEv2(L.LightningModule):
         combined_per_patch_channel = (
             (1 - self.fourier_alpha) * mae_per_patch_channel + self.fourier_alpha * ft_per_patch_channel
         )  # [B, N, C]
-        combined_per_patch_channel = combined_per_patch_channel * activity_weights
+        combined_per_patch_channel = combined_per_patch_channel * weights
 
         patch_weights = masked_patch.to(combined_per_patch_channel.dtype).unsqueeze(-1)  # [B, N, 1]
         channel_num = (combined_per_patch_channel * patch_weights).sum(dim=1)  # [B, C]
@@ -310,26 +323,27 @@ class MAEv2(L.LightningModule):
         return loss_per_channel.mean()
 
     def compute_loss(self, *, target_patches, predicted_patches, masked_patch):
-        target_patches_raw = target_patches
+
+        if self.activity_weights:
+            weights = self._compute_activity_weights(target_patches)
+
         if self.norm_pix_loss:
             target_patches = self._normalize_target_patches(target_patches)
 
         match self.loss_type:
             case "simple":
-                activity_weights = self._compute_activity_weights(target_patches_raw)
                 return self.compute_loss_simple(
                     target_patches=target_patches,
                     predicted_patches=predicted_patches,
                     masked_patch=masked_patch,
-                    activity_weights=activity_weights,
+                    weights=weights,
                 )
             case "mae_plus":
-                activity_weights = self._compute_activity_weights(target_patches_raw)
                 return self.compute_loss_mae_plus(
                     target_patches=target_patches,
                     predicted_patches=predicted_patches,
                     masked_patch=masked_patch,
-                    activity_weights=activity_weights,
+                    weights=weights,
                 )
             case _:
                 raise ValueError(f"Unknown loss_type={self.loss_type}")
