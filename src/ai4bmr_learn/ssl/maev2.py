@@ -251,15 +251,28 @@ class MAEv2(L.LightningModule):
         )
         assert 0.0 <= self.fourier_alpha <= 1.0, f"Expected fourier_alpha in [0,1], got {self.fourier_alpha}"
         assert masked_patch.any().item(), "No masked patches found for MAE+ loss"
-        mae_per_patch = ((predicted_patches - target_patches) ** 2).mean(dim=(2, 3, 4))
-        loss_mae = mae_per_patch[masked_patch].mean()
+
+        mae_per_patch_channel = ((predicted_patches - target_patches) ** 2).mean(dim=(3, 4))  # [B, N, C]
 
         fft_target = torch.fft.fft2(target_patches, dim=(-2, -1))
         fft_pred = torch.fft.fft2(predicted_patches, dim=(-2, -1))
-        ft_per_patch = (fft_pred.abs() - fft_target.abs()).abs().mean(dim=(2, 3, 4))
-        loss_ft = ft_per_patch[masked_patch].mean()
+        ft_per_patch_channel = (fft_pred.abs() - fft_target.abs()).abs().mean(dim=(3, 4))  # [B, N, C]
 
-        return (1 - self.fourier_alpha) * loss_mae + self.fourier_alpha * loss_ft
+        combined_per_patch_channel = (
+            (1 - self.fourier_alpha) * mae_per_patch_channel + self.fourier_alpha * ft_per_patch_channel
+        )  # [B, N, C]
+
+        patch_weights = masked_patch.to(combined_per_patch_channel.dtype).unsqueeze(-1)  # [B, N, 1]
+        channel_num = (combined_per_patch_channel * patch_weights).sum(dim=1)  # [B, C]
+        channel_den = patch_weights.sum(dim=1)  # [B, 1]
+        assert (channel_den > 0).all().item(), "Each sample must contain at least one masked patch"
+
+        loss_per_channel = channel_num / channel_den  # [B, C]
+        if self.channel_weights is not None:
+            w = self.channel_weights.to(device=loss_per_channel.device, dtype=loss_per_channel.dtype).clone()
+            loss_per_channel = loss_per_channel * w.unsqueeze(0)
+
+        return loss_per_channel.mean()
 
     def compute_loss(self, *, target_patches, predicted_patches, masked_patch):
         match self.loss_type:
