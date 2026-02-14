@@ -138,11 +138,11 @@ class MAEv2(L.LightningModule):
         )
         return pred_patches, target_patches, masked_patch, z
 
-    def _log_stage(self, stage: str, loss: torch.Tensor):
-        self.log(f"loss/{stage}", loss, on_step=stage == 'train', on_epoch=True)
+    def _log_stage(self, stage: str, loss: torch.Tensor, batch_size: int):
+        self.log(f"loss/{stage}", loss, on_step=stage == "train", on_epoch=True, batch_size=batch_size)
 
         if stage == "train":
-            self.log("train/num_samples_total", self.num_samples_total, on_step=True, on_epoch=False)
+            self.log("train/num_samples_total", self.num_samples_total, on_step=True, on_epoch=False, batch_size=batch_size)
 
     def training_step(self, batch, batch_idx):
         images = batch["image"].to(self.device)
@@ -156,7 +156,7 @@ class MAEv2(L.LightningModule):
         )
         batch_size = images.shape[0]
         self.num_samples_total += batch_size
-        self._log_stage(stage="train", loss=loss)
+        self._log_stage(stage="train", loss=loss, batch_size=batch_size)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -177,10 +177,11 @@ class MAEv2(L.LightningModule):
             masked_patch=unmasked_patch,
         )
 
-        self.log("loss/val_masked", loss_masked, on_step=False, on_epoch=True)
-        self.log("loss/val_unmasked", loss_unmasked, on_step=False, on_epoch=True)
+        batch_size = images.shape[0]
+        self.log("loss/val_masked", loss_masked, on_step=False, on_epoch=True, batch_size=batch_size)
+        self.log("loss/val_unmasked", loss_unmasked, on_step=False, on_epoch=True, batch_size=batch_size)
         loss = loss_unmasked
-        self._log_stage(stage="val", loss=loss)
+        self._log_stage(stage="val", loss=loss, batch_size=batch_size)
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -200,8 +201,9 @@ class MAEv2(L.LightningModule):
             predicted_patches=prediction_unmasked_patches,
             masked_patch=unmasked_patch,
         )
-        self._log_stage(stage="test", loss=loss_unmasked)
-        self.log("test/masked_recon_loss", loss_masked, on_step=False, on_epoch=True)
+        batch_size = images.shape[0]
+        self._log_stage(stage="test", loss=loss_unmasked, batch_size=batch_size)
+        self.log("test/masked_recon_loss", loss_masked, on_step=False, on_epoch=True, batch_size=batch_size)
 
         h, w = self.tokenizer.grid_size
         prediction_masked = rearrange(prediction_masked_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
