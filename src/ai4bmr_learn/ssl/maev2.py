@@ -21,8 +21,6 @@ class MAEv2(L.LightningModule):
             mask_ratio: float = 0.75,
             loss_type: str = "simple",
             channel_weights: list[float] | torch.Tensor | None = None,
-            activity_threshold: float = 0,
-            weight_loss_by_sparsity: bool = False,
             norm_pix_loss: bool = False,
             lr: float = 1.5e-4,
             weight_decay: float = 0.04,
@@ -54,8 +52,6 @@ class MAEv2(L.LightningModule):
         # LOSS
         self.loss_type = loss_type
         self.channel_weights = channel_weights
-        self.activity_threshold = activity_threshold
-        self.weight_loss_by_sparsity = weight_loss_by_sparsity
         self.norm_pix_loss = norm_pix_loss
 
         # OPTIMIZER
@@ -320,9 +316,7 @@ class MAEv2(L.LightningModule):
         target = img
         batch_size, num_channels, _, _ = target.shape
 
-        if self.weight_loss_by_sparsity:
-            raise ValueError("weight_loss_by_sparsity is disabled in MAEv2")
-        elif self.channel_weights is not None:
+        if self.channel_weights is not None:
             w = self.channel_weights.to(device=target.device, dtype=torch.float32).clone()
             w = w.unsqueeze(0).expand(batch_size, -1)
         else:
