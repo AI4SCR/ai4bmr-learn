@@ -273,6 +273,8 @@ class MAEv2(L.LightningModule):
         )
         assert masked_patch.any().item(), "Mask must contain at least one masked patch"
 
+        weights = weights or 1
+
         sq_error = (predicted_patches - target_patches) ** 2  # [B, N, C, Kh, Kw]
         loss_per_patch_channel = sq_error.mean(dim=(3, 4))  # [B, N, C]
         loss_per_patch_channel = loss_per_patch_channel * weights
@@ -299,14 +301,20 @@ class MAEv2(L.LightningModule):
         assert 0.0 <= self.fourier_alpha <= 1.0, f"Expected fourier_alpha in [0,1], got {self.fourier_alpha}"
         assert masked_patch.any().item(), "No masked patches found for MAE+ loss"
 
+        weights = weights or 1
+
         mae_per_patch_channel = ((predicted_patches - target_patches) ** 2).mean(dim=(3, 4))  # [B, N, C]
 
+        # TODO: we might want to remove the DC component and shift the fft
         fft_target = torch.fft.fft2(target_patches, dim=(-2, -1))
         fft_pred = torch.fft.fft2(predicted_patches, dim=(-2, -1))
-        ft_per_patch_channel = (fft_pred.abs() - fft_target.abs()).abs().mean(dim=(3, 4))  # [B, N, C]
+        fft_per_patch_channel = (fft_pred.abs() - fft_target.abs()).abs().mean(dim=(3, 4))  # [B, N, C]
+
+        self.log("loss/mae", mae_per_patch_channel.mean(), on_step=True, on_epoch=False)
+        self.log("loss/fft", fft_per_patch_channel.mean(), on_step=True, on_epoch=False)
 
         combined_per_patch_channel = (
-            (1 - self.fourier_alpha) * mae_per_patch_channel + self.fourier_alpha * ft_per_patch_channel
+            (1 - self.fourier_alpha) * mae_per_patch_channel + self.fourier_alpha * fft_per_patch_channel
         )  # [B, N, C]
         combined_per_patch_channel = combined_per_patch_channel * weights
 
@@ -316,14 +324,11 @@ class MAEv2(L.LightningModule):
         assert (channel_den > 0).all().item(), "Each sample must contain at least one masked patch"
 
         loss_per_channel = channel_num / channel_den  # [B, C]
-        if self.channel_weights is not None:
-            w = self.channel_weights.to(device=loss_per_channel.device, dtype=loss_per_channel.dtype).clone()
-            loss_per_channel = loss_per_channel * w.unsqueeze(0)
-
         return loss_per_channel.mean()
 
     def compute_loss(self, *, target_patches, predicted_patches, masked_patch):
-
+        # TODO: try Gram matrix loss that captures correlations between channels, which may be more biologically relevant than per-channel loss
+        #   combine this with the fft loss that combats blurriness, which is a common failure mode of MAE-style models
         if self.activity_weights:
             weights = self._compute_activity_weights(target_patches)
 
