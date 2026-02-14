@@ -273,54 +273,8 @@ class MAEv2(L.LightningModule):
                     predicted_patches=predicted_patches,
                     masked_patch=masked_patch,
                 )
-            case "classic":
-                h, w = self.tokenizer.grid_size
-                target_img = rearrange(target_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
-                predicted_img = rearrange(predicted_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
-                mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches).to(torch.float32)
-                mask_img = rearrange(mask_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
-                return self.compute_classic_loss(
-                    img=target_img,
-                    predicted_img=predicted_img,
-                    mask=mask_img,
-                )
             case _:
                 raise ValueError(f"Unknown loss_type={self.loss_type}")
-
-    def compute_classic_loss(self, img, predicted_img, mask):
-        assert img.ndim == 4, f"Expected img to have 4 dims [B,C,H,W], got {img.shape}"
-        assert img.shape == mask.shape
-
-        target = img
-        batch_size, num_channels, _, _ = target.shape
-
-        if self.weight_loss_by_sparsity:
-            raise ValueError("weight_loss_by_sparsity is disabled in MAEv2")
-        elif self.channel_weights is not None:
-            w = self.channel_weights.to(device=target.device, dtype=torch.float32).clone()
-            w = w.unsqueeze(0).expand(batch_size, -1)
-        else:
-            w = torch.ones((batch_size, num_channels), device=target.device, dtype=torch.float32)
-
-        if self.norm_loss_target:
-            mean = target.mean(dim=(2, 3), keepdim=True)
-            var = target.var(dim=(2, 3), keepdim=True, unbiased=False)
-
-            std = torch.sqrt(var + 1e-6)
-            std = std.clamp(min=0.05)
-            target = (target - mean) / std
-
-        loss = (predicted_img - target) ** 2  # [B, C, H, W]
-        loss = loss * mask
-
-        # sum over H,W to get channel-wise loss
-        loss = loss.sum(dim=(2, 3))  # [B, C]
-        mask_sum = mask.sum(dim=(2, 3))  # [B, C]
-        loss = loss / (mask_sum + 1e-6)
-
-        loss = loss * w
-        loss = loss.mean()
-        return loss
 
     def predict_step(self, batch, batch_idx) -> dict:
         images = batch["image"]
