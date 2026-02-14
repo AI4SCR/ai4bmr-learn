@@ -273,7 +273,7 @@ class MAEv2(L.LightningModule):
         )
         assert masked_patch.any().item(), "Mask must contain at least one masked patch"
 
-        weights = weights or 1
+        weights = 1 if weights is None else weights
 
         sq_error = (predicted_patches - target_patches) ** 2  # [B, N, C, Kh, Kw]
         loss_per_patch_channel = sq_error.mean(dim=(3, 4))  # [B, N, C]
@@ -301,7 +301,7 @@ class MAEv2(L.LightningModule):
         assert 0.0 <= self.fourier_alpha <= 1.0, f"Expected fourier_alpha in [0,1], got {self.fourier_alpha}"
         assert masked_patch.any().item(), "No masked patches found for MAE+ loss"
 
-        weights = weights or 1
+        weights = 1 if weights is None else weights
 
         mae_per_patch_channel = ((predicted_patches - target_patches) ** 2).mean(dim=(3, 4))  # [B, N, C]
 
@@ -329,6 +329,7 @@ class MAEv2(L.LightningModule):
     def compute_loss(self, *, target_patches, predicted_patches, masked_patch):
         # TODO: try Gram matrix loss that captures correlations between channels, which may be more biologically relevant than per-channel loss
         #   combine this with the fft loss that combats blurriness, which is a common failure mode of MAE-style models
+        weights = None
         if self.activity_weights:
             weights = self._compute_activity_weights(target_patches)
 
