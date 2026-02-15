@@ -30,7 +30,7 @@ class MAEv2(L.LightningModule):
             pooling: str | None = "cls",
             fourier_alpha: float = 0.01,
             activity_weights: bool = False,
-            activity_q: float = 0.01,
+            activity_q: float = 0.1,
             activity_k: float = 10.0,
             activity_phi_0: float = 0.2,
     ):
@@ -152,12 +152,14 @@ class MAEv2(L.LightningModule):
     def training_step(self, batch, batch_idx):
         images = batch["image"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
+        active_pixels = batch["active_pixels"].to(self.device)
 
         prediction_patches, target_patches, masked_patch = self._shared_step(images)
         loss = self.compute_loss(
             target_patches=target_patches,
             predicted_patches=prediction_patches,
             masked_patch=masked_patch,
+            active_pixels=active_pixels
         )
         batch_size = images.shape[0]
         self.num_samples_total += batch_size
@@ -167,12 +169,14 @@ class MAEv2(L.LightningModule):
     def validation_step(self, batch, batch_idx):
         images = batch["image"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
+        active_pixels = batch["active_pixels"].to(self.device)
 
         prediction_masked_patches, target_patches_masked, masked_patch = self._shared_step(images)
         loss_masked = self.compute_loss(
             target_patches=target_patches_masked,
             predicted_patches=prediction_masked_patches,
             masked_patch=masked_patch,
+            active_pixels=active_pixels
         )
 
         prediction_unmasked_patches, target_patches_unmasked, unmasked_patch, _ = self._shared_step_unmasked(images)
@@ -180,6 +184,7 @@ class MAEv2(L.LightningModule):
             target_patches=target_patches_unmasked,
             predicted_patches=prediction_unmasked_patches,
             masked_patch=unmasked_patch,
+            active_pixels=active_pixels
         )
 
         batch_size = images.shape[0]
@@ -191,6 +196,7 @@ class MAEv2(L.LightningModule):
 
     def test_step(self, batch, batch_idx):
         images = batch["image"].to(self.device)
+        active_pixels = batch["active_pixels"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
 
         prediction_masked_patches, target_patches_masked, masked_patch = self._shared_step(images)
@@ -198,6 +204,7 @@ class MAEv2(L.LightningModule):
             target_patches=target_patches_masked,
             predicted_patches=prediction_masked_patches,
             masked_patch=masked_patch,
+            active_pixels=active_pixels
         )
 
         prediction_unmasked_patches, target_patches_unmasked, unmasked_patch, z = self._shared_step_unmasked(images)
@@ -205,6 +212,7 @@ class MAEv2(L.LightningModule):
             target_patches=target_patches_unmasked,
             predicted_patches=prediction_unmasked_patches,
             masked_patch=unmasked_patch,
+            active_pixels=active_pixels
         )
         batch_size = images.shape[0]
         self._log_stage(stage="test", loss=loss_unmasked, batch_size=batch_size)
@@ -233,15 +241,21 @@ class MAEv2(L.LightningModule):
         var = target_patches.var(dim=(3, 4), keepdim=True, unbiased=False)
         return (target_patches - mean) / torch.sqrt(var + 1e-6)
 
-    def _compute_activity_weights(self, target_patches: torch.Tensor) -> torch.Tensor:
+    def _compute_activity_weights(self, target_patches: torch.Tensor, active_pixels: torch.Tensor) -> torch.Tensor:
         assert target_patches.ndim == 5, (
             f"Expected target_patches to have 5 dims [B,N,C,Kh,Kw], got {target_patches.shape}"
         )
         assert 0.0 <= self.activity_q <= 1.0, f"Expected activity_q in [0,1], got {self.activity_q}"
         assert self.activity_k > 0.0, f"Expected activity_k > 0, got {self.activity_k}"
 
+        kh, kw = self.tokenizer.kernel_size
+        mask = rearrange(active_pixels, "b c (h kh) (w kw) -> b (h w) c kh kw", kh=kh, kw=kw)
+        mask = rearrange(mask, "b n c kh kw -> c (b n kh kw)")
+
         vals = rearrange(target_patches, "b n c kh kw -> c (b n kh kw)")
-        vals[vals == 0] = torch.nan
+        assert vals.shape == mask.shape, f"Expected vals and mask to have same shape, got {vals.shape} and {mask.shape}"
+
+        vals[~mask] = torch.nan
         thresholds = torch.nanquantile(vals, q=self.activity_q, dim=1)  # [C]
         active = target_patches > thresholds[None, None, :, None, None]
 
@@ -255,8 +269,14 @@ class MAEv2(L.LightningModule):
         weights = weights / (channel_weight[None, None, :] + 1e-6)
         weights = weights * channel_weight.mean()  # scale back
 
+        patches_with_activity = (phi >= self.activity_phi_0).sum(dim=(0, 1)).float()
+        # phi.amax(dim=(0, 1))
+
         self.log_dict({f'quantile/{i}': q for i, q in enumerate(thresholds)}, on_step=True, on_epoch=False)
-        self.log_dict({f'channel_weight/{i}': w for i, w in enumerate(channel_weight)}, on_step=True, on_epoch=False)
+        self.log_dict({f'phi_max/{i}': q for i, q in enumerate(phi.amax(dim=(0, 1)))}, on_step=True, on_epoch=False)
+        self.log_dict({f'patches_with_activity/{i}': q for i, q in enumerate(patches_with_activity)}, on_step=True, on_epoch=False)
+        self.log_dict({f'active/{i}': q for i, q in enumerate(active.sum(dim=(0,1,3,4)).float())}, on_step=True, on_epoch=False)
+        self.log_dict({f'weight/{i}': w for i, w in enumerate(channel_weight)}, on_step=True, on_epoch=False)
 
         return weights  # [B, N, C]
 
@@ -326,12 +346,12 @@ class MAEv2(L.LightningModule):
         loss_per_channel = channel_num / channel_den  # [B, C]
         return loss_per_channel.mean()
 
-    def compute_loss(self, *, target_patches, predicted_patches, masked_patch):
+    def compute_loss(self, *, target_patches, predicted_patches, masked_patch, active_pixels):
         # TODO: try Gram matrix loss that captures correlations between channels, which may be more biologically relevant than per-channel loss
         #   combine this with the fft loss that combats blurriness, which is a common failure mode of MAE-style models
         weights = None
         if self.activity_weights:
-            weights = self._compute_activity_weights(target_patches)
+            weights = self._compute_activity_weights(target_patches, active_pixels=active_pixels)
 
         if self.norm_pix_loss:
             target_patches = self._normalize_target_patches(target_patches)
