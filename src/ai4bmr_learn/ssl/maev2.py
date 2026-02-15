@@ -354,9 +354,11 @@ class MAEv2(L.LightningModule):
         #   combine this with the fft loss that combats blurriness, which is a common failure mode of MAE-style models
         weights = None
         if self.activity_weights:
+            assert False
             weights = self._compute_activity_weights(target_patches, active_pixels=active_pixels)
 
         if self.norm_pix_loss:
+            assert False
             target_patches = self._normalize_target_patches(target_patches)
 
         match self.loss_type:
@@ -368,6 +370,7 @@ class MAEv2(L.LightningModule):
                     weights=weights,
                 )
             case "mae_plus":
+                assert False
                 return self.compute_loss_mae_plus(
                     target_patches=target_patches,
                     predicted_patches=predicted_patches,

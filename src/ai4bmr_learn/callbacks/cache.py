@@ -39,7 +39,7 @@ class Cache(Callback):
             pass
 
         if self.save_dir is not None:
-            return self.save_dir
+            pass
         elif trainer.logger.save_dir is not None:
             save_dir = trainer.logger.save_dir
             name = trainer.logger.name
@@ -49,6 +49,7 @@ class Cache(Callback):
             logger.info(f"Cache will be saved to {self.save_dir / self.fname}")
         else:
             logger.warning(f"Cache has no save_dir configured, outputs will not be saved to disk.")
+        logger.info(f"Cache will be saved to {self.save_dir / self.fname}")
 
     def delete_keys(self, output):
         for key in self.exclude_keys:
