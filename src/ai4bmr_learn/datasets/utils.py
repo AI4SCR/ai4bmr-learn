@@ -19,20 +19,21 @@ def filter_items_and_metadata(
 
     # filter item ids
     if split is not None:
+        logger.info(f"Filter items and metadata for split={split}.")
+
         keep = metadata[Split.COLUMN_NAME.value] == split
         assert keep.sum() > 0, f"There are no items that belong to split='{split}'"
 
         metadata = metadata[keep]
         valid_ids = set(metadata.index)
-        logger.info(f"Filtered items and metadata for split={split}.")
     else:
         valid_ids = set(metadata.index)
 
-    if item_ids < valid_ids:
+    if not item_ids < valid_ids:
         logger.warning(f'Not all items have metadata. Dropping items without metadata.')
 
     valid_item_ids = item_ids.intersection(valid_ids)
-    logger.info(f"Found {len(valid_item_ids)} items with metadata.")
+    logger.info(f"Found {len(valid_item_ids)}/{len(item_ids)} items with metadata.")
 
     # drop NaN
     filter_ = metadata.isna().any()
@@ -51,4 +52,4 @@ def filter_items_and_metadata(
         if split is not None and Split.COLUMN_NAME.value in cols_with_nan:
             logger.warning("Detected NaN in column 'split'. This is most likely a bug.")
 
-    return valid_item_ids, metadata
+    return valid_item_ids, metadata.loc[list(valid_item_ids)]
