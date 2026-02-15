@@ -248,6 +248,8 @@ class MAEv2(L.LightningModule):
         assert 0.0 <= self.activity_q <= 1.0, f"Expected activity_q in [0,1], got {self.activity_q}"
         assert self.activity_k > 0.0, f"Expected activity_k > 0, got {self.activity_k}"
 
+        batch_size = target_patches.shape[0]
+
         kh, kw = self.tokenizer.kernel_size
         mask = rearrange(active_pixels, "b c (h kh) (w kw) -> b (h w) c kh kw", kh=kh, kw=kw)
         mask = rearrange(mask, "b n c kh kw -> c (b n kh kw)")
@@ -265,17 +267,18 @@ class MAEv2(L.LightningModule):
         assert (weights >= 1.0).all().item() and (weights <= 2.0).all().item(), "Activity weights must be in [1, 2]"
 
         # channel-balancing
-        channel_weight = weights.sum(dim=(0, 1))
+        channel_weight = weights.sum(dim=(0, 1)) / batch_size
         weights = weights / (channel_weight[None, None, :] + 1e-6)
         weights = weights * channel_weight.mean()  # scale back
 
-        patches_with_activity = (phi >= self.activity_phi_0).sum(dim=(0, 1)).float()
+        patches_with_activity = (phi >= self.activity_phi_0).sum(dim=(0, 1)).float() / batch_size
         # phi.amax(dim=(0, 1))
+        channel_activity = active.sum(dim=(0,1,3,4)).float() / batch_size
 
         self.log_dict({f'quantile/{i}': q for i, q in enumerate(thresholds)}, on_step=True, on_epoch=False)
         self.log_dict({f'phi_max/{i}': q for i, q in enumerate(phi.amax(dim=(0, 1)))}, on_step=True, on_epoch=False)
         self.log_dict({f'patches_with_activity/{i}': q for i, q in enumerate(patches_with_activity)}, on_step=True, on_epoch=False)
-        self.log_dict({f'active/{i}': q for i, q in enumerate(active.sum(dim=(0,1,3,4)).float())}, on_step=True, on_epoch=False)
+        self.log_dict({f'active/{i}': q for i, q in enumerate(channel_activity)}, on_step=True, on_epoch=False)
         self.log_dict({f'weight/{i}': w for i, w in enumerate(channel_weight)}, on_step=True, on_epoch=False)
 
         return weights  # [B, N, C]
