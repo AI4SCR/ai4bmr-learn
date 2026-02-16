@@ -14,7 +14,6 @@ class MultiplexedImageReconstruction(Callback):
         prediction_key: str = "prediction",
         mask_key: str = "mask",
         num_samples: int = 5,
-        seed: int = 0,
         padding: int = 2,
     ):
         self.image_key = image_key
@@ -22,7 +21,6 @@ class MultiplexedImageReconstruction(Callback):
         self.mask_key = mask_key
         self.num_samples = num_samples
         self.padding = padding
-        self.rng = np.random.default_rng(seed=seed)
 
     @staticmethod
     def _row_grid(*, masked_ch: torch.Tensor, recon_ch: torch.Tensor, orig_ch: torch.Tensor) -> torch.Tensor:
