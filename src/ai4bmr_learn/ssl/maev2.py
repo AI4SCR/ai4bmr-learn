@@ -164,49 +164,7 @@ class MAEv2(L.LightningModule):
         self._log_stage(stage="train", loss=loss, batch_size=batch_size)
         return loss
 
-    def validation_step(self, batch, batch_idx):
-        images = batch["image"].to(self.device)
-        assert not images.isnan().any(), "Input images contain NaNs"
-        active_pixels = batch["active_pixels"].to(self.device)
-
-        prediction_masked_patches, target_patches_masked, masked_patch = self._shared_step(images)
-        loss_masked = self.compute_loss(
-            target_patches=target_patches_masked,
-            predicted_patches=prediction_masked_patches,
-            masked_patch=masked_patch,
-            active_pixels=active_pixels
-        )
-
-        prediction_unmasked_patches, target_patches_unmasked, unmasked_patch, z = self._shared_step_unmasked(images)
-        loss_unmasked = self.compute_loss(
-            target_patches=target_patches_unmasked,
-            predicted_patches=prediction_unmasked_patches,
-            masked_patch=unmasked_patch,
-            active_pixels=active_pixels
-        )
-
-        batch_size = images.shape[0]
-        self.log("loss/val_masked", loss_masked, on_step=False, on_epoch=True, batch_size=batch_size)
-
-        loss = loss_unmasked
-        self._log_stage(stage="val", loss=loss, batch_size=batch_size)
-
-        prediction_masked = self.patches_to_image(prediction_masked_patches)
-        prediction_unmasked_patches = self.patches_to_image(prediction_unmasked_patches)
-
-        mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches).to(torch.float32)
-        mask_img = self.patches_to_image(mask_patches)
-
-        batch["loss"] = loss_unmasked.item()
-        batch["loss_masked"] = loss_masked.item()
-        batch["image"] = images.cpu()
-        batch["z"] = pool(z, strategy=self.pooling).cpu()
-        batch["mask"] = mask_img.cpu()
-        batch["prediction_masked"] = prediction_masked.cpu()
-        batch["prediction_unmasked"] = prediction_unmasked.cpu()
-        return batch
-
-    def test_step(self, batch, batch_idx):
+    def _eval_step(self, batch, *, stage: str):
         images = batch["image"].to(self.device)
         active_pixels = batch["active_pixels"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
@@ -235,8 +193,8 @@ class MAEv2(L.LightningModule):
             prediction_unmasked_patches = prediction_unmasked_patches * std + mean_
 
         batch_size = images.shape[0]
-        self._log_stage(stage="test", loss=loss_unmasked, batch_size=batch_size)
-        self.log("test/masked_recon_loss", loss_masked, on_step=False, on_epoch=True, batch_size=batch_size)
+        self.log(f"loss/{stage}_masked", loss_masked, on_step=False, on_epoch=True, batch_size=batch_size)
+        self._log_stage(stage=stage, loss=loss_unmasked, batch_size=batch_size)
 
         prediction_masked = self.patches_to_image(prediction_masked_patches)
         prediction_unmasked = self.patches_to_image(prediction_unmasked_patches)
@@ -252,6 +210,12 @@ class MAEv2(L.LightningModule):
         batch["prediction_masked"] = prediction_masked.cpu()
         batch["prediction_unmasked"] = prediction_unmasked.cpu()
         return batch
+
+    def validation_step(self, batch, batch_idx):
+        return self._eval_step(batch=batch, stage="val")
+
+    def test_step(self, batch, batch_idx):
+        return self._eval_step(batch=batch, stage="test")
 
     def patches_to_image(self, patches: torch.Tensor) -> torch.Tensor:
         assert patches.ndim == 5, f"Expected patches to have 5 dims [B,N,C,Kh,Kw], got {patches.shape}"
