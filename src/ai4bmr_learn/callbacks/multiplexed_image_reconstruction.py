@@ -87,7 +87,7 @@ class MultiplexedImageReconstruction(Callback):
                 )
                 rows.append(row)
             grid = make_grid(rows, nrow=1, normalize=False, padding=self.padding)
-            trainer.logger.log_image(key=f"mae/multiplexed/by_channel/{c:03d}", images=[grid])
+            trainer.logger.log_image(key=f"by_channel/{c:03d}", images=[grid])
 
         # 2) For each sample: stack num_channels x 3 (masked, recon, orig)
         for s in range(num_samples):
@@ -100,4 +100,4 @@ class MultiplexedImageReconstruction(Callback):
                 )
                 rows.append(row)
             grid = make_grid(rows, nrow=1, normalize=False, padding=self.padding)
-            trainer.logger.log_image(key=f"mae/multiplexed/by_sample/{s:03d}", images=[grid])
+            trainer.logger.log_image(key=f"by_sample/{s:03d}", images=[grid])

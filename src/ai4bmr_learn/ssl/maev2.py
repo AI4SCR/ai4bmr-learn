@@ -229,8 +229,8 @@ class MAEv2(L.LightningModule):
 
     def patches_to_image(self, patches: torch.Tensor) -> torch.Tensor:
         assert patches.ndim == 5, f"Expected patches to have 5 dims [B,N,C,Kh,Kw], got {patches.shape}"
+        assert self.backbone.tokenizer.num_token_pixels == self.backbone.tokenizer.num_channels * patches.shape[-1] ** 2
         h, w = self.backbone.tokenizer.grid_size
-        assert self.backbone.tokenizer.num_token_pixels == self.backbone.tokenizer.num_channels * h * w
         return rearrange(patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
 
     def _normalize_target_patches(self, target_patches: torch.Tensor) -> torch.Tensor:
