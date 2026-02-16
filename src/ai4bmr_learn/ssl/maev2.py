@@ -197,7 +197,6 @@ class MAEv2(L.LightningModule):
         active_pixels = batch["active_pixels"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
 
-
         prediction_masked_patches, target_patches, masked_patch = self._shared_step(images)
         loss_masked = self.compute_loss(
             target_patches=target_patches,
@@ -228,7 +227,7 @@ class MAEv2(L.LightningModule):
         h, w = self.backbone.tokenizer.grid_size
         prediction_masked = rearrange(prediction_masked_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
         prediction_unmasked = rearrange(prediction_unmasked_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
-        mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches_masked).to(torch.float32)
+        mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches).to(torch.float32)
         mask_img = rearrange(mask_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
 
         batch["loss"] = loss_unmasked.item()
@@ -366,7 +365,7 @@ class MAEv2(L.LightningModule):
 
         if self.norm_pix_loss:
             # assert False
-            target_patches, mean_, var_ = self._normalize_target_patches(target_patches)
+            target_patches, _, _ = self._normalize_target_patches(target_patches)
 
         match self.loss_type:
             case "simple":
