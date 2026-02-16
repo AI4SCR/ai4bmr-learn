@@ -18,7 +18,7 @@ class Cache(Callback):
     name: str = 'cache'
 
     def __init__(self, num_samples: int | None = None, save_dir: Path | None = None, fname: str | None = None,
-                 exclude_keys: list[str] | None = None, ignore_missing: bool = False):
+                 exclude_keys: list[str] | None = None, ignore_missing: bool = False, save_to_disk: bool = True):
         super().__init__()
 
         fname = fname or self.name
@@ -27,15 +27,16 @@ class Cache(Callback):
         self.outputs = []
         self.exclude_keys = exclude_keys
         self.ignore_missing = ignore_missing
+        self.save_to_disk = save_to_disk
 
-        # self.state = {"epochs": 0, "batches": 0}
+        assert save_to_disk or save_dir is None, "Cannot specify save_dir if save_to_disk is False."
 
         if save_dir is not None:
             self.save_dir = Path(save_dir).expanduser().resolve()
         self.save_dir = save_dir
 
     def configure_save_dir(self, trainer):
-        if trainer.fast_dev_run:
+        if trainer.fast_dev_run or not self.save_to_disk:
             pass
 
         if self.save_dir is not None:
@@ -46,7 +47,6 @@ class Cache(Callback):
             experiment_id = trainer.logger.experiment.id
 
             self.save_dir = Path(save_dir) / name / experiment_id / "cache"
-            logger.info(f"Cache will be saved to {self.save_dir / self.fname}")
         else:
             logger.warning(f"Cache has no save_dir configured, outputs will not be saved to disk.")
         logger.info(f"Cache will be saved to {self.save_dir / self.fname}")
@@ -67,8 +67,7 @@ class Cache(Callback):
         self.outputs = []
 
     def save_to_disk(self):
-        # TODO: include batch_idx, epoch, ...
-        if self.save_dir is None:
+        if not self.save_to_disk or self.save_dir is None:
             return
 
         save_path = self.save_dir / self.fname
