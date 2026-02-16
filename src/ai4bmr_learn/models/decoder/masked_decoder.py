@@ -53,6 +53,7 @@ class MaskedDecoder(BaseMaskedDecoder):
         batch_size = x.shape[0]
         num_tokens = self.pos_embedding.shape[0]
 
+        # TODO: self.mask_token.expand(batch_size, num_tokens, -1) this creates a view instead of copy
         features = repeat(self.mask_token, "1 1 d -> b n d", b=batch_size, n=num_tokens)
         features = features.to(device=x.device, dtype=x.dtype)
         features = set_at_index(features, index=idx_keep, value=x)

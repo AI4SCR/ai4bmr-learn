@@ -19,7 +19,7 @@ class MAEv2(L.LightningModule):
             backbone: nn.Module,
             decoder_kwargs: dict | None = None,
             mask_ratio: float = 0.75,
-            loss_type: str = "simple",
+            loss_type: str = "vanilla",
             channel_weights: list[float] | torch.Tensor | None = None,
             norm_pix_loss: bool = False,
             lr: float = 1.5e-4,
@@ -73,7 +73,7 @@ class MAEv2(L.LightningModule):
         # TRACKING
         self.num_samples_total = 0
 
-        self.save_hyperparameters(ignore=["tokenizer", "encoder", "decoder", "backbone"])
+        self.save_hyperparameters(ignore=["decoder", "backbone", "head"])
 
     def _shared_step(self, img):
         batch_size = img.shape[0]
@@ -84,6 +84,7 @@ class MAEv2(L.LightningModule):
         # 1. generate random token mask
         # NOTE: the mask is computed for the tokens including prefix tokens (if any)
         num_prefix_tokens = self.backbone.encoder.num_prefix_tokens
+        assert num_prefix_tokens == 1, f"Currently only supports 1 prefix token, got {num_prefix_tokens}"
         num_tokens = self.backbone.encoder.num_tokens
         token_mask, _, idx_keep = random_token_mask(
             batch_size=batch_size,
@@ -100,13 +101,15 @@ class MAEv2(L.LightningModule):
         x = self.backbone.encoder.forward_masked(x, idx_keep=idx_keep)
 
         # 3. project to decoder space
+        assert x.ndim == 3, f"Expected token sequence [B,N,D], got {x.shape}"
         x = self.proj(x)
 
         # 4. decode masked patch tokens
+        assert x.ndim == 3, f"Expected token sequence [B,N,D], got {x.shape}"
         x = self.decoder.forward_masked(x, idx_keep=idx_keep)
 
         # 5. project to pixel-token space
-        x = x[:, 1:]  # remove prefix tokens
+        x = x[:, num_prefix_tokens:]  # remove prefix tokens
         x = self.head(x)
 
         masked_patch = token_mask[:, num_prefix_tokens:]
@@ -121,10 +124,14 @@ class MAEv2(L.LightningModule):
         return pred_patches, target_patches, masked_patch
 
     def _shared_step_unmasked(self, img):
+        num_prefix_tokens = self.backbone.encoder.num_prefix_tokens
+        assert num_prefix_tokens == 1, f"Currently only supports 1 prefix token, got {num_prefix_tokens}"
+
         z = self.backbone(img)
         x = self.proj(z)
+        assert x.shape[:2] == (img.shape[0], self.backbone.encoder.num_tokens), f"Expected x to have shape [B, num_tokens, D], got {x.shape}"
         x = self.decoder.forward(x)
-        x = x[:, 1:]
+        x = x[:, num_prefix_tokens:]
         x = self.head(x)
 
         kh, kw = self.backbone.tokenizer.kernel_size
@@ -159,6 +166,9 @@ class MAEv2(L.LightningModule):
             masked_patch=masked_patch,
             active_pixels=active_pixels
         )
+        ratio = masked_patch.float().mean().item()
+        self.log("train/masked_ratio", ratio, on_step=True, on_epoch=False)
+
         batch_size = images.shape[0]
         self.num_samples_total += batch_size
         self._log_stage(stage="train", loss=loss, batch_size=batch_size)
@@ -193,8 +203,8 @@ class MAEv2(L.LightningModule):
             prediction_unmasked_patches = prediction_unmasked_patches * std + mean_
 
         batch_size = images.shape[0]
-        self.log(f"loss/{stage}_masked", loss_masked, on_step=False, on_epoch=True, batch_size=batch_size)
-        self._log_stage(stage=stage, loss=loss_unmasked, batch_size=batch_size)
+        self.log(f"loss/{stage}_unmasked", loss_unmasked, on_step=False, on_epoch=True, batch_size=batch_size)
+        self._log_stage(stage=stage, loss=loss_masked, batch_size=batch_size)
 
         prediction_masked = self.patches_to_image(prediction_masked_patches)
         prediction_unmasked = self.patches_to_image(prediction_unmasked_patches)
@@ -220,6 +230,7 @@ class MAEv2(L.LightningModule):
     def patches_to_image(self, patches: torch.Tensor) -> torch.Tensor:
         assert patches.ndim == 5, f"Expected patches to have 5 dims [B,N,C,Kh,Kw], got {patches.shape}"
         h, w = self.backbone.tokenizer.grid_size
+        assert self.backbone.tokenizer.num_token_pixels == self.backbone.tokenizer.num_channels * h * w
         return rearrange(patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
 
     def _normalize_target_patches(self, target_patches: torch.Tensor) -> torch.Tensor:
@@ -271,6 +282,22 @@ class MAEv2(L.LightningModule):
         self.log_dict({f'weight/{i}': w for i, w in enumerate(channel_weight)}, on_step=True, on_epoch=False)
 
         return weights  # [B, N, C]
+
+    def compute_loss_vanilla(self, *, target_patches, predicted_patches, masked_patch):
+        # 1. Compute squared error for every pixel: [B, N, C, Kh, Kw]
+        sq_error = (predicted_patches - target_patches) ** 2
+
+        # 2. Create a boolean mask for pixels
+        # masked_patch is [B, N]. We expand it to match sq_error [B, N, C, Kh, Kw]
+        # This identifies exactly which pixels were masked.
+        pixel_mask = masked_patch[:, :, None, None, None].expand_as(sq_error)
+
+        # 4. The Vanilla MAE Logic: Mean only over masked pixels
+        # Using boolean indexing extracts a 1D tensor of all masked pixel errors
+        # then takes the mean. This is robust to any image size or mask ratio.
+        loss = sq_error[pixel_mask].mean()
+
+        return loss
 
     def compute_loss_simple(self, *, target_patches, predicted_patches, masked_patch, weights: torch.Tensor | None):
         assert target_patches.ndim == 5, f"Expected target_patches to have 5 dims [B,N,C,Kh,Kw], got {target_patches.shape}"
@@ -351,6 +378,12 @@ class MAEv2(L.LightningModule):
             target_patches, _, _ = self._normalize_target_patches(target_patches)
 
         match self.loss_type:
+            case "vanilla":
+                return self.compute_loss_vanilla(
+                    target_patches=target_patches,
+                    predicted_patches=predicted_patches,
+                    masked_patch=masked_patch,
+                )
             case "simple":
                 return self.compute_loss_simple(
                     target_patches=target_patches,
@@ -412,7 +445,7 @@ class MAEv2(L.LightningModule):
         else:
             warmup_scheduler = LinearLR(
                 optimizer,
-                start_factor=0.1,
+                start_factor=1e-3,
                 end_factor=1.0,
                 total_iters=self.warmup_steps,
             )
