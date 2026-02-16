@@ -27,7 +27,7 @@ class MultiplexedImageReconstruction(Callback):
         if masked_ch.ndim != 2 or recon_ch.ndim != 2 or orig_ch.ndim != 2:
             raise ValueError("Expected channel images with shape [H, W].")
         triplet = torch.stack([masked_ch, recon_ch, orig_ch], dim=0).unsqueeze(1)  # [3, 1, H, W]
-        return make_grid(triplet, nrow=3, normalize=True, scale_each=False)
+        return make_grid(triplet, nrow=3, normalize=True, scale_each=True)
 
     def _get_validation_cache(self, trainer) -> ValidationCache:
         caches = [cb for cb in trainer.callbacks if isinstance(cb, ValidationCache)]
