@@ -54,7 +54,7 @@ class MaskedDecoder(BaseMaskedDecoder):
         num_tokens = self.pos_embedding.shape[0]
 
         features = repeat(self.mask_token, "1 1 d -> b n d", b=batch_size, n=num_tokens)
-        features = features.to(x.device)
+        features = features.to(device=x.device, dtype=x.dtype)
         features = set_at_index(features, index=idx_keep, value=x)
 
         features = self.pos_embed(features)
