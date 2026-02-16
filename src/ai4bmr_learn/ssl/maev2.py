@@ -177,7 +177,7 @@ class MAEv2(L.LightningModule):
             active_pixels=active_pixels
         )
 
-        prediction_unmasked_patches, target_patches_unmasked, unmasked_patch, _ = self._shared_step_unmasked(images)
+        prediction_unmasked_patches, target_patches_unmasked, unmasked_patch, z = self._shared_step_unmasked(images)
         loss_unmasked = self.compute_loss(
             target_patches=target_patches_unmasked,
             predicted_patches=prediction_unmasked_patches,
@@ -190,7 +190,21 @@ class MAEv2(L.LightningModule):
 
         loss = loss_unmasked
         self._log_stage(stage="val", loss=loss, batch_size=batch_size)
-        return loss
+
+        prediction_masked = self.patches_to_image(prediction_masked_patches)
+        prediction_unmasked_patches = self.patches_to_image(prediction_unmasked_patches)
+
+        mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches).to(torch.float32)
+        mask_img = self.patches_to_image(mask_patches)
+
+        batch["loss"] = loss_unmasked.item()
+        batch["loss_masked"] = loss_masked.item()
+        batch["image"] = images.cpu()
+        batch["z"] = pool(z, strategy=self.pooling).cpu()
+        batch["mask"] = mask_img.cpu()
+        batch["prediction_masked"] = prediction_masked.cpu()
+        batch["prediction_unmasked"] = prediction_unmasked.cpu()
+        return batch
 
     def test_step(self, batch, batch_idx):
         images = batch["image"].to(self.device)
@@ -224,11 +238,11 @@ class MAEv2(L.LightningModule):
         self._log_stage(stage="test", loss=loss_unmasked, batch_size=batch_size)
         self.log("test/masked_recon_loss", loss_masked, on_step=False, on_epoch=True, batch_size=batch_size)
 
-        h, w = self.backbone.tokenizer.grid_size
-        prediction_masked = rearrange(prediction_masked_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
-        prediction_unmasked = rearrange(prediction_unmasked_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
+        prediction_masked = self.patches_to_image(prediction_masked_patches)
+        prediction_unmasked = self.patches_to_image(prediction_unmasked_patches)
+
         mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches).to(torch.float32)
-        mask_img = rearrange(mask_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
+        mask_img = self.patches_to_image(mask_patches)
 
         batch["loss"] = loss_unmasked.item()
         batch["loss_masked"] = loss_masked.item()
@@ -238,6 +252,11 @@ class MAEv2(L.LightningModule):
         batch["prediction_masked"] = prediction_masked.cpu()
         batch["prediction_unmasked"] = prediction_unmasked.cpu()
         return batch
+
+    def patches_to_image(self, patches: torch.Tensor) -> torch.Tensor:
+        assert patches.ndim == 5, f"Expected patches to have 5 dims [B,N,C,Kh,Kw], got {patches.shape}"
+        h, w = self.backbone.tokenizer.grid_size
+        return rearrange(patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
 
     def _normalize_target_patches(self, target_patches: torch.Tensor) -> torch.Tensor:
         assert target_patches.ndim == 5, (
