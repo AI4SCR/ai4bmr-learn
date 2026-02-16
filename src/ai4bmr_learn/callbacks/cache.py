@@ -17,27 +17,27 @@ def move_to_cpu(output):
 class Cache(Callback):
     name: str = 'cache'
 
-    def __init__(self, num_samples: int | None = None, save_dir: Path | None = None, fname: str | None = None,
-                 exclude_keys: list[str] | None = None, ignore_missing: bool = False, save_to_disk: bool = True):
+    def __init__(self, num_batches: int | None = None, save_dir: Path | None = None, fname: str | None = None,
+                 exclude_keys: list[str] | None = None, ignore_missing: bool = False, save: bool = True):
         super().__init__()
 
         fname = fname or self.name
         self.fname = f'{fname}.pkl'
-        self.num_samples = num_samples
+        self.num_batches = num_batches
         self.outputs = []
         self.exclude_keys = exclude_keys
         self.ignore_missing = ignore_missing
-        self.save_to_disk = save_to_disk
+        self.save = save
 
-        assert save_to_disk or save_dir is None, "Cannot specify save_dir if save_to_disk is False."
+        assert save or save_dir is None, "Cannot specify save_dir if save is False."
 
         if save_dir is not None:
             self.save_dir = Path(save_dir).expanduser().resolve()
         self.save_dir = save_dir
 
     def configure_save_dir(self, trainer):
-        if trainer.fast_dev_run or not self.save_to_disk:
-            pass
+        if trainer.fast_dev_run or not self.save:
+            return
 
         if self.save_dir is not None:
             pass
@@ -56,7 +56,7 @@ class Cache(Callback):
             _ = glom.delete(output, key, ignore_missing=self.ignore_missing)
 
     def accumulate(self, outputs):
-        accumulate = (self.num_samples is None) or (len(self.outputs) < self.num_samples)
+        accumulate = (self.num_batches is None) or (len(self.outputs) < self.num_batches)
 
         if accumulate:
             self.delete_keys(outputs)
@@ -67,7 +67,7 @@ class Cache(Callback):
         self.outputs = []
 
     def save_to_disk(self):
-        if not self.save_to_disk or self.save_dir is None:
+        if not self.save or self.save_dir is None:
             return
 
         save_path = self.save_dir / self.fname
