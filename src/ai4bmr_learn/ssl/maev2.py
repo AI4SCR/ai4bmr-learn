@@ -37,19 +37,17 @@ class MAEv2(L.LightningModule):
         super().__init__()
 
         self.backbone = backbone
-        self.tokenizer = backbone.tokenizer
-        self.encoder = backbone.encoder
 
         decoder_kwargs = decoder_kwargs or {}
-        decoder_kwargs = {**MaskedDecoderDefault(num_tokens=self.encoder.num_tokens).model_dump(), **decoder_kwargs}
+        decoder_kwargs = {**MaskedDecoderDefault(num_tokens=self.backbone.encoder.num_tokens).model_dump(), **decoder_kwargs}
         self.decoder: MaskedDecoder = MaskedDecoder(**decoder_kwargs)
 
-        if self.encoder.dim != self.decoder.dim:
-            self.proj = nn.Linear(self.encoder.dim, self.decoder.dim)
+        if self.backbone.encoder.dim != self.decoder.dim:
+            self.proj = nn.Linear(self.backbone.encoder.dim, self.decoder.dim)
         else:
             self.proj = nn.Identity()
 
-        self.head: nn.Module = nn.Linear(self.decoder.dim, self.tokenizer.num_token_pixels)
+        self.head: nn.Module = nn.Linear(self.decoder.dim, self.backbone.tokenizer.num_token_pixels)
 
         self.mask_ratio = mask_ratio
 
@@ -81,12 +79,12 @@ class MAEv2(L.LightningModule):
         batch_size = img.shape[0]
 
         # 0. tokenize image
-        x = self.tokenizer(img)
+        x = self.backbone.tokenizer(img)
 
         # 1. generate random token mask
         # NOTE: the mask is computed for the tokens including prefix tokens (if any)
-        num_prefix_tokens = self.encoder.num_prefix_tokens
-        num_tokens = self.encoder.num_tokens
+        num_prefix_tokens = self.backbone.encoder.num_prefix_tokens
+        num_tokens = self.backbone.encoder.num_tokens
         token_mask, _, idx_keep = random_token_mask(
             batch_size=batch_size,
             num_tokens=num_tokens,
@@ -99,7 +97,7 @@ class MAEv2(L.LightningModule):
         token_mask = token_mask.to(x.device)
 
         # 2. encode masked patch tokens
-        x = self.encoder.forward_masked(x, idx_keep=idx_keep)
+        x = self.backbone.encoder.forward_masked(x, idx_keep=idx_keep)
 
         # 3. project to decoder space
         x = self.proj(x)
@@ -113,11 +111,11 @@ class MAEv2(L.LightningModule):
 
         masked_patch = token_mask[:, num_prefix_tokens:]
 
-        kh, kw = self.tokenizer.kernel_size
+        kh, kw = self.backbone.tokenizer.kernel_size
         pred_patches = rearrange(
             x,
             "b n (c kh kw) -> b n c kh kw",
-            c=self.tokenizer.num_channels,
+            c=self.backbone.tokenizer.num_channels,
             kh=kh, kw=kw)
         target_patches = rearrange(img, "b c (h kh) (w kw) -> b (h w) c kh kw", kh=kh, kw=kw)
         return pred_patches, target_patches, masked_patch
@@ -129,11 +127,11 @@ class MAEv2(L.LightningModule):
         x = x[:, 1:]
         x = self.head(x)
 
-        kh, kw = self.tokenizer.kernel_size
+        kh, kw = self.backbone.tokenizer.kernel_size
         pred_patches = rearrange(
             x,
             "b n (c kh kw) -> b n c kh kw",
-            c=self.tokenizer.num_channels,
+            c=self.backbone.tokenizer.num_channels,
             kh=kh, kw=kw)
         target_patches = rearrange(img, "b c (h kh) (w kw) -> b (h w) c kh kw", kh=kh, kw=kw)
         masked_patch = torch.ones(
@@ -199,26 +197,35 @@ class MAEv2(L.LightningModule):
         active_pixels = batch["active_pixels"].to(self.device)
         assert not images.isnan().any(), "Input images contain NaNs"
 
-        prediction_masked_patches, target_patches_masked, masked_patch = self._shared_step(images)
+
+        prediction_masked_patches, target_patches, masked_patch = self._shared_step(images)
         loss_masked = self.compute_loss(
-            target_patches=target_patches_masked,
+            target_patches=target_patches,
             predicted_patches=prediction_masked_patches,
             masked_patch=masked_patch,
             active_pixels=active_pixels
         )
 
-        prediction_unmasked_patches, target_patches_unmasked, unmasked_patch, z = self._shared_step_unmasked(images)
+        prediction_unmasked_patches, target_patches, unmasked_patch, z = self._shared_step_unmasked(images)
         loss_unmasked = self.compute_loss(
-            target_patches=target_patches_unmasked,
+            target_patches=target_patches,
             predicted_patches=prediction_unmasked_patches,
             masked_patch=unmasked_patch,
             active_pixels=active_pixels
         )
+
+        if self.norm_pix_loss:
+            # NOTE: for visualization we need to shift back again
+            _, mean_, var_ = self._normalize_target_patches(target_patches)
+            std = torch.sqrt(var_ + 1e-6)
+            prediction_masked_patches = prediction_masked_patches * std + mean_
+            prediction_unmasked_patches = prediction_unmasked_patches * std + mean_
+
         batch_size = images.shape[0]
         self._log_stage(stage="test", loss=loss_unmasked, batch_size=batch_size)
         self.log("test/masked_recon_loss", loss_masked, on_step=False, on_epoch=True, batch_size=batch_size)
 
-        h, w = self.tokenizer.grid_size
+        h, w = self.backbone.tokenizer.grid_size
         prediction_masked = rearrange(prediction_masked_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
         prediction_unmasked = rearrange(prediction_unmasked_patches, "b (h w) c kh kw -> b c (h kh) (w kw)", h=h, w=w)
         mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches_masked).to(torch.float32)
@@ -239,7 +246,7 @@ class MAEv2(L.LightningModule):
         )
         mean = target_patches.mean(dim=(3, 4), keepdim=True)
         var = target_patches.var(dim=(3, 4), keepdim=True, unbiased=False)
-        return (target_patches - mean) / torch.sqrt(var + 1e-6)
+        return (target_patches - mean) / torch.sqrt(var + 1e-6), mean, var
 
     def _compute_activity_weights(self, target_patches: torch.Tensor, active_pixels: torch.Tensor) -> torch.Tensor:
         assert target_patches.ndim == 5, (
@@ -250,7 +257,7 @@ class MAEv2(L.LightningModule):
 
         batch_size = target_patches.shape[0]
 
-        kh, kw = self.tokenizer.kernel_size
+        kh, kw = self.backbone.tokenizer.kernel_size
         mask = rearrange(active_pixels, "b c (h kh) (w kw) -> b (h w) c kh kw", kh=kh, kw=kw)
         mask = rearrange(mask, "b n c kh kw -> c (b n kh kw)")
 
@@ -358,8 +365,8 @@ class MAEv2(L.LightningModule):
             weights = self._compute_activity_weights(target_patches, active_pixels=active_pixels)
 
         if self.norm_pix_loss:
-            assert False
-            target_patches = self._normalize_target_patches(target_patches)
+            # assert False
+            target_patches, mean_, var_ = self._normalize_target_patches(target_patches)
 
         match self.loss_type:
             case "simple":
