@@ -209,7 +209,7 @@ class MAEv2(L.LightningModule):
         prediction_masked = self.patches_to_image(prediction_masked_patches)
         prediction_unmasked = self.patches_to_image(prediction_unmasked_patches)
 
-        mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches).to(torch.float32)
+        mask_patches = masked_patch[:, :, None, None, None].expand_as(target_patches)
         mask_img = self.patches_to_image(mask_patches)
 
         batch["loss"] = loss_unmasked.item()
@@ -291,11 +291,11 @@ class MAEv2(L.LightningModule):
         # masked_patch is [B, N]. We expand it to match sq_error [B, N, C, Kh, Kw]
         # This identifies exactly which pixels were masked.
         pixel_mask = masked_patch[:, :, None, None, None].expand_as(sq_error)
-        pixel_mask = ~pixel_mask
+        # pixel_mask = ~pixel_mask
 
         # 4. The Vanilla MAE Logic: Mean only over masked pixels
         # Using boolean indexing extracts a 1D tensor of all masked pixel errors
-        # then takes the mean. This is robust to any image size or mask ratio.
+        # then takes the mean.
         loss = sq_error[pixel_mask].mean()
 
         return loss
