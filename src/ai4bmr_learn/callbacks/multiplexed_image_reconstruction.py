@@ -72,7 +72,16 @@ class MultiplexedImageReconstruction(Callback):
 
         cache = self._get_validation_cache(trainer)
         images, predictions, masks = self._collect_tensors(cache)
-        masked_images = images * (1.0 - masks)
+
+        # NOTE: we set the masked pixels to the minimum value in each channel
+        min_per_channel = images.amin(dim=(-2, -1), keepdim=True)
+        masked_images = torch.where(masks, min_per_channel, images)
+        # plt.imshow(reconstructions[0, 0]).figure.show()
+
+        # DEBUG:
+        # reconstructions = torch.where(masks, images, predictions)
+        reconstructions = torch.where(masks, predictions, images)
+        # plt.imshow(reconstructions[0, 0]).figure.show()
 
         num_samples, num_channels, _, _ = images.shape
 
@@ -82,7 +91,7 @@ class MultiplexedImageReconstruction(Callback):
             for s in range(num_samples):
                 row = self._row_grid(
                     masked_ch=masked_images[s, c],
-                    recon_ch=predictions[s, c],
+                    recon_ch=reconstructions[s, c],
                     orig_ch=images[s, c],
                 )
                 rows.append(row)
@@ -95,7 +104,7 @@ class MultiplexedImageReconstruction(Callback):
             for c in range(num_channels):
                 row = self._row_grid(
                     masked_ch=masked_images[s, c],
-                    recon_ch=predictions[s, c],
+                    recon_ch=reconstructions[s, c],
                     orig_ch=images[s, c],
                 )
                 rows.append(row)

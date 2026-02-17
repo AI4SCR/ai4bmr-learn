@@ -35,6 +35,9 @@ class Cache(Callback):
             self.save_dir = Path(save_dir).expanduser().resolve()
         self.save_dir = save_dir
 
+        logger.info(f'`{self.name.capitalize()}Cache` attached')
+
+
     def configure_save_dir(self, trainer):
         if trainer.fast_dev_run or not self.save:
             return
