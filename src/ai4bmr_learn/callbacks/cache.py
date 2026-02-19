@@ -25,7 +25,7 @@ class Cache(Callback):
         self.fname = f'{fname}.pkl'
         self.num_batches = num_batches
         self.outputs = []
-        self.exclude_keys = exclude_keys
+        self.exclude_keys = exclude_keys or []
         self.ignore_missing = ignore_missing
         self.save = save
 
@@ -124,4 +124,19 @@ class TestCache(Cache):
         self.accumulate(outputs)
 
     def on_test_end(self, trainer, pl_module) -> None:
+        self.save_to_disk()
+
+class PredictionCache(Cache):
+    name: str = 'prediction'
+
+    def on_predict_start(self, trainer, pl_module) -> None:
+        self.configure_save_dir(trainer=trainer)
+
+    def on_predict_epoch_start(self, trainer, pl_module) -> None:
+        self.reset()
+
+    def on_predict_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+        self.accumulate(outputs)
+
+    def on_predict_end(self, trainer, pl_module) -> None:
         self.save_to_disk()
