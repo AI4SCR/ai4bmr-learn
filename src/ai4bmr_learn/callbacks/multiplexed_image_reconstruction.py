@@ -15,12 +15,14 @@ class MultiplexedImageReconstruction(Callback):
         mask_key: str = "mask",
         num_samples: int = 5,
         padding: int = 2,
+        channels: list[str] | None = None,
     ):
         self.image_key = image_key
         self.prediction_key = prediction_key
         self.mask_key = mask_key
         self.num_samples = num_samples
         self.padding = padding
+        self.channels = channels
 
     @staticmethod
     def _row_grid(*, masked_ch: torch.Tensor, recon_ch: torch.Tensor, orig_ch: torch.Tensor) -> torch.Tensor:
@@ -84,6 +86,8 @@ class MultiplexedImageReconstruction(Callback):
         # plt.imshow(reconstructions[0, 0]).figure.show()
 
         num_samples, num_channels, _, _ = images.shape
+        if self.channels is not None:
+            assert len(self.channels) == num_channels, f"Expected {num_channels} channels, got {len(self.channels)}."
 
         # 1) For each channel: stack num_samples x 3 (masked, recon, orig)
         for c in range(num_channels):
@@ -96,7 +100,13 @@ class MultiplexedImageReconstruction(Callback):
                 )
                 rows.append(row)
             grid = make_grid(rows, nrow=1, normalize=False, padding=self.padding)
-            trainer.logger.log_image(key=f"by_channel/{c:03d}", images=[grid])
+
+            if self.channels is not None:
+                key = f"by_channel/{self.channels[c]}"
+            else:
+                key = f"by_channel/{c:03d}"
+
+            trainer.logger.log_image(key=key, images=[grid])
 
         # 2) For each sample: stack num_channels x 3 (masked, recon, orig)
         for s in range(num_samples):
