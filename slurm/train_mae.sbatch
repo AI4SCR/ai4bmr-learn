@@ -19,8 +19,6 @@
 # Load modules
 module load python/3.12.1
 
-export WANDB_API_KEY_ETHZ=REDACTED_WANDB_API_KEY
-
 PROJECT_DIR=/work/FAC/FBM/DBC/mrapsoma/prometex/projects/ai4bmr-learn
 cd "$PROJECT_DIR" || exit
 
