@@ -137,3 +137,25 @@ class DatasetLoaderCollection(L.LightningDataModule):
         dl = self.dataloaders.get('predict', None)
         dl = dl[0] if dl is not None else []
         return dl
+    
+    
+class AlternatingLoader:
+    """
+    Wraps multiple dataloaders and yields one batch at a time, alternating.
+    """
+
+    def __init__(self, loaders):
+        self.loaders = loaders
+
+    def __iter__(self):
+        iters = [iter(dl) for dl in self.loaders]
+        while iters:
+            for idx, it in enumerate(iters.copy()):
+                try:
+                    batch = next(it)
+                    yield batch
+                except StopIteration:
+                    iters.pop(idx)
+
+    def __len__(self):
+        return sum(len(dl) for dl in self.loaders)
