@@ -251,3 +251,60 @@ class RegressionLit(L.LightningModule):
                 "frequency": 1,
             },
         }
+
+
+class RegressionLitMultiData(RegressionLit):
+    def test_step(self, batch, batch_idx: int, dataloader_idx=0):
+        z, y_hat, y, loss = self.shared_step(batch, batch_idx)
+        batch_size = int(y.shape[0])
+
+        self.log(
+            f"loss/test",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            batch_size=batch_size,
+        )
+        self.test_metrics_list[dataloader_idx].update(y_hat, y)
+
+        batch["loss"] = loss
+        batch["y_hat"] = y_hat.detach().cpu()
+        batch["y"] = y.detach().cpu()
+        batch["z"] = z.detach().cpu()
+        return batch
+
+    def on_test_start(self):
+        num_loaders = len(self.trainer.test_dataloaders)
+
+        self.test_metrics_list = nn.ModuleList(
+            [
+                self.test_metrics.clone(prefix=f"test_loader_{i}/")
+                for i in range(num_loaders)
+            ]
+        )
+
+    def reduce_log_reset(self, metrics: MetricCollection, prefix: str = ""):
+        scores = metrics.compute()
+        metrics.reset()
+
+        means = {f"{prefix}{k}_mean": v.mean() for k, v in scores.items()}
+        stds = {f"{prefix}{k}_std": v.std() for k, v in scores.items()}
+
+        self.log_dict(means)
+        self.log_dict(stds)
+
+    def on_test_epoch_end(self) -> None:
+        if self.trainer.fast_dev_run:
+            return
+
+        # Loop over each dataloader's metrics
+        for idx, metrics in enumerate(self.test_metrics_list):
+            prefix = f"test_loader_{idx}/"
+
+            if self.num_outputs == 1:
+                # Single-output case: just log metrics
+                self.log_dict({f"{prefix}{k}": v for k, v in metrics.compute().items()})
+                metrics.reset()
+            else:
+                # Multi-output: use your reduce_log_reset method with prefix
+                self.reduce_log_reset(metrics, prefix=prefix)
