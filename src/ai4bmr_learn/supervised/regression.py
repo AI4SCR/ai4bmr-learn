@@ -103,12 +103,8 @@ class RegressionLit(L.LightningModule):
         y_hat = self.head(z)  # [B, 1]
         return y_hat
 
-    def shared_step(self, batch: dict, batch_idx: int):
+    def shared_step(self, batch: dict, batch_idx: int, calculate_loss: bool = True):
         x = glom(batch, self.batch_key) if self.batch_key is not None else batch
-        y = glom(batch, self.target_key)
-
-        y = y.unsqueeze(1) if y.ndim == 1 else y  # [B, 1]
-        y = y.float()
 
         z = self.backbone(x)
         z = pool(z, strategy=self.pooling)
@@ -116,8 +112,14 @@ class RegressionLit(L.LightningModule):
         y_hat = self.head(z)
         assert y_hat.ndim == 2
         # assert y_hat.shape[1] == 1, f"Expected y_hat [B,1], got {tuple(y_hat.shape)}"
-
-        loss = self.criterion(y_hat, y)
+        
+        y, loss = None, None
+        if calculate_loss:
+            y = glom(batch, self.target_key)
+            y = y.unsqueeze(1) if y.ndim == 1 else y  # [B, 1]
+            y = y.float()
+            loss = self.criterion(y_hat, y)
+        
         return z, y_hat, y, loss
 
     def training_step(self, batch, batch_idx: int):
@@ -189,21 +191,10 @@ class RegressionLit(L.LightningModule):
                 self.reduce_log_reset(metrics)
 
     def predict_step(self, batch, batch_idx: int):
-        x = glom(batch, self.batch_key) if self.batch_key is not None else batch
+        z, y_hat, _, _ = self.shared_step(batch, batch_idx, calculate_loss=False)
 
-        z = self.backbone(x)
-        z = pool(z, strategy=self.pooling)
-        y_hat = self.head(z)
-
-        batch["prediction"] = y_hat.detach().cpu()  # [B,1]
         batch["y_hat"] = y_hat.detach().cpu()
         batch["z"] = z.detach().cpu()
-
-        y = glom(batch, self.target_key)
-        assert isinstance(y, torch.Tensor), f"Expected target tensor at '{self.target_key}', got {type(y)}"
-        if y.ndim == 1:
-            y = y.unsqueeze(1)
-        batch["y"] = y.detach().cpu()
 
         return batch
 
