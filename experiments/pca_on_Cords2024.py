@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from pathlib import Path
 from sklearn.decomposition import PCA
 
-from ai4bmr_core.utils.plotting import get_grid_dims
+from ai4bmr_learn.plotting.utils import get_grid_dims
 import torch
 
 # HELPER

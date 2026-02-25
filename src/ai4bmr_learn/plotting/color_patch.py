@@ -1,4 +1,5 @@
 import torch
+from ai4bmr_learn.plotting.utils import blend, channel_to_rgba
 
 
 def reduce_to_rgb(tokens):
@@ -11,14 +12,9 @@ def reduce_to_rgb(tokens):
 
     return tokens
 
-
-from ai4bmr_core.utils.plotting import channel_to_rgba
-
-
 def token_to_color(image_size: tuple[int, int], tokens, coords, alpha=0.5, cmap_name: str = "gray", patch_size=None):
     import einops
     from torch import nn
-    from visualization.multi_channel_image import normalize_
 
     if tokens.shape[-1] > 3:
         tokens = reduce_to_rgb(tokens=tokens)
@@ -40,8 +36,6 @@ def viz_tokens(channel, tokens, coords, patch_size, alpha=0.5, cmap_name: str = 
     # WIP: visualize the single tokens not only the summary tokens.
     import einops
     from torch import nn
-    from visualization.multi_channel_image import normalize_
-    from ai4bmr_core.utils.plotting import blend
 
     num_patches = len(tokens)
     num_tokens_per_patch = tokens.shape[1]
@@ -87,7 +81,6 @@ def viz_tokens(channel, tokens, coords, patch_size, alpha=0.5, cmap_name: str = 
             attn[:, top : top + patch_size, left : left + patch_size] = attn_
 
         if rgb is None:
-            rgb = normalize_(channel)
             rgb = channel_to_rgba(channel, cmap_name=cmap_name)[..., :3]
 
         blended = blend(channel, attn, alpha=alpha)

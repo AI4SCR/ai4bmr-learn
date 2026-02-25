@@ -82,8 +82,8 @@ class UMAP(Callback):
                 labels.append(label)
 
         x = x[:num_samples]
-        values = np.concat(values)[:num_samples] if values else None
-        labels = np.concat(labels)[:num_samples] if labels else None
+        values = np.concatenate(values)[:num_samples] if values else None
+        labels = np.concatenate(labels)[:num_samples] if labels else None
 
         return x, values, labels
 

@@ -54,13 +54,14 @@ def get_seg_model(model_name: str = 'hest', device: str = 'cuda') -> torch.nn.Mo
         model_name (str): name of the model to load
         device (str): device to load the model on
     """
-    try:
-        from trident.segmentation_models import (  # pants: no-infer-dep  # pyright: ignore[reportMissingImports]
-            segmentation_model_factory,
-        )  # pants: no-infer-dep  # pyright: ignore[reportMissingImports]
-    except ImportError as e:
-        logger.warning('Trident library not found. Please install it to use the segmentation model.')
-        raise e
+    import importlib.util
+
+    assert importlib.util.find_spec("trident.segmentation_models") is not None, (
+        "Missing dependency `trident`. Install trident to use slide segmentation."
+    )
+    from trident.segmentation_models import (  # pants: no-infer-dep  # pyright: ignore[reportMissingImports]
+        segmentation_model_factory,
+    )  # pants: no-infer-dep  # pyright: ignore[reportMissingImports]
 
     # MODEL
     return segmentation_model_factory(model_name).eval().to(device=device)  # type: ignore[reportGeneralTypeIssues]

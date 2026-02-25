@@ -46,11 +46,8 @@ class SaveOutputs(Callback):
 
         if self.drop_keys:
             for key in self.drop_keys:
-                try:
-                    del data[key]
-                except KeyError as e:
-                    logger.error(f'Key "{key}" not found in batch. Available keys: {list(data.keys())}')
-                    raise e
+                assert key in data, f'Key "{key}" not found in batch. Available keys: {list(data.keys())}'
+                del data[key]
 
         data = detach_and_to_cpu(data)
         save_path = self.save_dir / f'dl_idx={dataloader_idx}-batch_idx={batch_idx}.pt'

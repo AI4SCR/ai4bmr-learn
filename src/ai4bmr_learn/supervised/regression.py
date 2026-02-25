@@ -216,12 +216,7 @@ class RegressionLit(L.LightningModule):
         if self.schedule is None:
             return optimizer
 
-        try:
-            max_epochs = self.trainer.max_epochs
-            assert max_epochs is not None, "trainer.max_epochs is None"
-        except AttributeError or AssertionError as e:
-            logger.warning(f'`max_epoch not found in trainer ({e}), using module max_epochs={self.max_epochs}`')
-            max_epochs = self.max_epochs
+        max_epochs = getattr(self.trainer, "max_epochs", None) or self.max_epochs
 
         num_warmup_epochs = self.num_warmup_epochs
         warmup_scheduler = optim.lr_scheduler.LinearLR(

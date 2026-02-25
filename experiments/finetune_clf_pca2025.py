@@ -11,7 +11,7 @@ import lightning as L
 import numpy as np
 import pandas as pd
 import wandb
-from ai4bmr_core.utils.saving import save_zarr
+from ai4bmr_learn.utils.io import save_zarr
 from dotenv import load_dotenv
 from lightning import seed_everything
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
@@ -51,7 +51,7 @@ def preprocess_images(
         save_dir: Path,
         include_channels: list[str] = None,
 ):
-    from ai4bmr_core.utils.stats import StatsRecorder
+    from ai4bmr_learn.utils.stats import StatsRecorder
 
     save_dir.mkdir(exist_ok=True, parents=True)
     save_stats = save_dir / "stats.pkl"
@@ -611,7 +611,7 @@ if __name__ == '__main__':
 #
 # from matplotlib import pyplot as plt
 # from torchvision.utils import make_grid
-# from ai4bmr_core.utils.plotting import get_grid_dims
+# from ai4bmr_learn.plotting.utils import get_grid_dims
 # from sklearn.decomposition import PCA
 #
 # img = batch['image'][[0]]

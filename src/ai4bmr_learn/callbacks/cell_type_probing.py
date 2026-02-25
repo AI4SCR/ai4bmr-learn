@@ -4,7 +4,7 @@ import torch
 from glom import glom
 from lightning.pytorch.callbacks import Callback
 from loguru import logger
-from sklearn.model_selection import StratifiedShuffleSplit, cross_validate
+from sklearn.model_selection import ShuffleSplit, cross_validate
 
 from ai4bmr_learn.callbacks.cache import ValidationCache
 
@@ -71,7 +71,7 @@ class CellTypeProbing(Callback):
 
         # compute counts for each label
         targets = []
-        for x, mask, anno in zip(xs, masks, annos):
+        for _, mask, anno in zip(x, masks, annos):
             labels = np.unique(anno.flatten())
             labels = labels[labels > 0]  # 0 and below is considered background
             counts = {}
@@ -89,17 +89,12 @@ class CellTypeProbing(Callback):
 
 
     def run_evaluation(self, x, targets, trainer):
-
-        cv = StratifiedShuffleSplit(n_splits=self.num_splits, test_size=self.test_size, random_state=self.random_state)
+        cv = ShuffleSplit(n_splits=self.num_splits, test_size=self.test_size, random_state=self.random_state)
         model = Ridge(alpha=1.0)  # L2-penalized
         # model = Lasso(alpha=0.1)  # L1-penalized
         # model = ElasticNet(alpha=0.1, l1_ratio=0.5)
 
-        try:
-            scores = cross_validate(estimator=model, X=x, y=targets, cv=cv, scoring=self.scoring, n_jobs=-1)
-        except ValueError as e:
-            logger.error(e)
-            return
+        scores = cross_validate(estimator=model, X=x, y=targets, cv=cv, scoring=self.scoring, n_jobs=-1)
 
         scores = {k: v.mean() for k,v in scores.items()}
 

@@ -4,7 +4,7 @@ def test_run_umap():
     import numpy as np
     from matplotlib import pyplot as plt
     from ai4bmr_learn.plotting.umap import run_umap
-    from ai4bmr_core.utils.plotting import get_grid_dims
+    from ai4bmr_learn.plotting.utils import get_grid_dims
 
     data = np.random.rand(500_000, 50)
     data = [*data, np.random.rand(2, 50) * 16]
@@ -44,7 +44,7 @@ def test_run_umap_with_pre_computed_graph():
     import numpy as np
     from matplotlib import pyplot as plt
     from ai4bmr_learn.plotting.umap import run_umap
-    from ai4bmr_core.utils.plotting import get_grid_dims
+    from ai4bmr_learn.plotting.utils import get_grid_dims
     from ai4bmr_learn.clustering.cluster import kneighbors_graph
 
     data = np.random.rand(500_000, 50)
@@ -97,7 +97,7 @@ def test_plot_umap():
     import numpy as np
     from matplotlib import pyplot as plt
     from ai4bmr_learn.plotting.umap import plot_umap
-    from ai4bmr_core.utils.plotting import get_grid_dims
+    from ai4bmr_learn.plotting.utils import get_grid_dims
     from ai4bmr_learn.clustering.cluster import compute_knn_graph
 
     data = np.random.rand(50_000, 50)

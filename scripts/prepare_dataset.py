@@ -3,8 +3,8 @@ import pickle
 import lightning as L
 import numpy as np
 import pandas as pd
-from ai4bmr_core.utils.saving import save_image, save_mask
-from ai4bmr_core.utils.stats import StatsRecorder
+from ai4bmr_learn.utils.io import save_image, save_mask
+from ai4bmr_learn.utils.stats import StatsRecorder
 from loguru import logger
 from tqdm import tqdm
 

@@ -67,20 +67,18 @@ class BaseCollate:
 
     def get_gene_dict(self, batch: list[torch.Tensor] | list[dict] | None = None) -> dict:
         if batch is not None:
-            try:
-                ensembl_ids = set()
-                for batch_item in batch:
-                    if 'views' in batch_item:
-                        ensembl_ids.update(
-                            sum([view['points'][self.group_by].unique().tolist() for view in batch_item['views']], [])  # pyright: ignore
-                        )
-                    else:
-                        ensembl_ids.update(batch_item['points'][self.group_by].unique().tolist())  # pyright: ignore
+            if len(batch) == 0:
+                return {}
 
-                ensembl_dict = {k: i for i, k in enumerate(sorted(ensembl_ids))}
-            except IndexError:
-                ensembl_dict = {}
-            return ensembl_dict
+            ensembl_ids = set()
+            for batch_item in batch:
+                if 'views' in batch_item:
+                    for view in batch_item['views']:  # pyright: ignore
+                        ensembl_ids.update(view['points'][self.group_by].unique().tolist())  # pyright: ignore
+                else:
+                    ensembl_ids.update(batch_item['points'][self.group_by].unique().tolist())  # pyright: ignore
+
+            return {k: i for i, k in enumerate(sorted(ensembl_ids))}
 
         if self.ensembl_dict is not None:
             return self.ensembl_dict

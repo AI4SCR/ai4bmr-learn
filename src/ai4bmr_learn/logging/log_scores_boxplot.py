@@ -1,6 +1,6 @@
 import seaborn as sns
 import wandb
-from ai4bmr_core.utils.plotting import get_grid_dims
+from ai4bmr_learn.plotting.utils import get_grid_dims
 from matplotlib import pyplot as plt
 
 

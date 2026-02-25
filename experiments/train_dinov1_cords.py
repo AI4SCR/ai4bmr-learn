@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import torch
 import wandb
-from ai4bmr_core.utils.saving import save_zarr
+from ai4bmr_learn.utils.io import save_zarr
 from lightning.pytorch.callbacks import LearningRateMonitor
 from lightning.pytorch.loggers import WandbLogger
 from loguru import logger
@@ -43,7 +43,7 @@ def preprocess_images(
         save_dir: Path,
         include_channels: list[str] = None,
 ):
-    from ai4bmr_core.utils.stats import StatsRecorder
+    from ai4bmr_learn.utils.stats import StatsRecorder
 
     save_dir.mkdir(exist_ok=True, parents=True)
     save_stats = save_dir / "stats.pkl"

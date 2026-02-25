@@ -59,7 +59,7 @@ class LinearProbing(Callback):
             val = glom(batch, self.target_key)
             val = val.detach().cpu().numpy() if isinstance(val, torch.Tensor) else val
             targets.append(val)
-        targets = np.concat(targets)
+        targets = np.concatenate(targets)
 
         x = x[:self.num_samples] if self.num_samples else x
         targets = targets[:self.num_samples] if self.num_samples else targets
@@ -67,15 +67,14 @@ class LinearProbing(Callback):
 
 
     def run_evaluation(self, x, targets, trainer):
-
         cv = StratifiedShuffleSplit(n_splits=self.num_splits, test_size=self.test_size, random_state=self.random_state)
         clf = LogisticRegression(max_iter=1000)
 
-        try:
-            scores = cross_validate(estimator=clf, X=x, y=targets, cv=cv, scoring=self.scoring, n_jobs=-1)
-        except ValueError as e:
-            logger.error(e)
-            return
+        classes, counts = np.unique(targets, return_counts=True)
+        assert len(classes) > 1, "LinearProbing requires at least two classes."
+        assert counts.min() >= 2, "Each class needs at least two samples for stratified CV."
+
+        scores = cross_validate(estimator=clf, X=x, y=targets, cv=cv, scoring=self.scoring, n_jobs=-1)
 
         scores = {k: v.mean() for k,v in scores.items()}
 
