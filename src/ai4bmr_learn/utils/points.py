@@ -5,7 +5,7 @@ from shapely.geometry import box
 
 from ai4bmr_learn.data_models.Coordinate import PatchCoordinate
 from ai4bmr_learn.utils.images import coords_to_bboxs, get_coordinates_dict
-from ai4bmr_learn.utils.utils import pair
+from ai4bmr_learn.utils.helpers import pair
 
 
 def generate_points_subsets(

@@ -3,7 +3,7 @@ import geopandas as gpd
 import numpy as np
 import torch
 from torchvision.transforms import v2
-from ai4bmr_learn.utils.utils import pair
+from ai4bmr_learn.utils.helpers import pair
 
 class RandomResizeCrop:  # this doesn't have to be a nn.Module
     def __init__(self, errors: str = 'clip-raise', **kwargs):

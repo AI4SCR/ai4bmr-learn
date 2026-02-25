@@ -2,7 +2,7 @@ from shapely.affinity import scale, translate
 from torch import are_deterministic_algorithms_enabled, nn
 from torchvision.transforms import v2
 import torch
-from ai4bmr_learn.utils.utils import pair
+from ai4bmr_learn.utils.helpers import pair
 import math
 
 class RandomCrop(nn.Module):

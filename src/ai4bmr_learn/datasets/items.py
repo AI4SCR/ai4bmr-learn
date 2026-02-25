@@ -11,7 +11,7 @@ from torchvision import tv_tensors
 
 from ai4bmr_learn.datasets.utils import filter_items_and_metadata
 from ai4bmr_learn.utils import io
-from ai4bmr_learn.utils.utils import pair
+from ai4bmr_learn.utils.helpers import pair
 from torchvision.transforms import v2
 from PIL.Image import Image
 

@@ -1,57 +1,74 @@
+from __future__ import annotations
+
 import numpy as np
+from pathlib import Path
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 
-class StatsRecorder:
-    """Online dataset statistics recorder for CHW arrays."""
+def _to_sample_feature_matrix(data: np.ndarray) -> np.ndarray:
+    array = np.asarray(data)
+    assert array.ndim == 3, "Expected CHW array."
+    channels, height, width = array.shape
+    return array.reshape(channels, height * width).T
 
-    def __init__(self, data=None, exclude_zeros: bool = False):
-        self.max_height = None
-        self.max_width = None
-        self.maxs = None
-        self.mins = None
-        self.mean = None
-        self.std = None
-        self.n_observations = 0
-        self.exclude_zeros = exclude_zeros
 
-        if data is not None:
-            self.update(data)
+class ChannelStatistics:
+    """Incremental per-channel scalers for CHW images."""
 
-    def update(self, data: np.ndarray):
-        assert data.ndim == 3, "Expected data in CHW format"
+    def __init__(self):
+        self.standard_scaler = StandardScaler()
+        self.minmax_scaler = MinMaxScaler()
+        self.num_pixels_seen = 0
+        self.max_height: int | None = None
+        self.max_width: int | None = None
 
-        if self.exclude_zeros:
-            data = data.copy()
-            data[data == 0] = np.nan
+    @property
+    def mean(self) -> np.ndarray:
+        return self.standard_scaler.mean_
 
-        if self.mean is None:
-            self.max_height = data.shape[-2]
-            self.max_width = data.shape[-1]
-            self.maxs = np.nanmax(data, axis=(1, 2))
-            self.mins = np.nanmin(data, axis=(1, 2))
-            self.mean = np.nanmean(data, axis=(1, 2))
-            self.std = np.nanstd(data, axis=(1, 2))
-            self.n_observations = data[0].size
-            return
+    @property
+    def std(self) -> np.ndarray:
+        return self.standard_scaler.scale_
 
-        self.max_height = max(self.max_height, data.shape[-2])
-        self.max_width = max(self.max_width, data.shape[-1])
-        self.maxs = np.stack((self.maxs, np.nanmax(data, axis=(1, 2)))).max(axis=0)
-        self.mins = np.stack((self.mins, np.nanmin(data, axis=(1, 2)))).min(axis=0)
+    @property
+    def mins(self) -> np.ndarray:
+        return self.minmax_scaler.data_min_
 
-        new_mean = np.nanmean(data, axis=(1, 2))
-        new_std = np.nanstd(data, axis=(1, 2))
-        m = float(self.n_observations)
-        n = data[0].size
-        old_mean = self.mean
+    @property
+    def maxs(self) -> np.ndarray:
+        return self.minmax_scaler.data_max_
 
-        self.mean = (m / (m + n)) * old_mean + (n / (m + n)) * new_mean
-        self.std = np.sqrt(
-            (m / (m + n)) * self.std**2
-            + (n / (m + n)) * new_std**2
-            + (m * n / (m + n) ** 2) * (old_mean - new_mean) ** 2
-        )
-        self.n_observations += n
+    def partial_fit(self, image: np.ndarray) -> None:
+        samples = _to_sample_feature_matrix(image)
+        assert samples.size > 0, "Image has no pixels."
+
+        channels, height, width = np.asarray(image).shape
+        self.max_height = height if self.max_height is None else max(self.max_height, height)
+        self.max_width = width if self.max_width is None else max(self.max_width, width)
+
+        self.standard_scaler.partial_fit(samples)
+        self.minmax_scaler.partial_fit(samples)
+        self.num_pixels_seen += samples.shape[0]
+
+    def to_dict(self) -> dict:
+        return {
+            "mean": self.mean.tolist(),
+            "std": self.std.tolist(),
+            "mins": self.mins.tolist(),
+            "maxs": self.maxs.tolist(),
+            "max_height": self.max_height,
+            "max_width": self.max_width,
+            "num_pixels_seen": self.num_pixels_seen,
+        }
+
+    def to_yaml(self, save_path: Path) -> Path:
+        import yaml
+
+        target = Path(save_path).expanduser().resolve()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "w") as handle:
+            yaml.safe_dump(self.to_dict(), handle, sort_keys=False)
+        return target
 
 
 def model_stats(model):
