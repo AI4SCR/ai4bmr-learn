@@ -24,7 +24,7 @@ from lightning import seed_everything
 import lightning as L
 from pathlib import Path
 from loguru import logger
-from ai4bmr_core.utils.saving import save_zarr
+from ai4bmr_learn.utils.io import save_zarr
 import pickle
 from torch.utils.data import DataLoader
 from dotenv import load_dotenv
@@ -55,7 +55,7 @@ def preprocess_images(
         save_dir: Path,
         include_channels: list[str] = None,
 ):
-    from ai4bmr_core.utils.stats import StatsRecorder
+    from ai4bmr_learn.utils.stats import StatsRecorder
 
     save_dir.mkdir(exist_ok=True, parents=True)
     save_stats = save_dir / "stats.pkl"
@@ -456,7 +456,7 @@ cls_token = out[:, 0, ...]
 # %%
 from matplotlib import pyplot as plt
 from torchvision.utils import make_grid
-from ai4bmr_core.utils.plotting import get_grid_dims
+from ai4bmr_learn.plotting.utils import get_grid_dims
 from sklearn.decomposition import PCA
 
 img = batch['image'][[0]]

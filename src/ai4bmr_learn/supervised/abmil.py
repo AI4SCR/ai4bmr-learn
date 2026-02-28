@@ -274,10 +274,7 @@ class MILTrainer(L.LightningModule):
 
         if self.collect_val_step_outputs:
             # Collect data for saving
-            try:
-                sample_ids = glom(batch, 'sample_id')
-            except:
-                sample_ids = None
+            sample_ids = batch.get('sample_id')
 
             if sample_ids is not None:
                 # Ensure iterable if it's a single string (though DataLoader usually gives list)

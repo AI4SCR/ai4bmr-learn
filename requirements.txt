@@ -10,3 +10,6 @@ helical
 glom
 scikit-image
 scikit-learn
+zarr
+tifffile
+colorcet

@@ -29,16 +29,14 @@ class ConcordanceIndex(Metric):
     def compute(self) -> torch.Tensor:
         from torchsurv.metrics.cindex import ConcordanceIndex
 
+        assert self.preds and self.events and self.target, "No samples available to compute cindex."
         preds = torch.cat(self.preds)
         events = torch.cat(self.events).bool()
         target = torch.cat(self.target)
 
         cindex = ConcordanceIndex()
-        try:
-            res = cindex(preds, events, target)
-            return torch.tensor(res, dtype=torch.float32).squeeze()
-        except:
-            return torch.tensor(0.0, dtype=torch.float32).squeeze()
+        res = cindex(preds, events, target)
+        return torch.tensor(res, dtype=torch.float32).squeeze()
 
 
 class SurvivalLit(L.LightningModule):
@@ -212,10 +210,7 @@ class SurvivalLit(L.LightningModule):
         if self.schedule is None:
             return optimizer
 
-        try:
-            max_epochs = self.trainer.max_epochs
-        except AttributeError:
-            max_epochs = self.max_epochs
+        max_epochs = getattr(self.trainer, "max_epochs", None) or self.max_epochs
 
         num_warmup_epochs = self.num_warmup_epochs
         warmup_scheduler = optim.lr_scheduler.LinearLR(

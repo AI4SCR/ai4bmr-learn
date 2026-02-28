@@ -1,26 +1,21 @@
-import grp
-import os
-import subprocess
+from __future__ import annotations
+
 from pathlib import Path
-import textwrap
 
-def set_permissions(path: str):
-    group_name = "spatial_100794-pr-g"
-    gid = grp.getgrnam(group_name).gr_gid
-    uid = os.getuid()
 
-    path = Path(path).resolve()
+def set_permissions(path: str | Path, permission: int, recursive: bool = True) -> None:
+    """Set filesystem permissions on a path.
 
-    cmd = f"""
-    # Change group only for files owned by this user
-    find "{path}" -user {uid} -exec chgrp {gid} {{}} +
-
-    # Give group read/write and execute on directories
-    find "{path}" -user {uid} -exec chmod g+rwX {{}} +
-
-    # Set setgid bit on directories only (so new files inherit group)
-    find "{path}" -type d -user {uid} -exec chmod g+s {{}} +
+    Args:
+        path: File or directory path.
+        permission: Unix mode bits, e.g. 0o770.
+        recursive: Apply to all children when `path` is a directory.
     """
-    cmd = textwrap.dedent(cmd)
+    target = Path(path).expanduser().resolve()
+    assert target.exists(), f"Path does not exist: {target}"
+    assert permission >= 0, "permission must be >= 0"
 
-    subprocess.run(cmd, shell=True, check=True)
+    if target.is_dir() and recursive:
+        for child in target.rglob("*"):
+            child.chmod(permission)
+    target.chmod(permission)

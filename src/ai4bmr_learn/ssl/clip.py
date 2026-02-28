@@ -208,12 +208,7 @@ class ClipLit(L.LightningModule):
         if self.schedule is None:
             return optimizer
 
-        try:
-            max_epochs = self.trainer.max_epochs
-            assert max_epochs is not None, "trainer.max_epochs is None"
-        except (AttributeError, AssertionError) as e:
-            logger.warning(f'`max_epoch` not found in trainer ({e}), using module max_epochs={self.max_epochs}')
-            max_epochs = self.max_epochs
+        max_epochs = getattr(self.trainer, "max_epochs", None) or self.max_epochs
 
         warmup = optim.lr_scheduler.LinearLR(
             optimizer, start_factor=1e-2, end_factor=1.0, total_iters=self.num_warmup_epochs

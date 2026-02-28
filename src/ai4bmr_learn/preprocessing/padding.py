@@ -1,4 +1,4 @@
-from ai4bmr_learn.utils.utils import pair
+from ai4bmr_learn.utils.helpers import pair
 
 def get_pad_for_kernel(height: int, width: int, kernel_size: int, stride: int) -> tuple[int, int]:
     """Compute the minimal padding of height and width to make image divisible by kernel and stride."""

@@ -75,13 +75,8 @@ class ClassDistribution(Callback):
                 }
             )
 
-            try:
-                chart = wandb.plot.bar(
-                    table, "class", "count", title=f"{self.table_prefix} (val)"
-                )
-                exp.log({f"{self.table_prefix}/bar": chart})
-            except Exception as e:
-                logger.warning(f"ClassDistribution: failed to log bar chart: {e}")
+            chart = wandb.plot.bar(table, "class", "count", title=f"{self.table_prefix} (val)")
+            exp.log({f"{self.table_prefix}/bar": chart})
 
 
     def get_validation_cache(self, trainer) -> ValidationCache | None:
@@ -98,11 +93,8 @@ class ClassDistribution(Callback):
         chunks: list[np.ndarray] = []
 
         for batch in cache.outputs:
-            try:
-                t = glom(batch, self.target_key)
-            except Exception as e:
-                logger.warning(f"ClassDistribution: glom failed for key '{self.target_key}': {e}")
-                continue
+            t = glom(batch, self.target_key, default=None)
+            assert t is not None, f"ClassDistribution: key '{self.target_key}' not found in validation output."
 
             # normalize to numpy 1D
             if isinstance(t, torch.Tensor):
@@ -119,5 +111,6 @@ class ClassDistribution(Callback):
                 arr = arr.reshape(-1)
             chunks.append(arr)
 
+        assert chunks, "ClassDistribution: no targets collected from validation cache."
         out = np.concatenate(chunks, axis=0)
         return out

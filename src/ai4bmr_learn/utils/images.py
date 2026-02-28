@@ -1,6 +1,6 @@
 import numpy as np
 import openslide
-from ai4bmr_learn.utils.utils import pair
+from ai4bmr_learn.utils.helpers import pair
 from tqdm import tqdm
 
 def get_thumbnail_size_and_scale(size, max_size: int = 1000):
@@ -158,7 +158,7 @@ def filter_coords(coords: list, *, contours: gpd.GeoDataFrame, overlap: float = 
 
 def get_points(coord):
     from shapely.affinity import translate, scale
-    from ai4bmr_learn.utils.utils import pair
+    from ai4bmr_learn.utils.helpers import pair
 
     kernel_height, kernel_width = pair(coord.kernel_size)
 
