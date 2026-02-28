@@ -23,6 +23,7 @@ class Items(Dataset):
             self,
             items_path: Path,
             metadata_path: Path | None = None,
+            metadata_keys: list[str] | None = None,
             split: str | None = None,
             transform: Callable | None = None,
             cache_dir: Path | None = None,
@@ -46,6 +47,7 @@ class Items(Dataset):
 
         # METADATA
         self.metadata_path = metadata_path
+        self.metadata_keys = metadata_keys
         if metadata_path is not None:
             assert id_key is not None, 'id_key must be provided when metadata_path is provided'
             self.metadata_path = Path(metadata_path).expanduser().resolve()
@@ -80,13 +82,21 @@ class Items(Dataset):
             logger.info(f'Loading metadata from {self.metadata_path}')
             item_ids = [i[self.id_key] for i in self.items]
             metadata = pd.read_parquet(self.metadata_path)
+
+            if self.metadata_keys is not None:
+                missing_keys = set(self.metadata_keys) - set(metadata.columns)
+                assert len(missing_keys) == 0, f'Metadata keys {missing_keys} not found in metadata columns {metadata.columns}'
+                metadata = metadata[self.metadata_keys]
+
             self.item_ids, self.metadata = filter_items_and_metadata(item_ids=item_ids, metadata=metadata,
                                                                      split=self.split,
                                                                      drop_nan_columns=self.drop_nan_columns)
+            n = len(self.items)
             self.items = [i for i in self.items if i[self.id_key] in self.item_ids]
+            logger.info(f'Loaded {len(self.items)}/{n} items have metadata')
 
         if self.cache_dir and not self.has_cache():
-            logger.info('No cache found. Creating...')
+            logger.info(f'No cache found. Creating at {self.cache_dir}')
             self.create_cache()
 
     def has_cache(self, iid: str | None = None) -> bool:

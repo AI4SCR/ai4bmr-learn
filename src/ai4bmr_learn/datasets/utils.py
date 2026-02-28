@@ -15,7 +15,7 @@ def filter_items_and_metadata(
     Filters a list of item dicts and metadata based on a split value and optionally drops
     NaN-containing columns in the metadata. Returns (items, item_ids, metadata).
     """
-    item_ids = set(item_ids)
+    iids = set(item_ids)
 
     # filter item ids
     if split is not None:
@@ -29,11 +29,11 @@ def filter_items_and_metadata(
     else:
         valid_ids = set(metadata.index)
 
-    if not item_ids < valid_ids:
+    if not iids < valid_ids:
         logger.warning(f'Not all items have metadata. Dropping items without metadata.')
 
-    valid_item_ids = item_ids.intersection(valid_ids)
-    logger.info(f"Found {len(valid_item_ids)}/{len(item_ids)} items with metadata.")
+    valid_item_ids = iids.intersection(valid_ids)
+    logger.info(f"Found {len(valid_item_ids)}/{len(iids)} items ids with metadata.")
 
     # drop NaN
     filter_ = metadata.isna().any()
