@@ -42,7 +42,7 @@ class ChannelStatistics:
         samples = _to_sample_feature_matrix(image)
         assert samples.size > 0, "Image has no pixels."
 
-        channels, height, width = np.asarray(image).shape
+        _, height, width = image.shape
         self.max_height = height if self.max_height is None else max(self.max_height, height)
         self.max_width = width if self.max_width is None else max(self.max_width, width)
 
