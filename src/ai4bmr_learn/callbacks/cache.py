@@ -18,7 +18,8 @@ class Cache(Callback):
     name: str = 'cache'
 
     def __init__(self, num_batches: int | None = None, save_dir: Path | None = None, fname: str | None = None,
-                 exclude_keys: list[str] | None = None, ignore_missing: bool = False, save: bool = True):
+                 exclude_keys: list[str] | None = None, ignore_missing: bool = False, save: bool = True,
+                 save_in_batches: bool = False):
         super().__init__()
 
         fname = fname or self.name
@@ -28,6 +29,9 @@ class Cache(Callback):
         self.exclude_keys = exclude_keys or []
         self.ignore_missing = ignore_missing
         self.save = save
+        self.save_in_batches = save_in_batches
+        if self.save_in_batches:
+            self.batch_counter = 0
 
         assert save or save_dir is None, "Cannot specify save_dir if save is False."
 
@@ -58,22 +62,32 @@ class Cache(Callback):
         for key in self.exclude_keys:
             _ = glom.delete(output, key, ignore_missing=self.ignore_missing)
 
-    def accumulate(self, outputs):
-        accumulate = (self.num_batches is None) or (len(self.outputs) < self.num_batches)
+    def accumulate_or_save_batch(self, outputs):
+        do_accumulate = (self.num_batches is None) or (len(self.outputs) < self.num_batches)
+        if do_accumulate:
+            self.accumulate(outputs)
+        
+        if self.save_in_batches:
+            self.save_to_disk(save_suffix=self.batch_counter)
+            self.batch_counter += 1
+            self.reset()
 
-        if accumulate:
-            self.delete_keys(outputs)
-            move_to_cpu(outputs)
-            self.outputs.append(outputs)
+    def accumulate(self, outputs):
+        self.delete_keys(outputs)
+        move_to_cpu(outputs)
+        self.outputs.append(outputs)
 
     def reset(self):
         self.outputs = []
 
-    def save_to_disk(self):
+    def save_to_disk(self, save_suffix=None):
         if not self.save or self.save_dir is None:
             return
 
         save_path = self.save_dir / self.fname
+        if save_suffix is not None:
+            save_path = save_path.parent / f'{save_path.stem}_batch_{save_suffix}{save_path.suffix}'
+
         save_path.parent.mkdir(parents=True, exist_ok=True)
         with open(save_path, "wb") as f:
             pickle.dump(self.outputs, f)
@@ -89,10 +103,11 @@ class TrainCache(Cache):
         self.reset()
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        self.accumulate(outputs)
+        self.accumulate_or_save_batch(outputs)
 
     def on_train_end(self, trainer, pl_module) -> None:
-        self.save_to_disk()
+        if not self.save_in_batches:
+            self.save_to_disk()
 
 
 class ValidationCache(Cache):
@@ -105,7 +120,7 @@ class ValidationCache(Cache):
         self.reset()
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        self.accumulate(outputs)
+        self.accumulate_or_save_batch(outputs)
 
     def on_validation_epoch_end(self, trainer, pl_module) -> None:
         self.save_to_disk()
@@ -121,10 +136,11 @@ class TestCache(Cache):
         self.reset()
 
     def on_test_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        self.accumulate(outputs)
+        self.accumulate_or_save_batch(outputs)
 
     def on_test_end(self, trainer, pl_module) -> None:
-        self.save_to_disk()
+        if not self.save_in_batches:
+            self.save_to_disk()
 
 class PredictionCache(Cache):
     name: str = 'prediction'
@@ -136,7 +152,8 @@ class PredictionCache(Cache):
         self.reset()
 
     def on_predict_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        self.accumulate(outputs)
+        self.accumulate_or_save_batch(outputs)
 
     def on_predict_end(self, trainer, pl_module) -> None:
-        self.save_to_disk()
+        if not self.save_in_batches:
+            self.save_to_disk()

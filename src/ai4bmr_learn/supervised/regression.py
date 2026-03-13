@@ -103,12 +103,15 @@ class RegressionLit(L.LightningModule):
         y_hat = self.head(z)  # [B, 1]
         return y_hat
 
-    def shared_step(self, batch: dict, batch_idx: int):
-        x = glom(batch, self.batch_key) if self.batch_key is not None else batch
+    def compute_loss(self, batch, y_hat):
         y = glom(batch, self.target_key)
-
         y = y.unsqueeze(1) if y.ndim == 1 else y  # [B, 1]
         y = y.float()
+        loss = self.criterion(y_hat, y)
+        return y, loss
+    
+    def shared_step(self, batch: dict, batch_idx: int):
+        x = glom(batch, self.batch_key) if self.batch_key is not None else batch
 
         z = self.backbone(x)
         z = pool(z, strategy=self.pooling)
@@ -116,12 +119,12 @@ class RegressionLit(L.LightningModule):
         y_hat = self.head(z)
         assert y_hat.ndim == 2
         # assert y_hat.shape[1] == 1, f"Expected y_hat [B,1], got {tuple(y_hat.shape)}"
-
-        loss = self.criterion(y_hat, y)
-        return z, y_hat, y, loss
+        
+        return z, y_hat
 
     def training_step(self, batch, batch_idx: int):
-        z, y_hat, y, loss = self.shared_step(batch, batch_idx)
+        z, y_hat = self.shared_step(batch, batch_idx)
+        y, loss = self.compute_loss(batch, y_hat)
         batch_size = int(y.shape[0])
 
         self.log("loss/train", loss, on_step=True, on_epoch=True, batch_size=batch_size)
@@ -146,7 +149,8 @@ class RegressionLit(L.LightningModule):
 
 
     def validation_step(self, batch, batch_idx: int):
-        z, y_hat, y, loss = self.shared_step(batch, batch_idx)
+        z, y_hat = self.shared_step(batch, batch_idx)
+        y, loss = self.compute_loss(batch, y_hat)
         batch_size = int(y.shape[0])
 
         self.log("loss/val", loss, on_step=False, on_epoch=True, batch_size=batch_size)
@@ -168,7 +172,8 @@ class RegressionLit(L.LightningModule):
                 self.reduce_log_reset(metrics)
 
     def test_step(self, batch, batch_idx: int):
-        z, y_hat, y, loss = self.shared_step(batch, batch_idx)
+        z, y_hat = self.shared_step(batch, batch_idx)
+        y, loss = self.compute_loss(batch, y_hat)
         batch_size = int(y.shape[0])
 
         self.log("loss/test", loss, on_step=False, on_epoch=True, batch_size=batch_size)
@@ -189,21 +194,10 @@ class RegressionLit(L.LightningModule):
                 self.reduce_log_reset(metrics)
 
     def predict_step(self, batch, batch_idx: int):
-        x = glom(batch, self.batch_key) if self.batch_key is not None else batch
+        z, y_hat = self.shared_step(batch, batch_idx)
 
-        z = self.backbone(x)
-        z = pool(z, strategy=self.pooling)
-        y_hat = self.head(z)
-
-        batch["prediction"] = y_hat.detach().cpu()  # [B,1]
         batch["y_hat"] = y_hat.detach().cpu()
         batch["z"] = z.detach().cpu()
-
-        y = glom(batch, self.target_key)
-        assert isinstance(y, torch.Tensor), f"Expected target tensor at '{self.target_key}', got {type(y)}"
-        if y.ndim == 1:
-            y = y.unsqueeze(1)
-        batch["y"] = y.detach().cpu()
 
         return batch
 
@@ -251,3 +245,61 @@ class RegressionLit(L.LightningModule):
                 "frequency": 1,
             },
         }
+
+
+class RegressionLitMultiData(RegressionLit):
+    def test_step(self, batch, batch_idx: int, dataloader_idx=0):
+        z, y_hat = self.shared_step(batch, batch_idx)
+        y, loss = self.compute_loss(batch, y_hat)
+        batch_size = int(y.shape[0])
+
+        self.log(
+            f"loss/test",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            batch_size=batch_size,
+        )
+        self.test_metrics_list[dataloader_idx].update(y_hat, y)
+
+        batch["loss"] = loss
+        batch["y_hat"] = y_hat.detach().cpu()
+        batch["y"] = y.detach().cpu()
+        batch["z"] = z.detach().cpu()
+        return batch
+
+    def on_test_start(self):
+        num_loaders = len(self.trainer.test_dataloaders)
+
+        self.test_metrics_list = nn.ModuleList(
+            [
+                self.test_metrics.clone(prefix=f"test_loader_{i}/")
+                for i in range(num_loaders)
+            ]
+        )
+
+    def reduce_log_reset(self, metrics: MetricCollection, prefix: str = ""):
+        scores = metrics.compute()
+        metrics.reset()
+
+        means = {f"{prefix}{k}_mean": v.mean() for k, v in scores.items()}
+        stds = {f"{prefix}{k}_std": v.std() for k, v in scores.items()}
+
+        self.log_dict(means)
+        self.log_dict(stds)
+
+    def on_test_epoch_end(self) -> None:
+        if self.trainer.fast_dev_run:
+            return
+
+        # Loop over each dataloader's metrics
+        for idx, metrics in enumerate(self.test_metrics_list):
+            prefix = f"test_loader_{idx}/"
+
+            if self.num_outputs == 1:
+                # Single-output case: just log metrics
+                self.log_dict({f"{prefix}{k}": v for k, v in metrics.compute().items()})
+                metrics.reset()
+            else:
+                # Multi-output: use your reduce_log_reset method with prefix
+                self.reduce_log_reset(metrics, prefix=prefix)
