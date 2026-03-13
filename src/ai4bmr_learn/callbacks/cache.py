@@ -62,18 +62,20 @@ class Cache(Callback):
         for key in self.exclude_keys:
             _ = glom.delete(output, key, ignore_missing=self.ignore_missing)
 
-    def accumulate(self, outputs):
-        accumulate = (self.num_batches is None) or (len(self.outputs) < self.num_batches)
-
-        if accumulate:
-            self.delete_keys(outputs)
-            move_to_cpu(outputs)
-            self.outputs.append(outputs)
-
+    def accumulate_or_save_batch(self, outputs):
+        do_accumulate = (self.num_batches is None) or (len(self.outputs) < self.num_batches)
+        if do_accumulate:
+            self.accumulate(outputs)
+        
         if self.save_in_batches:
             self.save_to_disk(save_suffix=self.batch_counter)
             self.batch_counter += 1
             self.reset()
+
+    def accumulate(self, outputs):
+        self.delete_keys(outputs)
+        move_to_cpu(outputs)
+        self.outputs.append(outputs)
 
     def reset(self):
         self.outputs = []
@@ -101,7 +103,7 @@ class TrainCache(Cache):
         self.reset()
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        self.accumulate(outputs)
+        self.accumulate_or_save_batch(outputs)
 
     def on_train_end(self, trainer, pl_module) -> None:
         if not self.save_in_batches:
@@ -118,7 +120,7 @@ class ValidationCache(Cache):
         self.reset()
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        self.accumulate(outputs)
+        self.accumulate_or_save_batch(outputs)
 
     def on_validation_epoch_end(self, trainer, pl_module) -> None:
         self.save_to_disk()
@@ -134,7 +136,7 @@ class TestCache(Cache):
         self.reset()
 
     def on_test_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        self.accumulate(outputs)
+        self.accumulate_or_save_batch(outputs)
 
     def on_test_end(self, trainer, pl_module) -> None:
         if not self.save_in_batches:
@@ -150,7 +152,7 @@ class PredictionCache(Cache):
         self.reset()
 
     def on_predict_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        self.accumulate(outputs)
+        self.accumulate_or_save_batch(outputs)
 
     def on_predict_end(self, trainer, pl_module) -> None:
         if not self.save_in_batches:
