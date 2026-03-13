@@ -103,7 +103,14 @@ class RegressionLit(L.LightningModule):
         y_hat = self.head(z)  # [B, 1]
         return y_hat
 
-    def shared_step(self, batch: dict, batch_idx: int, calculate_loss: bool = True):
+    def compute_loss(self, batch, y_hat):
+        y = glom(batch, self.target_key)
+        y = y.unsqueeze(1) if y.ndim == 1 else y  # [B, 1]
+        y = y.float()
+        loss = self.criterion(y_hat, y)
+        return y, loss
+    
+    def shared_step(self, batch: dict, batch_idx: int):
         x = glom(batch, self.batch_key) if self.batch_key is not None else batch
 
         z = self.backbone(x)
@@ -113,17 +120,11 @@ class RegressionLit(L.LightningModule):
         assert y_hat.ndim == 2
         # assert y_hat.shape[1] == 1, f"Expected y_hat [B,1], got {tuple(y_hat.shape)}"
         
-        y, loss = None, None
-        if calculate_loss:
-            y = glom(batch, self.target_key)
-            y = y.unsqueeze(1) if y.ndim == 1 else y  # [B, 1]
-            y = y.float()
-            loss = self.criterion(y_hat, y)
-        
-        return z, y_hat, y, loss
+        return z, y_hat
 
     def training_step(self, batch, batch_idx: int):
-        z, y_hat, y, loss = self.shared_step(batch, batch_idx)
+        z, y_hat = self.shared_step(batch, batch_idx)
+        y, loss = self.compute_loss(batch, y_hat)
         batch_size = int(y.shape[0])
 
         self.log("loss/train", loss, on_step=True, on_epoch=True, batch_size=batch_size)
@@ -148,7 +149,8 @@ class RegressionLit(L.LightningModule):
 
 
     def validation_step(self, batch, batch_idx: int):
-        z, y_hat, y, loss = self.shared_step(batch, batch_idx)
+        z, y_hat = self.shared_step(batch, batch_idx)
+        y, loss = self.compute_loss(batch, y_hat)
         batch_size = int(y.shape[0])
 
         self.log("loss/val", loss, on_step=False, on_epoch=True, batch_size=batch_size)
@@ -170,7 +172,8 @@ class RegressionLit(L.LightningModule):
                 self.reduce_log_reset(metrics)
 
     def test_step(self, batch, batch_idx: int):
-        z, y_hat, y, loss = self.shared_step(batch, batch_idx)
+        z, y_hat = self.shared_step(batch, batch_idx)
+        y, loss = self.compute_loss(batch, y_hat)
         batch_size = int(y.shape[0])
 
         self.log("loss/test", loss, on_step=False, on_epoch=True, batch_size=batch_size)
@@ -191,7 +194,7 @@ class RegressionLit(L.LightningModule):
                 self.reduce_log_reset(metrics)
 
     def predict_step(self, batch, batch_idx: int):
-        z, y_hat, _, _ = self.shared_step(batch, batch_idx, calculate_loss=False)
+        z, y_hat = self.shared_step(batch, batch_idx)
 
         batch["y_hat"] = y_hat.detach().cpu()
         batch["z"] = z.detach().cpu()
@@ -246,7 +249,8 @@ class RegressionLit(L.LightningModule):
 
 class RegressionLitMultiData(RegressionLit):
     def test_step(self, batch, batch_idx: int, dataloader_idx=0):
-        z, y_hat, y, loss = self.shared_step(batch, batch_idx)
+        z, y_hat = self.shared_step(batch, batch_idx)
+        y, loss = self.compute_loss(batch, y_hat)
         batch_size = int(y.shape[0])
 
         self.log(
