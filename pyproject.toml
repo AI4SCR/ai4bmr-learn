@@ -11,8 +11,15 @@ requires-python = ">=3.10"
 authors = [{ name = "Adriano Martinelli", email = "adrianom@student.ethz.ch" }]
 
 dependencies = [
+  "colorcet",
+  "geopandas",
   "glom",
   "loguru",
+  "numpy",
+  "opencv-python",
+  "openslide-bin",
+  "openslide-python",
+  "pillow",
   "torch",
   "torchinfo",
   "lightning",

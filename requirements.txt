@@ -1,3 +1,10 @@
+colorcet
+geopandas
+numpy
+opencv-python
+openslide-bin
+openslide-python
+pillow
 torch
 torchinfo
 lightning

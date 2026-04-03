@@ -1,1 +1,1 @@
-__all__ = ["callbacks", "models"]
+__all__ = ["callbacks", "models", "plotting", "utils"]
