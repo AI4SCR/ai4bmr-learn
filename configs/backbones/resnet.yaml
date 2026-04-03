@@ -1,7 +1,0 @@
-# lightning.pytorch==2.5.1.post0
-model:
-  backbone:
-    class_path: ai4bmr_learn.models.backbones.torchvision.Backbone
-    init_args:
-      model_name: resnet18
-      weights_version: null

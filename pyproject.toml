@@ -5,60 +5,21 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ai4bmr-learn"
 version = "0.1.0"
-description = "Collection of learning methods"
+description = "Minimal callbacks package for the pretrain-v6 workflow"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Adriano Martinelli", email = "adrianom@student.ethz.ch" }]
 
 dependencies = [
   "glom",
-  "scikit-learn",
   "loguru",
-  "omegaconf",
-  "wandb",
-  "umap-learn[plot]",
-  "scikit-image",
   "torch",
-  "pyarrow",
-  "torchvision",
   "torchinfo",
-  "lightning[pytorch-extra]",
-  "matplotlib",
-  "seaborn",
-  "pandas",
-  "openpyxl",
-  "einops",
-  "timm",
-  "jsonargparse[all]",
-  "pydantic",
-  "pydantic-settings",
-  "python-dotenv",
-  "igraph",
-  "leidenalg",
-  "geopandas",
-  "openslide-bin",
-  "openslide-python",
-  "opencv-python",
-  "zarr",
-  "tifffile",
-  "colorcet",
-#  "lightly",
-  "rich",
-  "fastparquet",
+  "lightning",
 ]
-
-# Console scripts (CLI)
-[project.scripts]
-learn = "ai4bmr_learn.cli.main:cli_main"
-# Optional extra alias:
-# ai4bmr-learn = "ai4bmr_learn.cli.main:cli_main"
 
 # Optional dependency groups (extras)
 [project.optional-dependencies]
-scanpy = [
-  "anndata",
-  "rapids-singlecell",
-]
 dev = [
   "black",
   "pytest",
