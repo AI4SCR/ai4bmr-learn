@@ -1,4 +1,5 @@
 from enum import Enum
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -15,9 +16,10 @@ class Split(str, Enum):
     TEST = "test"
 
 
-def generate_splits(
+def save_splits(
         metadata: pd.DataFrame,
-        test_size: float | None = None,
+        save_dir: Path,
+        test_size: float,
         val_size: float | None = None,
         stratify: bool = False,
         target_column_name: str | None = None,
@@ -27,11 +29,15 @@ def generate_splits(
         include_targets: list[str] | None = None,
         group_column_name: str | None = None,
         random_state: int | None = None,
-) -> pd.DataFrame:
-    assert test_size or val_size, "Either test_size or val_size must be provided"
-    assert metadata.index.is_unique, "Metadata index must be unique"
+        overwrite: bool = False,
+) -> None:
+    save_dir = Path(save_dir).expanduser().resolve()
+    assert overwrite or not save_dir.exists(), f"{save_dir} already exists"
+
+    save_dir.mkdir(parents=True, exist_ok=True)
 
     metadata = metadata.copy()
+    assert metadata.index.is_unique, "Metadata index must be unique"
     indices_universe = metadata.index.values
     indices = _get_valid_indices(
         metadata=metadata,
@@ -43,39 +49,48 @@ def generate_splits(
         assert target_column_name is not None, "encode_targets requires target_column_name"
         _encode_targets(metadata=metadata, target_column_name=target_column_name, nan_value=nan_value)
 
-    train_indices, test_indices = _split_once(
-        metadata=metadata,
-        indices=indices,
-        split_size=test_size,
-        stratify=stratify,
-        target_column_name=target_column_name,
-        group_column_name=group_column_name,
-        random_state=random_state,
-    )
+    splitter_cls = _get_splitter_cls(stratify=stratify, group_column_name=group_column_name)
+    outer_splitter = splitter_cls(n_splits=round(1 / test_size), shuffle=True, random_state=random_state)
+    y = metadata.loc[indices, target_column_name] if stratify else None
+    groups = metadata.loc[indices, group_column_name].values if group_column_name is not None else None
 
-    fit_indices, val_indices = _split_once(
-        metadata=metadata,
-        indices=train_indices,
-        split_size=val_size,
-        stratify=stratify,
-        target_column_name=target_column_name,
-        group_column_name=group_column_name,
-        random_state=random_state,
-    )
+    for outer, (train_idx, test_idx) in enumerate(outer_splitter.split(np.zeros(len(indices)), y=y, groups=groups)):
+        train_indices = indices[train_idx]
+        test_indices = indices[test_idx]
 
-    if val_size is None:
-        fit_indices = train_indices
-        val_indices = []
+        split_metadata = _construct_split(
+            metadata=metadata.copy(),
+            universe=indices_universe,
+            indices=indices,
+            fit_indices=train_indices,
+            val_indices=[],
+            test_indices=test_indices,
+            use_filtered_targets_for_train=use_filtered_targets_for_train,
+        )
+        split_metadata.to_parquet(save_dir / f"outer={outer}-seed={random_state}.parquet")
 
-    return _construct_split(
-        metadata=metadata,
-        universe=indices_universe,
-        indices=indices,
-        fit_indices=fit_indices,
-        val_indices=val_indices,
-        test_indices=test_indices,
-        use_filtered_targets_for_train=use_filtered_targets_for_train,
-    )
+        if val_size is None:
+            continue
+
+        inner_y = metadata.loc[train_indices, target_column_name] if stratify else None
+        inner_groups = metadata.loc[train_indices, group_column_name].values if group_column_name is not None else None
+        inner_splitter = splitter_cls(n_splits=round(1 / val_size), shuffle=True, random_state=random_state)
+
+        for inner, (fit_idx, val_idx) in enumerate(
+                inner_splitter.split(np.zeros(len(train_indices)), y=inner_y, groups=inner_groups)
+        ):
+            fit_indices = train_indices[fit_idx]
+            val_indices = train_indices[val_idx]
+            split_metadata = _construct_split(
+                metadata=metadata.copy(),
+                universe=indices_universe,
+                indices=indices,
+                fit_indices=fit_indices,
+                val_indices=val_indices,
+                test_indices=test_indices,
+                use_filtered_targets_for_train=use_filtered_targets_for_train,
+            )
+            split_metadata.to_parquet(save_dir / f"outer={outer}-inner={inner}-seed={random_state}.parquet")
 
 
 def has_splits(metadata: pd.DataFrame) -> bool:
