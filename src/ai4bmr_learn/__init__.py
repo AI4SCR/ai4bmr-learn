@@ -1,1 +1,1 @@
-__all__ = ["callbacks", "datasets", "models", "plotting", "utils"]
+__all__ = ["callbacks", "data", "datasets", "models", "plotting", "utils"]

@@ -1,6 +1,8 @@
 import pandas as pd
 from loguru import logger
 
+from ai4bmr_learn.data.splits import Split
+
 
 def filter_items_and_metadata(
         item_ids: list[str | int],
@@ -14,7 +16,7 @@ def filter_items_and_metadata(
     if split is not None:
         logger.info(f"Filter items and metadata for split={split}.")
 
-        keep = metadata["split"] == split
+        keep = metadata[Split.COLUMN_NAME.value] == split
         assert keep.sum() > 0, f"There are no items that belong to split='{split}'"
 
         metadata = metadata[keep]
@@ -41,7 +43,7 @@ def filter_items_and_metadata(
         )
         logger.warning(msg)
 
-        if split is not None and "split" in cols_with_nan:
+        if split is not None and Split.COLUMN_NAME.value in cols_with_nan:
             logger.warning("Detected NaN in column 'split'. This is most likely a bug.")
 
     return valid_item_ids, metadata.loc[list(valid_item_ids)]
