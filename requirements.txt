@@ -4,9 +4,12 @@ numpy
 opencv-python
 openslide-bin
 openslide-python
+pandas
 pillow
+pyarrow
 torch
 torchinfo
+tqdm
 lightning
 glom
 loguru
