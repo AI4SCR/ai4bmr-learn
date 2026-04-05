@@ -69,7 +69,8 @@ class Items(Dataset):
                 split=self.split,
                 drop_nan_columns=self.drop_nan_columns,
             )
-            self.items = [i for i in self.items if i[self.id_key] in self.item_ids]
+            item_id_set = set(self.item_ids)
+            self.items = [i for i in self.items if i[self.id_key] in item_id_set]
 
         if self.cache_dir and not self.has_cache():
             logger.info('No cache found. Creating...')
