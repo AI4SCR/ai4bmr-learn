@@ -33,6 +33,7 @@ def save_splits(
 ) -> None:
     save_dir = Path(save_dir).expanduser().resolve()
     assert overwrite or not save_dir.exists(), f"{save_dir} already exists"
+    assert val_size != 0, "`val_size=0` is not supported in `save_splits`; use `None` to disable inner splits."
 
     save_dir.mkdir(parents=True, exist_ok=True)
 
