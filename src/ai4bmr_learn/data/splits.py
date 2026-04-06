@@ -214,6 +214,8 @@ def save_splits(
     if not overwrite:
         assert not save_dir.exists(), f'{save_dir} already exists.'
 
+    assert val_size != 0, "`val_size=0` is not supported in `save_splits`; use `None` to disable inner splits."
+
     num_test_splits = round(1 / test_size)
     num_val_splits = round(1 / val_size) if val_size is not None else None
 
