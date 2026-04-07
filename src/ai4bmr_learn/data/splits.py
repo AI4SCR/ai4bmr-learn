@@ -4,9 +4,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from loguru import logger
-from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold, KFold, GroupKFold, StratifiedShuffleSplit
-from torch.utils.data import Dataset
-from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import GroupKFold, KFold, StratifiedGroupKFold, StratifiedKFold
+from torch.utils.data import Dataset, Subset
 
 
 class Split(str, Enum):
@@ -15,155 +14,6 @@ class Split(str, Enum):
     FIT = "fit"
     VAL = "val"
     TEST = "test"
-
-
-def generate_splits(
-        metadata: pd.DataFrame,
-        test_size: float | None = None,
-        val_size: float | None = None,
-        stratify: bool = False,
-        target_column_name: str | None = None,
-        encode_targets: bool = False,
-        nan_value: int = -1,
-        use_filtered_targets_for_train: bool = False,
-        include_targets: list[str] | None = None,
-        group_column_name: str | None = None,
-        random_state: int | None = None,
-        verbose: int = 1,
-):
-    """
-    Generates a single train/test/validation split for a given metadata DataFrame.
-
-    Args:
-        metadata: The input DataFrame containing metadata.
-        test_size: The proportion of the dataset to include in the test split.
-                   Used to calculate n_splits for KFold as round(1 / test_size).
-                   The actual test set proportion will be 1 / round(1 / test_size).
-        val_size: The proportion of the training dataset to include in the validation split.
-                  Used to calculate n_splits for KFold as round(1 / val_size).
-                  The actual validation set proportion will be 1 / round(1 / val_size).
-        stratify: If True, data is split in a stratified fashion.
-        target_column_name: The name of the column to use for stratification.
-        encode_targets: If True, encodes the target column to integers.
-        nan_value: Value to use for NaN targets when encoding.
-        use_filtered_targets_for_train: If True, samples that were initially filtered out (e.g., due to missing
-                                        `target_column_name` values or not being in `include_targets`)
-                                        are added back to the 'fit' split. This means the 'fit' split
-                                        might contain samples without valid targets, and stratification
-                                        will not apply to these added samples. Use with caution.
-        include_targets: A list of target values to include in the splitting process.
-        group_column_name: The name of the column to use for grouping.
-        random_state: Seed for random number generator for reproducibility.
-        verbose: Verbosity level.
-
-    Returns:
-        A copy of the metadata DataFrame with an added 'split' column indicating 'fit', 'val', or 'test'.
-    """
-    assert test_size or val_size, "Either `test_size` or `val_size` must be provided"
-    num_test_splits = round(1 / test_size) if test_size is not None else None
-    num_val_splits = round(1 / val_size) if val_size is not None else None
-
-    # TODO: should we allow for re-splitting, i.e. check if `split_column_name` already exists in metadata?
-
-    metadata = metadata.copy()
-    assert metadata.index.has_duplicates == False, f'Index of metadata needs to be unique'
-    indices_universe = metadata.index.values
-    index_names = metadata.index.names
-
-    # metadata = metadata.reset_index()
-    # metadata.set_index(index_names, inplace=True)
-
-    # FILTER DATA
-    if target_column_name is not None:
-        assert target_column_name in metadata, f'{target_column_name} not in metadata columns'
-        targets = metadata[target_column_name]
-        filter_ = targets.notna().values
-        targets = targets[filter_]
-
-        if include_targets is not None:
-            filter_ = targets.isin(include_targets)
-            targets = targets[filter_]
-
-        indices = targets.index.values
-    else:
-        indices = indices_universe
-
-    num_samples = len(indices)
-
-    if encode_targets:
-        mapping = {v: k for k, v in enumerate(sorted(targets.unique()))}
-        metadata[target_column_name] = metadata[target_column_name].tolist()  # note: get rid of category if any
-        metadata.loc[:, target_column_name] = metadata[target_column_name].transform(
-            lambda x: mapping.get(x, nan_value))
-        metadata[target_column_name] = metadata[target_column_name].fillna(nan_value)
-        metadata = metadata.astype({target_column_name: int})
-
-    if stratify and group_column_name is not None:
-        splitter = StratifiedGroupKFold
-    elif stratify and group_column_name is None:
-        splitter = StratifiedKFold
-    elif not stratify and group_column_name is not None:
-        splitter = GroupKFold
-    else:
-        splitter = KFold
-
-    # split into train, test
-    if test_size:
-        split = splitter(n_splits=num_test_splits, shuffle=True, random_state=random_state)
-        y = metadata.loc[indices, target_column_name] if stratify else None
-        groups = metadata.loc[indices, group_column_name].values if group_column_name is not None else None
-        train_indices, test_indices = next(split.split(np.zeros(num_samples), y=y, groups=groups))
-
-        train_indices = indices[train_indices]
-        test_indices = indices[test_indices]
-    else:
-        train_indices = indices
-        test_indices = []
-
-    # split train into fit, val
-    if val_size:
-        train_metadata, test_metadata = metadata.loc[train_indices], metadata.loc[test_indices]
-        num_train_samples = len(train_metadata)
-
-        split = splitter(n_splits=num_val_splits, shuffle=True, random_state=random_state)
-
-        y = train_metadata[target_column_name] if stratify else None
-        groups = train_metadata[group_column_name].values if group_column_name is not None else None
-        fit_indices, val_indices = next(split.split(np.zeros(num_train_samples), y=y, groups=groups))
-
-        fit_indices = train_metadata.index[fit_indices]
-        val_indices = train_metadata.index[val_indices]
-    else:
-        val_indices = []
-        fit_indices = train_indices
-
-    if use_filtered_targets_for_train:
-        excl_indices = set(indices_universe) - set(fit_indices).union(val_indices).union(test_indices)
-        fit_indices = list(set(fit_indices).union(excl_indices))
-        assert set(fit_indices).union(val_indices).union(test_indices) == set(indices_universe), f'Index sets do not match'
-    else:
-        assert set(fit_indices).union(val_indices).union(test_indices) == set(indices), f'Index sets do not match'
-
-    # sanity check
-    assert set(train_indices).intersection(test_indices) == set(), f'Overlap between train and test indices'
-    assert set(val_indices).intersection(test_indices) == set(), f'Overlap between val and test indices'
-    assert set(fit_indices).intersection(test_indices) == set(), f'Overlap between fit and test indices'
-    assert set(fit_indices).intersection(val_indices) == set(), f'Overlap between fit and val indices'
-
-    print_split_summary(metadata=metadata, fit_indices=fit_indices, test_indices=test_indices, val_indices=val_indices)
-
-    # NOTE: we need to use the `.value` otherwise the column names is `Split.COLUM_NAME` after re-load
-    metadata.loc[test_indices, Split.COLUMN_NAME.value] = Split.TEST.value
-    metadata.loc[fit_indices, Split.COLUMN_NAME.value] = Split.FIT.value
-    metadata.loc[val_indices, Split.COLUMN_NAME.value] = Split.VAL.value
-
-    if use_filtered_targets_for_train:
-        assert metadata[Split.COLUMN_NAME.value].isna().any() == False, f'Some samples do not have a split assigned'
-
-    dtype = pd.CategoricalDtype(categories=[Split.FIT.value, Split.VAL.value, Split.TEST.value], ordered=False)
-    metadata[Split.COLUMN_NAME.value] = metadata[Split.COLUMN_NAME.value].astype(dtype)
-
-    return metadata
 
 
 def save_splits(
@@ -179,185 +29,191 @@ def save_splits(
         include_targets: list[str] | None = None,
         group_column_name: str | None = None,
         random_state: int | None = None,
-        verbose: int = 1,
         overwrite: bool = False,
-):
-    """
-    Generates a single train/test/validation split for a given metadata DataFrame.
+) -> None:
+    save_dir = Path(save_dir).expanduser().resolve()
+    assert overwrite or not save_dir.exists(), f"{save_dir} already exists"
+    assert val_size != 0, "`val_size=0` is not supported in `save_splits`; use `None` to disable inner splits."
 
-    Args:
-        metadata: The input DataFrame containing metadata.
-        save_dir: Path under which the splits are saved.
-        test_size: The proportion of the dataset to include in the test split.
-                   Used to calculate n_splits for KFold as round(1 / test_size).
-                   The actual test set proportion will be 1 / round(1 / test_size).
-        val_size: The proportion of the training dataset to include in the validation split.
-                  Used to calculate n_splits for KFold as round(1 / val_size).
-                  The actual validation set proportion will be 1 / round(1 / val_size).
-        stratify: If True, data is split in a stratified fashion.
-        target_column_name: The name of the column to use for stratification.
-        encode_targets: If True, encodes the target column to integers.
-        nan_value: Value to use for NaN targets when encoding.
-        use_filtered_targets_for_train: If True, samples that were initially filtered out (e.g., due to missing
-                                        `target_column_name` values or not being in `include_targets`)
-                                        are added back to the 'fit' split. This means the 'fit' split
-                                        might contain samples without valid targets, and stratification
-                                        will not apply to these added samples. Use with caution.
-        include_targets: A list of target values to include in the splitting process.
-        group_column_name: The name of the column to use for grouping.
-        random_state: Seed for random number generator for reproducibility.
-        verbose: Verbosity level.
-
-    Returns:
-        None
-    """
-    if not overwrite:
-        assert not save_dir.exists(), f'{save_dir} already exists.'
-
-    num_test_splits = round(1 / test_size)
-    num_val_splits = round(1 / val_size) if val_size is not None else None
+    save_dir.mkdir(parents=True, exist_ok=True)
 
     metadata = metadata.copy()
-    assert metadata.index.is_unique, f'Index of metadata needs to be unique'
-    universe = metadata.index.values
-    index_names = metadata.index.names
-
-    # FILTER DATA
-    if target_column_name is not None:
-        assert target_column_name in metadata, f'{target_column_name} not in metadata columns'
-        targets = metadata[target_column_name]
-        filter_ = targets.notna().values
-        targets = targets[filter_]
-
-        if include_targets is not None:
-            filter_ = targets.isin(include_targets)
-            targets = targets[filter_]
-
-        indices = targets.index.values
-    else:
-        indices = universe
+    assert metadata.index.is_unique, "Metadata index must be unique"
+    indices_universe = metadata.index.values
+    indices = _get_valid_indices(
+        metadata=metadata,
+        target_column_name=target_column_name,
+        include_targets=include_targets,
+    )
 
     if encode_targets:
-        mapping = {v: k for k, v in enumerate(sorted(targets.unique()))}
-        metadata[target_column_name] = metadata[target_column_name].tolist()  # note: get rid of category if any
-        metadata.loc[:, target_column_name] = metadata[target_column_name].transform(
-            lambda x: mapping.get(x, nan_value))
-        metadata[target_column_name] = metadata[target_column_name].fillna(nan_value)
-        metadata = metadata.astype({target_column_name: int})
+        assert target_column_name is not None, "encode_targets requires target_column_name"
+        _encode_targets(metadata=metadata, target_column_name=target_column_name, nan_value=nan_value)
 
-    if stratify and group_column_name is not None:
-        splitter = StratifiedGroupKFold
-    elif stratify and group_column_name is None:
-        splitter = StratifiedKFold
-    elif not stratify and group_column_name is not None:
-        splitter = GroupKFold
-    else:
-        splitter = KFold
-
-    # split into train, test
-    train_test_split = splitter(n_splits=num_test_splits, shuffle=True, random_state=random_state)
-    num_samples = len(indices)
+    splitter_cls = _get_splitter_cls(stratify=stratify, group_column_name=group_column_name)
+    outer_splitter = splitter_cls(n_splits=round(1 / test_size), shuffle=True, random_state=random_state)
     y = metadata.loc[indices, target_column_name] if stratify else None
     groups = metadata.loc[indices, group_column_name].values if group_column_name is not None else None
-    for outer, (train_indices, test_indices) in enumerate(
-            train_test_split.split(np.zeros(num_samples), y=y, groups=groups)):
 
-        train_indices = indices[train_indices]
-        test_indices = indices[test_indices]
+    for outer, (train_idx, test_idx) in enumerate(outer_splitter.split(np.zeros(len(indices)), y=y, groups=groups)):
+        train_indices = indices[train_idx]
+        test_indices = indices[test_idx]
 
-        # split train into fit, val
-        if val_size:
-            fit_val_split = splitter(n_splits=num_val_splits, shuffle=True, random_state=random_state)
-            train_metadata, test_metadata = metadata.loc[train_indices], metadata.loc[test_indices]
-            num_train_samples = len(train_metadata)
+        split_metadata = _construct_split(
+            metadata=metadata.copy(),
+            universe=indices_universe,
+            indices=indices,
+            fit_indices=train_indices,
+            val_indices=[],
+            test_indices=test_indices,
+            use_filtered_targets_for_train=use_filtered_targets_for_train,
+        )
+        split_metadata.to_parquet(save_dir / f"outer={outer}-seed={random_state}.parquet")
 
-            y = train_metadata[target_column_name] if stratify else None
-            groups = train_metadata[group_column_name].values if group_column_name is not None else None
-            for inner, (fit_indices, val_indices) in enumerate(
-                    fit_val_split.split(np.zeros(num_train_samples), y=y, groups=groups)):
+        if val_size is None:
+            continue
 
-                fit_indices = train_metadata.index[fit_indices]
-                val_indices = train_metadata.index[val_indices]
+        inner_y = metadata.loc[train_indices, target_column_name] if stratify else None
+        inner_groups = metadata.loc[train_indices, group_column_name].values if group_column_name is not None else None
+        inner_splitter = splitter_cls(n_splits=round(1 / val_size), shuffle=True, random_state=random_state)
 
-                metadata = construct_split(metadata=metadata.copy(),
-                                           universe=universe, indices=indices,
-                                           test_indices=test_indices, train_indices=train_indices,
-                                           fit_indices=fit_indices, val_indices=val_indices,
-                                           use_filtered_targets_for_train=use_filtered_targets_for_train)
-                save_dir.mkdir(parents=True, exist_ok=True)
-                metadata.to_parquet(save_dir / f'outer={outer}-inner={inner}-seed={random_state}.parquet', engine='fastparquet')
-
-        val_indices = []
-        fit_indices = train_indices
-
-        metadata = construct_split(metadata=metadata.copy(), universe=universe, indices=indices,
-                                   test_indices=test_indices, train_indices=train_indices,
-                                   fit_indices=fit_indices, val_indices=val_indices,
-                                   use_filtered_targets_for_train=use_filtered_targets_for_train)
-        save_dir.mkdir(parents=True, exist_ok=True)
-        metadata.to_parquet(save_dir / f'outer={outer}-seed={random_state}.parquet', engine='fastparquet')
-
-
-def construct_split(*, metadata, universe, indices,
-                    test_indices, train_indices, fit_indices, val_indices,
-                    use_filtered_targets_for_train):
-
-    if use_filtered_targets_for_train:
-        excl_indices = set(universe) - set(fit_indices).union(val_indices).union(test_indices)
-        fit_indices = list(set(fit_indices).union(excl_indices))
-        assert set(fit_indices).union(val_indices).union(test_indices) == set(universe)
-    else:
-        assert set(fit_indices).union(val_indices).union(test_indices) == set(indices)
-
-    # sanity checks
-    assert set(train_indices).intersection(test_indices) == set(), f'Overlap between train and test indices'
-    assert set(val_indices).intersection(test_indices) == set(), f'Overlap between val and test indices'
-    assert set(fit_indices).intersection(test_indices) == set(), f'Overlap between fit and test indices'
-    assert set(fit_indices).intersection(val_indices) == set(), f'Overlap between fit and val indices'
-    print_split_summary(metadata=metadata,
-                        fit_indices=fit_indices, test_indices=test_indices, val_indices=val_indices)
-    # NOTE: we need to use the `.value` otherwise the column names is `Split.COLUM_NAME` after re-load
-    metadata.loc[test_indices, Split.COLUMN_NAME.value] = Split.TEST.value
-    metadata.loc[fit_indices, Split.COLUMN_NAME.value] = Split.FIT.value
-    metadata.loc[val_indices, Split.COLUMN_NAME.value] = Split.VAL.value
-    if use_filtered_targets_for_train:
-        assert metadata[Split.COLUMN_NAME.value].isna().any() == False, f'Some samples do not have a split assigned'
-    dtype = pd.CategoricalDtype(categories=[Split.FIT.value, Split.VAL.value, Split.TEST.value], ordered=False)
-    metadata[Split.COLUMN_NAME.value] = metadata[Split.COLUMN_NAME.value].astype(dtype)
-    return metadata
+        for inner, (fit_idx, val_idx) in enumerate(
+                inner_splitter.split(np.zeros(len(train_indices)), y=inner_y, groups=inner_groups)
+        ):
+            fit_indices = train_indices[fit_idx]
+            val_indices = train_indices[val_idx]
+            split_metadata = _construct_split(
+                metadata=metadata.copy(),
+                universe=indices_universe,
+                indices=indices,
+                fit_indices=fit_indices,
+                val_indices=val_indices,
+                test_indices=test_indices,
+                use_filtered_targets_for_train=use_filtered_targets_for_train,
+            )
+            split_metadata.to_parquet(save_dir / f"outer={outer}-inner={inner}-seed={random_state}.parquet")
 
 
-from rich.console import Console
-from rich.table import Table
-
-
-def print_split_summary(metadata, test_indices, fit_indices, val_indices):
-    all_indices = set(fit_indices).union(val_indices).union(test_indices)
-    total_samples = len(metadata)
-
-    console = Console()
-    table = Table(title=f"Dataset Split (n={total_samples})")
-
-    # define columns
-    table.add_column("Split", justify="left", style="bold")
-    table.add_column("Count", justify="right")
-
-    # add rows
-    table.add_row("Test", f"{len(test_indices)} ({len(test_indices) / total_samples:.1%})")
-    table.add_row("Fit", f"{len(fit_indices)} ({len(fit_indices) / total_samples:.1%})")
-    table.add_row("Val", f"{len(val_indices)} ({len(val_indices) / total_samples:.1%})")
-    table.add_row("───", "─" * max(len(str(len(all_indices))), 3))
-    table.add_row("Total", f"{len(all_indices)} ({len(all_indices) / total_samples:.1%})")
-
-    console.print(table)
-
-
-def has_splits(metadata: pd.DataFrame):
+def has_splits(metadata: pd.DataFrame) -> bool:
     return Split.COLUMN_NAME.value in metadata.columns
 
 
 def generate_subset(dataset: Dataset, metadata: pd.DataFrame | None, num_samples: int | None = None):
-    from torch.utils.data import Subset
+    assert metadata is not None, "metadata is required"
+    assert num_samples is not None, "num_samples is required"
+    assert 0 < num_samples <= len(metadata), "num_samples must be in [1, len(metadata)]"
 
     subset_idx = np.random.choice(len(metadata), num_samples, replace=False)
     return Subset(dataset, subset_idx), metadata.iloc[subset_idx]
+
+
+def _get_valid_indices(
+        *,
+        metadata: pd.DataFrame,
+        target_column_name: str | None,
+        include_targets: list[str] | None,
+):
+    if target_column_name is None:
+        return metadata.index.values
+
+    assert target_column_name in metadata.columns, f"{target_column_name} not in metadata"
+    targets = metadata[target_column_name]
+    targets = targets[targets.notna()]
+    if include_targets is not None:
+        targets = targets[targets.isin(include_targets)]
+    return targets.index.values
+
+
+def _encode_targets(*, metadata: pd.DataFrame, target_column_name: str, nan_value: int) -> None:
+    unique_targets = sorted(metadata[target_column_name].dropna().unique())
+    mapping = {value: index for index, value in enumerate(unique_targets)}
+    metadata[target_column_name] = metadata[target_column_name].tolist()
+    metadata.loc[:, target_column_name] = metadata[target_column_name].map(lambda x: mapping.get(x, nan_value))
+    metadata[target_column_name] = metadata[target_column_name].fillna(nan_value).astype(int)
+
+
+def _split_once(
+        *,
+        metadata: pd.DataFrame,
+        indices,
+        split_size: float | None,
+        stratify: bool,
+        target_column_name: str | None,
+        group_column_name: str | None,
+        random_state: int | None,
+):
+    if split_size is None:
+        return indices, []
+
+    num_splits = round(1 / split_size)
+    splitter_cls = _get_splitter_cls(stratify=stratify, group_column_name=group_column_name)
+    splitter = splitter_cls(n_splits=num_splits, shuffle=True, random_state=random_state)
+
+    y = metadata.loc[indices, target_column_name] if stratify else None
+    groups = metadata.loc[indices, group_column_name].values if group_column_name is not None else None
+    train_idx, holdout_idx = next(splitter.split(np.zeros(len(indices)), y=y, groups=groups))
+    return indices[train_idx], indices[holdout_idx]
+
+
+def _get_splitter_cls(*, stratify: bool, group_column_name: str | None):
+    if stratify and group_column_name is not None:
+        return StratifiedGroupKFold
+    if stratify:
+        return StratifiedKFold
+    if group_column_name is not None:
+        return GroupKFold
+    return KFold
+
+
+def _construct_split(
+        *,
+        metadata: pd.DataFrame,
+        universe,
+        indices,
+        fit_indices,
+        val_indices,
+        test_indices,
+        use_filtered_targets_for_train: bool,
+) -> pd.DataFrame:
+    if use_filtered_targets_for_train:
+        excluded_indices = set(universe) - set(fit_indices).union(val_indices).union(test_indices)
+        fit_indices = list(set(fit_indices).union(excluded_indices))
+        assert set(fit_indices).union(val_indices).union(test_indices) == set(universe)
+    else:
+        assert set(fit_indices).union(val_indices).union(test_indices) == set(indices)
+
+    assert set(fit_indices).isdisjoint(val_indices), "Overlap between fit and val indices"
+    assert set(fit_indices).isdisjoint(test_indices), "Overlap between fit and test indices"
+    assert set(val_indices).isdisjoint(test_indices), "Overlap between val and test indices"
+
+    _log_split_summary(metadata=metadata, fit_indices=fit_indices, val_indices=val_indices, test_indices=test_indices)
+
+    metadata.loc[test_indices, Split.COLUMN_NAME.value] = Split.TEST.value
+    metadata.loc[fit_indices, Split.COLUMN_NAME.value] = Split.FIT.value
+    metadata.loc[val_indices, Split.COLUMN_NAME.value] = Split.VAL.value
+
+    if use_filtered_targets_for_train:
+        assert not metadata[Split.COLUMN_NAME.value].isna().any(), "Some samples do not have a split assigned"
+
+    dtype = pd.CategoricalDtype(
+        categories=[Split.FIT.value, Split.VAL.value, Split.TEST.value],
+        ordered=False,
+    )
+    metadata[Split.COLUMN_NAME.value] = metadata[Split.COLUMN_NAME.value].astype(dtype)
+    return metadata
+
+
+def _log_split_summary(*, metadata: pd.DataFrame, fit_indices, val_indices, test_indices) -> None:
+    total_samples = len(metadata)
+    assigned_samples = len(set(fit_indices).union(val_indices).union(test_indices))
+    logger.info(
+        "Dataset split: fit={} ({:.1%}), val={} ({:.1%}), test={} ({:.1%}), total={} ({:.1%})",
+        len(fit_indices),
+        len(fit_indices) / total_samples if total_samples else 0.0,
+        len(val_indices),
+        len(val_indices) / total_samples if total_samples else 0.0,
+        len(test_indices),
+        len(test_indices) / total_samples if total_samples else 0.0,
+        assigned_samples,
+        assigned_samples / total_samples if total_samples else 0.0,
+    )
