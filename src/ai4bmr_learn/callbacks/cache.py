@@ -103,3 +103,27 @@ class TestCache(Cache):
 
     def on_test_end(self, trainer: Trainer, pl_module) -> None:
         self.save_to_disk()
+
+
+class ValidationCache(Cache):
+    name = "validation"
+
+    def on_validation_start(self, trainer: Trainer, pl_module) -> None:
+        self.configure_save_dir(trainer)
+
+    def on_validation_epoch_start(self, trainer: Trainer, pl_module) -> None:
+        self.reset()
+
+    def on_validation_batch_end(
+        self,
+        trainer: Trainer,
+        pl_module,
+        outputs,
+        batch,
+        batch_idx,
+        dataloader_idx=0,
+    ) -> None:
+        self.accumulate(outputs)
+
+    def on_validation_epoch_end(self, trainer: Trainer, pl_module) -> None:
+        self.save_to_disk()
