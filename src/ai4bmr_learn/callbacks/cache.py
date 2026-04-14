@@ -105,6 +105,22 @@ class TestCache(Cache):
         self.save_to_disk()
 
 
+class TrainCache(Cache):
+    name = "train"
+
+    def on_train_start(self, trainer: Trainer, pl_module) -> None:
+        self.configure_save_dir(trainer)
+
+    def on_train_epoch_start(self, trainer: Trainer, pl_module) -> None:
+        self.reset()
+
+    def on_train_batch_end(self, trainer: Trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0) -> None:
+        self.accumulate(outputs)
+
+    def on_train_end(self, trainer: Trainer, pl_module) -> None:
+        self.save_to_disk()
+
+
 class ValidationCache(Cache):
     name = "validation"
 
@@ -126,4 +142,20 @@ class ValidationCache(Cache):
         self.accumulate(outputs)
 
     def on_validation_epoch_end(self, trainer: Trainer, pl_module) -> None:
+        self.save_to_disk()
+
+
+class PredictionCache(Cache):
+    name = "prediction"
+
+    def on_predict_start(self, trainer: Trainer, pl_module) -> None:
+        self.configure_save_dir(trainer)
+
+    def on_predict_epoch_start(self, trainer: Trainer, pl_module) -> None:
+        self.reset()
+
+    def on_predict_batch_end(self, trainer: Trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0) -> None:
+        self.accumulate(outputs)
+
+    def on_predict_end(self, trainer: Trainer, pl_module) -> None:
         self.save_to_disk()
