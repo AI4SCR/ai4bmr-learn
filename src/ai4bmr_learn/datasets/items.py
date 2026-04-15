@@ -73,7 +73,7 @@ class Items(Dataset):
             self.items = [i for i in self.items if i[self.id_key] in item_id_set]
 
         if self.cache_dir and not self.has_cache():
-            logger.info('No cache found. Creating...')
+            logger.info(f'No cache found at {self.cache_dir}. Creating...')
             self.create_cache()
 
     def has_cache(self, iid: str | None = None) -> bool:
