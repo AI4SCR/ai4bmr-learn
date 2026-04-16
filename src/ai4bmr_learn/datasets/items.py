@@ -22,6 +22,8 @@ class Items(Dataset):
             cache_dir: Path | None = None,
             drop_nan_columns: bool = False,
             id_key: str | None = None,
+            num_workers: int = 10,
+            batch_size: int = 32,
     ):
         super().__init__()
 
@@ -42,6 +44,8 @@ class Items(Dataset):
 
         self.cache_dir = cache_dir.resolve() if cache_dir else None
         self.cached_ids: list[str] | None = None
+        self.num_workers = num_workers
+        self.batch_size = batch_size
 
         self.transform = transform
 
@@ -97,18 +101,20 @@ class Items(Dataset):
         return self.cache_dir / f'{iid}.pt'
 
     def create_cache(self):
+        import torch
         from tqdm import tqdm
+        from torch.utils.data import DataLoader
 
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        num_items = len(self.items)
-        for i in tqdm(range(num_items), total=num_items, desc=f'Caching {self.name}'):
-            item = self.items[i]
-            item_path = self.get_cache_path(item[self.id_key])
+        dl = DataLoader(self, batch_size=self.batch_size, num_workers=self.num_workers, collate_fn=list)
+        for batch in tqdm(dl):
+            for item in batch:
+                item_id = item[self.id_key]
+                item_path = self.get_cache_path(item_id)
 
-            if not item_path.exists():
-                item = self[i]
-                torch.save(item, item_path)
+                if not item_path.exists():
+                    torch.save(item, item_path)
 
     def invalidate_cache(self):
         import shutil
