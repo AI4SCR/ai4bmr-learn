@@ -25,6 +25,8 @@ dependencies = [
   "scikit-learn",
   "torch",
   "torchinfo",
+  "torchmetrics",
+  "torchsurv",
   "torchvision",
   "tqdm",
   "lightning",
