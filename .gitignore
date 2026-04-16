@@ -306,3 +306,4 @@ mlm-test/
 wandb/
 benchmark_results/
 .claude/
+scribble/
