@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pickle
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -31,20 +30,24 @@ class Cache(Callback):
         self,
         num_batches: int | None = None,
         save_dir: Path | None = None,
-        fname: str | None = None,
+        name: str | None = None,
         exclude_keys: list[str] | None = None,
         ignore_missing: bool = False,
         save: bool = True,
+        save_in_batches: bool = False,
     ) -> None:
         super().__init__()
         assert save or save_dir is None, "save_dir requires save=True"
+        assert not save_in_batches or save, "save_in_batches requires save=True"
 
         self.num_batches = num_batches
         self.outputs: list[dict[str, Any]] = []
         self.exclude_keys = exclude_keys or []
         self.ignore_missing = ignore_missing
         self.save = save
-        self.fname = f"{fname or self.name}.pkl"
+        self.save_in_batches = save_in_batches
+        self._batch_counter: int = 0
+        self.name = name or self.name
         self.save_dir = Path(save_dir).expanduser().resolve() if save_dir else None
 
         logger.info(f"`{self.name.capitalize()}Cache` attached")
@@ -62,10 +65,14 @@ class Cache(Callback):
             experiment_id = logger_.experiment.id
             self.save_dir = Path(logger_.save_dir) / logger_.name / experiment_id / "cache"
 
-        logger.info(f"Cache will be saved to {self.save_dir / self.fname}")
+        if self.save_in_batches:
+            logger.info(f"Cache will be saved to {self.save_dir / self.name}/<batch_idx>.pt")
+        else:
+            logger.info(f"Cache will be saved to {self.save_dir / self.name}.pt")
 
     def reset(self) -> None:
         self.outputs = []
+        self._batch_counter = 0
 
     def delete_keys(self, output: dict[str, Any]) -> None:
         for key in self.exclude_keys:
@@ -78,15 +85,25 @@ class Cache(Callback):
         cached_output = deepcopy(output)
         self.delete_keys(cached_output)
         self.outputs.append(move_to_cpu(cached_output))
+        if self.save_in_batches:
+            self._save_batch()
 
-    def save_to_disk(self) -> None:
+    def _save_batch(self) -> None:
         if not self.save or self.save_dir is None:
             return
-
-        save_path = self.save_dir / self.fname
+        save_path = self.save_dir / self.name / f"{self._batch_counter:06d}.pt"
         save_path.parent.mkdir(parents=True, exist_ok=True)
-        with save_path.open("wb") as handle:
-            pickle.dump(self.outputs, handle)
+        torch.save(self.outputs, save_path)
+        self._batch_counter += 1
+        self.outputs = []
+
+    def save_to_disk(self) -> None:
+        if not self.save or self.save_dir is None or not self.outputs:
+            return
+
+        save_path = self.save_dir / f"{self.name}.pt"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self.outputs, save_path)
 
 
 class TestCache(Cache):
