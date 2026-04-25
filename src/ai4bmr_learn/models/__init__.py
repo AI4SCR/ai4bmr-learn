@@ -5,6 +5,7 @@ from ai4bmr_learn.models.mil import (
     MaxAggregation,
     MeanAggregation,
     MinAggregation,
+    SimpleAttentionAggregation,
 )
 from ai4bmr_learn.models.utils import collect_model_stats
 
@@ -15,5 +16,6 @@ __all__ = [
     "MaxAggregation",
     "MeanAggregation",
     "MinAggregation",
+    "SimpleAttentionAggregation",
     "collect_model_stats",
 ]

@@ -9,8 +9,8 @@ import torch.nn as nn
 import torch.optim as optim
 from glom import glom
 from torchmetrics import Metric, MetricCollection
-from torchmetrics.classification import Accuracy, F1Score, Precision, Recall
-from torchmetrics.regression import MeanAbsoluteError, MeanSquaredError
+from torchmetrics.classification import AUROC, Accuracy, F1Score, Precision, Recall
+from torchmetrics.regression import MeanAbsoluteError, MeanSquaredError, R2Score
 
 from ai4bmr_learn.models.mil import AggregationOutput
 
@@ -231,6 +231,7 @@ class ClassificationMILLit(BaseMILLit):
         num_classes: int,
         target_key: str = "target",
         class_weight: torch.Tensor | None = None,
+        metric_names: list[str] | None = None,
         **kwargs,
     ):
         super().__init__(aggregator=aggregator, head=head, **kwargs)
@@ -239,7 +240,7 @@ class ClassificationMILLit(BaseMILLit):
         self.target_key = target_key
         self.criterion = nn.CrossEntropyLoss(weight=class_weight)
 
-        metrics = self.get_metrics(num_classes=num_classes)
+        metrics = self.get_metrics(num_classes=num_classes, metric_names=metric_names)
         self.train_metrics = metrics.clone(prefix="train/")
         self.val_metrics = metrics.clone(prefix="val/")
         self.test_metrics = metrics.clone(prefix="test/")
@@ -247,16 +248,38 @@ class ClassificationMILLit(BaseMILLit):
         self.save_hyperparameters(ignore=["aggregator", "head", "class_weight"])
 
     @staticmethod
-    def get_metrics(num_classes: int) -> MetricCollection:
-        return MetricCollection(
-            {
-                "accuracy-micro": Accuracy(task="multiclass", average="micro", num_classes=num_classes),
-                "accuracy-macro": Accuracy(task="multiclass", average="macro", num_classes=num_classes),
-                "recall-macro": Recall(task="multiclass", average="macro", num_classes=num_classes),
-                "precision-macro": Precision(task="multiclass", average="macro", num_classes=num_classes),
-                "f1-macro": F1Score(task="multiclass", average="macro", num_classes=num_classes),
-            }
-        )
+    def get_metrics(num_classes: int, metric_names: list[str] | None = None) -> MetricCollection:
+        if metric_names is None:
+            return MetricCollection(
+                {
+                    "accuracy-micro": Accuracy(task="multiclass", average="micro", num_classes=num_classes),
+                    "accuracy-macro": Accuracy(task="multiclass", average="macro", num_classes=num_classes),
+                    "recall-macro": Recall(task="multiclass", average="macro", num_classes=num_classes),
+                    "precision-macro": Precision(task="multiclass", average="macro", num_classes=num_classes),
+                    "f1-macro": F1Score(task="multiclass", average="macro", num_classes=num_classes),
+                }
+            )
+
+        metrics = {}
+        for name in metric_names:
+            match name:
+                case "balanced_accuracy":
+                    metrics[name] = Recall(task="multiclass", average="macro", num_classes=num_classes)
+                case "accuracy":
+                    metrics[name] = Accuracy(task="multiclass", average="micro", num_classes=num_classes)
+                case "accuracy_macro":
+                    metrics[name] = Accuracy(task="multiclass", average="macro", num_classes=num_classes)
+                case "precision_macro":
+                    metrics[name] = Precision(task="multiclass", average="macro", num_classes=num_classes)
+                case "recall_macro":
+                    metrics[name] = Recall(task="multiclass", average="macro", num_classes=num_classes)
+                case "f1" | "f1_macro":
+                    metrics[name] = F1Score(task="multiclass", average="macro", num_classes=num_classes)
+                case "roc_auc":
+                    metrics[name] = AUROC(task="multiclass", num_classes=num_classes)
+                case _:
+                    raise ValueError(f"Unknown metric: {name}")
+        return MetricCollection(metrics)
 
     def get_target(self, batch: dict[str, Any]) -> torch.Tensor:
         target = glom(batch, self.target_key)
@@ -290,6 +313,7 @@ class RegressionMILLit(BaseMILLit):
         target_key: str = "target",
         num_outputs: int = 1,
         loss: str = "mse",
+        metric_names: list[str] | None = None,
         **kwargs,
     ):
         super().__init__(aggregator=aggregator, head=head, **kwargs)
@@ -298,7 +322,7 @@ class RegressionMILLit(BaseMILLit):
         self.num_outputs = num_outputs
         self.criterion = self.get_loss(loss=loss)
 
-        metrics = self.get_metrics(num_outputs=num_outputs)
+        metrics = self.get_metrics(num_outputs=num_outputs, metric_names=metric_names)
         self.train_metrics = metrics.clone(prefix="train/")
         self.val_metrics = metrics.clone(prefix="val/")
         self.test_metrics = metrics.clone(prefix="test/")
@@ -316,14 +340,30 @@ class RegressionMILLit(BaseMILLit):
                 raise ValueError(f"Unknown loss: {loss}")
 
     @staticmethod
-    def get_metrics(num_outputs: int) -> MetricCollection:
-        return MetricCollection(
-            {
-                "mae": MeanAbsoluteError(num_outputs=num_outputs),
-                "mse": MeanSquaredError(num_outputs=num_outputs, squared=True),
-                "rmse": MeanSquaredError(num_outputs=num_outputs, squared=False),
-            }
-        )
+    def get_metrics(num_outputs: int, metric_names: list[str] | None = None) -> MetricCollection:
+        if metric_names is None:
+            return MetricCollection(
+                {
+                    "mae": MeanAbsoluteError(num_outputs=num_outputs),
+                    "mse": MeanSquaredError(num_outputs=num_outputs, squared=True),
+                    "rmse": MeanSquaredError(num_outputs=num_outputs, squared=False),
+                }
+            )
+
+        metrics = {}
+        for name in metric_names:
+            match name:
+                case "mse" | "mean_squared_error":
+                    metrics[name] = MeanSquaredError(num_outputs=num_outputs, squared=True)
+                case "rmse":
+                    metrics[name] = MeanSquaredError(num_outputs=num_outputs, squared=False)
+                case "mae" | "mean_absolute_error":
+                    metrics[name] = MeanAbsoluteError(num_outputs=num_outputs)
+                case "r2":
+                    metrics[name] = R2Score()
+                case _:
+                    raise ValueError(f"Unknown metric: {name}")
+        return MetricCollection(metrics)
 
     def get_target(self, batch: dict[str, Any]) -> torch.Tensor:
         target = glom(batch, self.target_key)

@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import pytest
 
 from ai4bmr_learn.lit.mil import ClassificationMILLit, RegressionMILLit, SurvivalMILLit
 from ai4bmr_learn.models.mil import AttentionAggregation
@@ -79,6 +80,20 @@ def test_classification_mil_lit_supports_nested_keys():
     assert output["prediction"].shape == (4,)
 
 
+def test_classification_mil_lit_supports_configured_metrics():
+    metrics = ClassificationMILLit.get_metrics(
+        num_classes=3,
+        metric_names=["accuracy_macro", "f1_macro", "roc_auc"],
+    )
+
+    assert set(metrics.keys()) == {"accuracy_macro", "f1_macro", "roc_auc"}
+
+
+def test_classification_mil_lit_rejects_unknown_metric():
+    with pytest.raises(ValueError, match="Unknown metric"):
+        ClassificationMILLit.get_metrics(num_classes=3, metric_names=["not_a_metric"])
+
+
 def test_regression_mil_lit_steps_and_predict():
     module = RegressionMILLit(
         aggregator=make_aggregator(),
@@ -95,6 +110,17 @@ def test_regression_mil_lit_steps_and_predict():
     prediction = module.predict_step(batch, 0)
     assert prediction["prediction"].shape == (4, 1)
     assert prediction["embedding"].shape == (4, 8)
+
+
+def test_regression_mil_lit_supports_configured_metrics():
+    metrics = RegressionMILLit.get_metrics(num_outputs=1, metric_names=["r2", "mean_absolute_error"])
+
+    assert set(metrics.keys()) == {"r2", "mean_absolute_error"}
+
+
+def test_regression_mil_lit_rejects_unknown_metric():
+    with pytest.raises(ValueError, match="Unknown metric"):
+        RegressionMILLit.get_metrics(num_outputs=1, metric_names=["not_a_metric"])
 
 
 def test_survival_mil_lit_steps_and_predict():

@@ -67,42 +67,21 @@ class AttentionAggregation(BaseAggregation):
         input_dim: int,
         hidden_dim: int = 128,
         gated: bool = False,
-        projection_dim: int | None = None,
-        input_dropout: float = 0.0,
-        projection_dropout: float = 0.0,
-        attention_dropout: float = 0.0,
     ):
         super().__init__(input_dim=input_dim)
         assert hidden_dim > 0, "hidden_dim must be positive"
-        assert projection_dim is None or projection_dim > 0, "projection_dim must be positive"
 
         self.hidden_dim = hidden_dim
         self.gated = gated
 
-        self.input_dropout = nn.Dropout(input_dropout) if input_dropout > 0 else nn.Identity()
-
-        if projection_dim is None:
-            feature_dim = input_dim
-            self.projection = nn.Identity()
-        else:
-            feature_dim = projection_dim
-            self.projection = nn.Sequential(
-                nn.Linear(input_dim, projection_dim),
-                nn.Tanh(),
-                nn.Dropout(projection_dropout) if projection_dropout > 0 else nn.Identity(),
-            )
-
-        self.output_dim = feature_dim
         self.attention_v = nn.Sequential(
-            nn.Linear(feature_dim, hidden_dim),
+            nn.Linear(input_dim, hidden_dim),
             nn.Tanh(),
-            nn.Dropout(attention_dropout) if attention_dropout > 0 else nn.Identity(),
         )
         self.attention_u = (
             nn.Sequential(
-                nn.Linear(feature_dim, hidden_dim),
+                nn.Linear(input_dim, hidden_dim),
                 nn.Sigmoid(),
-                nn.Dropout(attention_dropout) if attention_dropout > 0 else nn.Identity(),
             )
             if gated
             else None
@@ -111,16 +90,30 @@ class AttentionAggregation(BaseAggregation):
 
     def forward(self, bag: torch.Tensor, mask: torch.Tensor) -> AggregationOutput:
         mask = self.validate_inputs(bag=bag, mask=mask)
-        x = self.input_dropout(bag)
-        x = self.projection(x)
 
-        attention_features = self.attention_v(x)
+        attention_features = self.attention_v(bag)
         if self.attention_u is not None:
-            attention_features = attention_features * self.attention_u(x)
+            attention_features = attention_features * self.attention_u(bag)
 
         logits = self.attention_w(attention_features).squeeze(-1)
         logits = logits.masked_fill(~mask, -torch.finfo(logits.dtype).max)
         weights = F.softmax(logits, dim=1)
-        embedding = torch.einsum("bn,bnd->bd", weights, x)
+        embedding = torch.einsum("bn,bnd->bd", weights, bag)
 
+        return AggregationOutput(embedding=embedding, weights=weights, logits=logits)
+
+
+class SimpleAttentionAggregation(BaseAggregation):
+    """Single-layer attention MIL aggregation."""
+
+    def __init__(self, input_dim: int):
+        super().__init__(input_dim=input_dim)
+        self.attention = nn.Linear(input_dim, 1)
+
+    def forward(self, bag: torch.Tensor, mask: torch.Tensor) -> AggregationOutput:
+        mask = self.validate_inputs(bag=bag, mask=mask)
+        logits = self.attention(bag).squeeze(-1)
+        logits = logits.masked_fill(~mask, -torch.finfo(logits.dtype).max)
+        weights = F.softmax(logits, dim=1)
+        embedding = torch.einsum("bn,bnd->bd", weights, bag)
         return AggregationOutput(embedding=embedding, weights=weights, logits=logits)

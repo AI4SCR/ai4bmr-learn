@@ -1,7 +1,13 @@
 import pytest
 import torch
 
-from ai4bmr_learn.models.mil import AttentionAggregation, MaxAggregation, MeanAggregation, MinAggregation
+from ai4bmr_learn.models.mil import (
+    AttentionAggregation,
+    MaxAggregation,
+    MeanAggregation,
+    MinAggregation,
+    SimpleAttentionAggregation,
+)
 
 
 def test_masked_pooling_aggregations_ignore_padding():
@@ -41,13 +47,29 @@ def test_attention_aggregation_masks_and_normalizes_weights(gated):
     aggregation = AttentionAggregation(
         input_dim=6,
         hidden_dim=5,
-        projection_dim=3,
         gated=gated,
     )
 
     output = aggregation(bag, mask)
 
-    assert output.embedding.shape == (2, 3)
+    assert output.embedding.shape == (2, 6)
+    assert output.weights.shape == (2, 4)
+    assert output.logits.shape == (2, 4)
+    assert torch.isfinite(output.embedding).all()
+    assert torch.isfinite(output.weights).all()
+    assert torch.allclose(output.weights.sum(dim=1), torch.ones(2))
+    assert torch.all(output.weights[~mask] == 0)
+
+
+def test_simple_attention_aggregation_masks_and_normalizes_weights():
+    bag = torch.randn(2, 4, 6)
+    mask = torch.tensor([[True, True, False, False], [True, False, True, False]])
+
+    aggregation = SimpleAttentionAggregation(input_dim=6)
+
+    output = aggregation(bag, mask)
+
+    assert output.embedding.shape == (2, 6)
     assert output.weights.shape == (2, 4)
     assert output.logits.shape == (2, 4)
     assert torch.isfinite(output.embedding).all()
