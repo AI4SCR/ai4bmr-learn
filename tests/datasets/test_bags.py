@@ -239,15 +239,19 @@ def test_write_mil_items_from_cache_writes_bags_dataset_compatible_items(tmp_pat
         cache_dir / "000002.pt",
     )
 
+    output_dir = tmp_path / "mil_items"
     items_path = write_mil_items_from_cache(
         cache_dir=cache_dir,
-        items_path=tmp_path / "bags.json",
+        output_dir=output_dir,
         id_key="nested.sample_id",
     )
 
+    assert items_path == output_dir / "bags.json"
     items = json.loads(items_path.read_text(encoding="utf-8"))
     assert [item["sample_id"] for item in items] == ["b", "a"]
     assert [item["instance_ids"] for item in items] == [["0", "2"], ["1"]]
+    assert Path(items[0]["z_path"]).parent == output_dir
+    assert Path(items[1]["z_path"]).parent == output_dir
 
     a_payload = torch.load(items[0]["z_path"], map_location="cpu")
     b_payload = torch.load(items[1]["z_path"], map_location="cpu")

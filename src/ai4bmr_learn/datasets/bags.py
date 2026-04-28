@@ -171,22 +171,21 @@ def pad_bags_collate(batch: list[dict[str, Any]]) -> dict[str, Any]:
 def write_mil_items_from_cache(
     *,
     cache_dir: Path,
-    items_path: Path,
+    output_dir: Path,
     id_key: str,
     embedding_key: str = "z",
     bag_id_key: str = "sample_id",
 ) -> Path:
     cache_dir = Path(cache_dir).expanduser().resolve()
-    items_path = Path(items_path).expanduser().resolve()
+    output_dir = Path(output_dir).expanduser().resolve()
     assert cache_dir.exists(), "cache_dir"
-    assert items_path.suffix == ".json", "items_path_suffix"
 
     cache_files = sorted(cache_dir.glob("*.pt"))
     assert cache_files, "cache_files"
 
     embedding_path_key = f"{embedding_key}_path"
-    bags_dir = items_path.parent / items_path.stem
-    bags_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    items_path = output_dir / "bags.json"
 
     bag_embeddings: dict[Any, list[torch.Tensor]] = defaultdict(list)
     bag_instance_ids: dict[str, list[str]] = defaultdict(list)
@@ -211,7 +210,7 @@ def write_mil_items_from_cache(
     items: list[dict[str, Any]] = []
     for bag_id, embeddings_list in bag_embeddings.items():
         bag_tensor = torch.cat(embeddings_list, dim=0)
-        bag_path = bags_dir / f"{bag_id}.pt"
+        bag_path = output_dir / f"{bag_id}.pt"
         torch.save(
             {
                 bag_id_key: bag_id,
@@ -227,7 +226,6 @@ def write_mil_items_from_cache(
             }
         )
 
-    items_path.parent.mkdir(parents=True, exist_ok=True)
     items_path.write_text(json.dumps(items), encoding="utf-8")
     return items_path
 
