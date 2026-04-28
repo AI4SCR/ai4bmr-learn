@@ -163,9 +163,8 @@ def write_mil_items_from_cache(
             for bag_id, embedding in zip(ids, embeddings):
                 items.append(
                     {
-                        "id": str(idx),
                         bag_id_key: bag_id,
-                        embedding_key: embedding.tolist(),
+                        embedding_key: embedding,
                     }
                 )
                 idx += 1
