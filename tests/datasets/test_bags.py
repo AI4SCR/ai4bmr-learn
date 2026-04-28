@@ -199,14 +199,21 @@ def test_write_mil_items_from_cache_writes_bags_dataset_compatible_items(tmp_pat
 
     items_path = write_mil_items_from_cache(
         cache_dir=cache_dir,
-        items_path=tmp_path / "mil_items.json",
+        items_path=tmp_path / "bags.json",
         id_key="nested.sample_id",
     )
 
     items = json.loads(items_path.read_text(encoding="utf-8"))
-    assert [item["id"] for item in items] == ["0", "1", "2"]
-    assert [item["sample_id"] for item in items] == ["b", "a", "b"]
-    assert [item["z"] for item in items] == [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]
+    assert sorted(items) == ["a", "b"]
+    assert items["a"]["instance_ids"] == ["1"]
+    assert items["b"]["instance_ids"] == ["0", "2"]
+
+    a_payload = torch.load(items["a"]["z_path"], map_location="cpu")
+    b_payload = torch.load(items["b"]["z_path"], map_location="cpu")
+    assert a_payload["sample_id"] == "a"
+    assert b_payload["sample_id"] == "b"
+    assert torch.allclose(a_payload["z"], torch.tensor([[3.0, 4.0]]))
+    assert torch.allclose(b_payload["z"], torch.tensor([[1.0, 2.0], [5.0, 6.0]]))
 
     metadata_path = write_bag_metadata(
         tmp_path,

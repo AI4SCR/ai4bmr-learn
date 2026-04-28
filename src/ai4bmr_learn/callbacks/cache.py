@@ -31,6 +31,7 @@ class Cache(Callback):
         num_batches: int | None = None,
         save_dir: Path | None = None,
         name: str | None = None,
+        include_keys: list[str] | None = None,
         exclude_keys: list[str] | None = None,
         ignore_missing: bool = False,
         save: bool = True,
@@ -39,9 +40,11 @@ class Cache(Callback):
         super().__init__()
         assert save or save_dir is None, "save_dir requires save=True"
         assert not save_in_batches or save, "save_in_batches requires save=True"
+        assert not (include_keys and exclude_keys), "include_keys and exclude_keys are mutually exclusive"
 
         self.num_batches = num_batches
         self.outputs: list[dict[str, Any]] = []
+        self.include_keys = include_keys or []
         self.exclude_keys = exclude_keys or []
         self.ignore_missing = ignore_missing
         self.save = save
@@ -74,7 +77,19 @@ class Cache(Callback):
         self.outputs = []
         self._batch_counter = 0
 
-    def delete_keys(self, output: dict[str, Any]) -> None:
+    def include_selected_keys(self, output: dict[str, Any]) -> dict[str, Any]:
+        included: dict[str, Any] = {}
+        for key in self.include_keys:
+            try:
+                value = glom.glom(output, key)
+            except glom.PathAccessError:
+                if self.ignore_missing:
+                    continue
+                raise
+            glom.assign(included, key, value, missing=dict)
+        return included
+
+    def delete_excluded_keys(self, output: dict[str, Any]) -> None:
         for key in self.exclude_keys:
             glom.delete(output, key, ignore_missing=self.ignore_missing)
 
@@ -83,7 +98,10 @@ class Cache(Callback):
             return
 
         cached_output = deepcopy(output)
-        self.delete_keys(cached_output)
+        if self.include_keys:
+            cached_output = self.include_selected_keys(cached_output)
+        else:
+            self.delete_excluded_keys(cached_output)
         self.outputs.append(move_to_cpu(cached_output))
         if self.save_in_batches:
             self._save_batch()
