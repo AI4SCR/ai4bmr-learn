@@ -1,98 +1,31 @@
 from __future__ import annotations
 
+import copy
 import json
 from abc import abstractmethod
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import torch
-from glom import assign, glom
+from glom import assign, delete, glom
 from loguru import logger
 from torch.utils.data import default_collate
 
 from ai4bmr_learn.datasets.items import Items
-from ai4bmr_learn.datasets.utils import filter_items_and_metadata
 
 
 class BagsDataset(Items):
     name: str = "Bags"
 
-    def __init__(
-        self,
-        items_path: Path,
-        metadata_path: Path | None = None,
-        split: str | None = None,
-        transform: Callable | None = None,
-        cache_dir: Path | None = None,
-        drop_nan_columns: bool = False,
-        embedding_key: str = "z",
-        bag_id_key: str = "sample_id",
-        num_workers: int = 10,
-        batch_size: int = 32,
-    ):
-        super().__init__(
-            items_path=items_path,
-            metadata_path=metadata_path,
-            split=split,
-            transform=transform,
-            cache_dir=cache_dir,
-            drop_nan_columns=drop_nan_columns,
-            id_key=bag_id_key,
-            num_workers=num_workers,
-            batch_size=batch_size,
-        )
-        self.embedding_key = embedding_key
+    def __init__(self, *args, bag_id_key: str, strict: bool = True, **kwargs):
+        super().__init__(*args, **kwargs)
         self.bag_id_key = bag_id_key
-        self.embedding_path_key = f"{embedding_key}_path"
-
-        self.items_by_bag_id: dict[Any, dict[str, Any]] | None = None
+        self.strict = strict
+        self.bag_items: dict[Any, list[dict[str, Any]]] | None = None
         self.bag_ids: list[Any] | None = None
-
-    def setup(self) -> None:
-        logger.info(f"Setting up {self.name} dataset from items_path: {self.items_path}")
-        self._load_items()
-        assert self.items is not None, "items"
-
-        if self.metadata_path is not None:
-            logger.info(f"Loading metadata from {self.metadata_path}")
-            item_ids = [glom(item, self.bag_id_key) for item in self.items]
-            metadata = pd.read_parquet(self.metadata_path)
-            self.item_ids, self.metadata = filter_items_and_metadata(
-                item_ids=item_ids,
-                metadata=metadata,
-                split=self.split,
-                drop_nan_columns=self.drop_nan_columns,
-            )
-            item_id_set = set(self.item_ids)
-            self.items = [item for item in self.items if glom(item, self.bag_id_key) in item_id_set]
-
-        if self.cache_dir and not self.has_cache():
-            logger.info(f"No cache found at {self.cache_dir}. Creating...")
-            self.create_cache()
-
-        items_by_bag_id: dict[Any, dict[str, Any]] = {}
-        for item in self.items:
-            bag_id = glom(item, self.bag_id_key)
-            embedding_path = glom(item, self.embedding_path_key)
-            assert embedding_path is not None, "embedding_path"
-            assert bag_id not in items_by_bag_id, "duplicate_bag_id"
-            items_by_bag_id[bag_id] = item
-
-        bag_ids = list(items_by_bag_id)
-        assert bag_ids, "bags"
-
-        if self.metadata is not None:
-            metadata = self.metadata.copy()
-            metadata = metadata.loc[~metadata.index.duplicated(keep="first")]
-            missing_bags = set(bag_ids) - set(metadata.index)
-            assert not missing_bags, "metadata_bags"
-            self.metadata = metadata.loc[bag_ids]
-
-        self.items_by_bag_id = items_by_bag_id
-        self.bag_ids = bag_ids
 
     def __len__(self) -> int:
         assert self.bag_ids is not None, "setup"
@@ -100,51 +33,70 @@ class BagsDataset(Items):
 
     @abstractmethod
     def __getitem__(self, idx) -> dict[str, Any]:
-        assert self.bag_ids is not None and self.items_by_bag_id is not None, "setup"
+        assert self.bag_ids is not None and self.bag_items is not None, "setup"
         raise NotImplementedError("Inherit from `BagsDataset` to create your own bag dataset subclass.")
 
-    def get_bag_id(self, idx: int) -> Any:
-        assert self.bag_ids is not None, "setup"
-        return self.bag_ids[idx]
+    def setup(self):
+        super().setup()
+        self.build_bag_items()
+        self.build_bag_metadata()
 
-    def get_bag_item(self, idx: int) -> dict[str, Any]:
-        assert self.items_by_bag_id is not None, "setup"
-        return self.items_by_bag_id[self.get_bag_id(idx)]
+    def build_bag_items(self) -> None:
+        assert self.items is not None, "setup"
+        bag_items: dict[Any, list[dict[str, Any]]] = {}
+        for item in self.items:
+            bag_id = glom(item, self.bag_id_key)
+            bag_items.setdefault(bag_id, []).append(item)
 
-    def get_bag(self, idx: int) -> torch.Tensor:
-        bag_item = self.get_bag_item(idx)
-        bag_payload = torch.load(Path(glom(bag_item, self.embedding_path_key)), map_location="cpu")
-        assert isinstance(bag_payload, dict), "bag_payload"
-        embeddings = torch.as_tensor(glom(bag_payload, self.embedding_key), dtype=torch.float32)
-        assert embeddings.ndim == 2, "embeddings_ndim"
-        return embeddings
+        self.bag_items = bag_items
+        self.bag_ids = list(bag_items)
 
-    def get_metadata(self, idx: int) -> dict[str, Any] | None:
+    def build_bag_metadata(self) -> None:
+        assert self.bag_ids is not None and self.bag_items is not None, "setup"
         if self.metadata is None:
-            return None
-        return self.metadata.loc[self.get_bag_id(idx)].to_dict()
+            return
 
-    def _load_items(self) -> None:
-        with open(self.items_path, "r", encoding="utf-8") as f:
-            raw_items = json.load(f)
+        assert self.id_key is not None, "id_key"
+        assert self.item_ids is not None, "setup"
+        assert len(self.items) == len(self.item_ids), "items"
 
-        assert isinstance(raw_items, list) and raw_items, "items"
-        self.items = []
-        for payload in raw_items:
-            assert isinstance(payload, dict), "bag_payload"
-            glom(payload, self.bag_id_key)
-            glom(payload, "instance_ids")
-            embedding_path = Path(glom(payload, self.embedding_path_key)).expanduser().resolve()
-            assign(payload, self.embedding_path_key, str(embedding_path), missing=dict)
-            self.items.append(payload)
+        bag_ids_by_item_id = {
+            item_id: glom(item, self.bag_id_key)
+            for item_id, item in zip(self.item_ids, self.items, strict=True)
+        }
+        bag_rows = {
+            bag_id: self.metadata.loc[[item_id for item_id, mapped_bag_id in bag_ids_by_item_id.items() if mapped_bag_id == bag_id]]
+            for bag_id in self.bag_ids
+        }
 
-        self.item_ids = [glom(item, self.bag_id_key) for item in self.items]
-        logger.info(f"Loaded {len(self.items)} items")
+        keep_columns: list[str] = []
+        dropped_columns: list[str] = []
+        for column in self.metadata.columns:
+            inconsistent = any(rows[column].nunique(dropna=False) > 1 for rows in bag_rows.values())
+            if inconsistent:
+                if self.strict:
+                    raise AssertionError(f"inconsistent bag metadata for {column}")
+                dropped_columns.append(column)
+                continue
+            keep_columns.append(column)
+
+        if dropped_columns:
+            logger.warning(
+                "Detected bag metadata columns with inconsistent values across instances in the same bag. "
+                f"Dropping them. Affected columns: {dropped_columns}."
+            )
+
+        rows = []
+        for bag_id in self.bag_ids:
+            row = {column: bag_rows[bag_id].iloc[0][column] for column in keep_columns}
+            rows.append(row)
+
+        self.metadata = pd.DataFrame(rows, index=pd.Index(self.bag_ids, name=self.bag_id_key))
 
 
-def pad_bags_collate(batch: list[dict[str, Any]]) -> dict[str, Any]:
+def pad_bags_collate(batch: list[dict[str, Any]], bag_key: str = "bag") -> dict[str, Any]:
     assert batch, "batch"
-    bags = [item["bag"] for item in batch]
+    bags = [glom(item, bag_key) for item in batch]
     assert all(isinstance(bag, torch.Tensor) for bag in bags), "bag"
     assert all(bag.ndim == 2 for bag in bags), "bag_ndim"
 
@@ -162,8 +114,14 @@ def pad_bags_collate(batch: list[dict[str, Any]]) -> dict[str, Any]:
         padded[idx, :num_instances] = bag
         mask[idx, :num_instances] = True
 
-    collated = default_collate([{key: value for key, value in item.items() if key != "bag"} for item in batch])
-    collated["bag"] = padded
+    stripped_batch = []
+    for item in batch:
+        stripped_item = copy.deepcopy(item)
+        delete(stripped_item, bag_key)
+        stripped_batch.append(stripped_item)
+
+    collated = default_collate(stripped_batch)
+    assign(collated, bag_key, padded, missing=dict)
     collated["mask"] = mask
     return collated
 
