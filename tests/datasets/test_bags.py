@@ -44,11 +44,15 @@ class DummyBags(BagsDataset):
 
 
 def write_bag_items(tmp_path: Path) -> Path:
+    bags_dir = tmp_path / "items"
+    bags_dir.mkdir()
+    torch.save({"sample_id": "b", "z": torch.tensor([[1.0, 2.0], [5.0, 6.0]])}, bags_dir / "b.pt")
+    torch.save({"sample_id": "a", "z": torch.tensor([[3.0, 4.0]])}, bags_dir / "a.pt")
+    torch.save({"sample_id": "c", "z": torch.tensor([[7.0, 8.0]])}, bags_dir / "c.pt")
     items = [
-        {"id": "0", "sample_id": "b", "z": [1.0, 2.0]},
-        {"id": "1", "sample_id": "a", "z": [3.0, 4.0]},
-        {"id": "2", "sample_id": "b", "z": [5.0, 6.0]},
-        {"id": "3", "sample_id": "c", "z": [7.0, 8.0]},
+        {"sample_id": "b", "instance_ids": ["0", "2"], "z_path": str(bags_dir / "b.pt")},
+        {"sample_id": "a", "instance_ids": ["1"], "z_path": str(bags_dir / "a.pt")},
+        {"sample_id": "c", "instance_ids": ["3"], "z_path": str(bags_dir / "c.pt")},
     ]
     items_path = tmp_path / "items.json"
     items_path.write_text(json.dumps(items), encoding="utf-8")
@@ -59,6 +63,20 @@ def write_bag_metadata(tmp_path: Path, rows: list[dict]) -> Path:
     metadata_path = tmp_path / "metadata.parquet"
     pd.DataFrame(rows).set_index("sample_id").to_parquet(metadata_path)
     return metadata_path
+
+
+def write_nested_bag_items(tmp_path: Path) -> Path:
+    bags_dir = tmp_path / "nested_items"
+    bags_dir.mkdir()
+    torch.save({"meta": {"sample_id": "b"}, "payload": {"z": torch.tensor([[1.0, 2.0], [5.0, 6.0]])}}, bags_dir / "b.pt")
+    torch.save({"meta": {"sample_id": "a"}, "payload": {"z": torch.tensor([[3.0, 4.0]])}}, bags_dir / "a.pt")
+    items = [
+        {"bag": {"sample_id": "b"}, "instance_ids": ["0", "2"], "payload": {"z_path": str(bags_dir / "b.pt")}},
+        {"bag": {"sample_id": "a"}, "instance_ids": ["1"], "payload": {"z_path": str(bags_dir / "a.pt")}},
+    ]
+    items_path = tmp_path / "nested_items.json"
+    items_path.write_text(json.dumps(items), encoding="utf-8")
+    return items_path
 
 
 def test_bags_dataset_groups_filtered_items_and_exposes_metadata(tmp_path: Path):
@@ -148,6 +166,30 @@ def test_bags_dataset_subclass_can_reject_missing_targets(tmp_path: Path):
         dataset[0]
 
 
+def test_bags_dataset_reads_nested_bag_index_fields_with_glom(tmp_path: Path):
+    items_path = write_nested_bag_items(tmp_path)
+    metadata_path = write_bag_metadata(
+        tmp_path,
+        [
+            {"sample_id": "a", "target": 1},
+            {"sample_id": "b", "target": 0},
+        ],
+    )
+
+    dataset = DummyBags(
+        items_path=items_path,
+        metadata_path=metadata_path,
+        bag_id_key="bag.sample_id",
+        embedding_key="payload.z",
+        target_key="target",
+        target_dtype=torch.long,
+    )
+    dataset.setup()
+
+    assert dataset.bag_ids == ["b", "a"]
+    assert torch.allclose(dataset[0]["bag"], torch.tensor([[1.0, 2.0], [5.0, 6.0]]))
+
+
 def test_pad_bags_collate_pads_masks_and_collates_metadata():
     batch = [
         {
@@ -204,16 +246,15 @@ def test_write_mil_items_from_cache_writes_bags_dataset_compatible_items(tmp_pat
     )
 
     items = json.loads(items_path.read_text(encoding="utf-8"))
-    assert sorted(items) == ["a", "b"]
-    assert items["a"]["instance_ids"] == ["1"]
-    assert items["b"]["instance_ids"] == ["0", "2"]
+    assert [item["sample_id"] for item in items] == ["b", "a"]
+    assert [item["instance_ids"] for item in items] == [["0", "2"], ["1"]]
 
-    a_payload = torch.load(items["a"]["z_path"], map_location="cpu")
-    b_payload = torch.load(items["b"]["z_path"], map_location="cpu")
-    assert a_payload["sample_id"] == "a"
-    assert b_payload["sample_id"] == "b"
-    assert torch.allclose(a_payload["z"], torch.tensor([[3.0, 4.0]]))
-    assert torch.allclose(b_payload["z"], torch.tensor([[1.0, 2.0], [5.0, 6.0]]))
+    a_payload = torch.load(items[0]["z_path"], map_location="cpu")
+    b_payload = torch.load(items[1]["z_path"], map_location="cpu")
+    assert a_payload["sample_id"] == "b"
+    assert b_payload["sample_id"] == "a"
+    assert torch.allclose(a_payload["z"], torch.tensor([[1.0, 2.0], [5.0, 6.0]]))
+    assert torch.allclose(b_payload["z"], torch.tensor([[3.0, 4.0]]))
 
     metadata_path = write_bag_metadata(
         tmp_path,
