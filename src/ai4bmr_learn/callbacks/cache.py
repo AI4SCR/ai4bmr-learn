@@ -24,13 +24,13 @@ def move_to_cpu(value: Any) -> Any:
 
 
 class Cache(Callback):
-    name = "cache"
+    name = "Cache"
 
     def __init__(
         self,
         num_batches: int | None = None,
         save_dir: Path | None = None,
-        name: str | None = None,
+        filestem: str | None = None,
         include_keys: list[str] | None = None,
         exclude_keys: list[str] | None = None,
         ignore_missing: bool = False,
@@ -50,10 +50,10 @@ class Cache(Callback):
         self.save = save
         self.save_in_batches = save_in_batches
         self._batch_counter: int = 0
-        self.name = name or self.name
+        self.filestem = filestem or self.name.lower()
         self.save_dir = Path(save_dir).expanduser().resolve() if save_dir else None
 
-        logger.info(f"`{self.name.capitalize()}Cache` attached")
+        logger.info(f"`{self.name}` attached")
 
     def configure_save_dir(self, trainer: Trainer) -> None:
         if trainer.fast_dev_run or not self.save:
@@ -69,23 +69,18 @@ class Cache(Callback):
             self.save_dir = Path(logger_.save_dir) / logger_.name / experiment_id / "cache"
 
         if self.save_in_batches:
-            logger.info(f"Cache will be saved to {self.save_dir / self.name}/<batch_idx>.pt")
+            logger.info(f"Cache will be saved to {self.save_dir}/<batch_idx>.pt")
         else:
-            logger.info(f"Cache will be saved to {self.save_dir / self.name}.pt")
+            logger.info(f"Cache will be saved to {self.save_dir / self.filestem}.pt")
 
     def reset(self) -> None:
         self.outputs = []
         self._batch_counter = 0
 
     def include_selected_keys(self, output: dict[str, Any]) -> dict[str, Any]:
-        included: dict[str, Any] = {}
+        included = {}
         for key in self.include_keys:
-            try:
-                value = glom.glom(output, key)
-            except glom.PathAccessError:
-                if self.ignore_missing:
-                    continue
-                raise
+            value = glom.glom(output, key)
             glom.assign(included, key, value, missing=dict)
         return included
 
@@ -104,12 +99,12 @@ class Cache(Callback):
             self.delete_excluded_keys(cached_output)
         self.outputs.append(move_to_cpu(cached_output))
         if self.save_in_batches:
-            self._save_batch()
+            self.save_batch()
 
-    def _save_batch(self) -> None:
+    def save_batch(self) -> None:
         if not self.save or self.save_dir is None:
             return
-        save_path = self.save_dir / self.name / f"{self._batch_counter:06d}.pt"
+        save_path = self.save_dir / f"{self._batch_counter:06d}.pt"
         save_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(self.outputs, save_path)
         self._batch_counter += 1
@@ -119,13 +114,13 @@ class Cache(Callback):
         if not self.save or self.save_dir is None or not self.outputs:
             return
 
-        save_path = self.save_dir / f"{self.name}.pt"
+        save_path = self.save_dir / f"{self.filestem}.pt"
         save_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(self.outputs, save_path)
 
 
 class TestCache(Cache):
-    name = "test"
+    name = "TestCache"
 
     def on_test_start(self, trainer: Trainer, pl_module) -> None:
         self.configure_save_dir(trainer)
@@ -141,7 +136,7 @@ class TestCache(Cache):
 
 
 class TrainCache(Cache):
-    name = "train"
+    name = "TrainCache"
 
     def on_train_start(self, trainer: Trainer, pl_module) -> None:
         self.configure_save_dir(trainer)
@@ -157,7 +152,7 @@ class TrainCache(Cache):
 
 
 class ValidationCache(Cache):
-    name = "validation"
+    name = "ValidationCache"
 
     def on_validation_start(self, trainer: Trainer, pl_module) -> None:
         self.configure_save_dir(trainer)
@@ -181,7 +176,7 @@ class ValidationCache(Cache):
 
 
 class PredictionCache(Cache):
-    name = "prediction"
+    name = "PredictionCache"
 
     def on_predict_start(self, trainer: Trainer, pl_module) -> None:
         self.configure_save_dir(trainer)
