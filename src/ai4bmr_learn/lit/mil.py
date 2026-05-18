@@ -390,7 +390,7 @@ class RegressionMILLit(BaseMILLit):
         return output
 
 
-class ConcordanceIndexMetric(Metric):
+class TorchSurvMetric(Metric):
     def __init__(self):
         super().__init__()
         self.add_state("risk", default=[], dist_reduce_fx="cat")
@@ -402,6 +402,11 @@ class ConcordanceIndexMetric(Metric):
         self.time.append(time.detach().reshape(-1).float())
         self.event.append(event.detach().reshape(-1).bool())
 
+    def compute(self) -> torch.Tensor:
+        raise NotImplementedError()
+
+
+class ConcordanceIndexMetric(TorchSurvMetric):
     def compute(self) -> torch.Tensor:
         if not self.risk:
             return torch.tensor(0.0)
@@ -419,6 +424,31 @@ class ConcordanceIndexMetric(Metric):
         return torch.as_tensor(value, dtype=torch.float32, device=risk.device).squeeze()
 
 
+class InegratedBrierScoreMetric(TorchSurvMetric):
+    def compute(self) -> torch.Tensor:
+        if not self.risk:
+            return torch.nan
+
+        risk = torch.cat(self.risk)
+        time = torch.cat(self.time)
+        event = torch.cat(self.event)
+        if risk.numel() < 2 or event.sum() == 0:
+            return torch.tensor(torch.nan, device=risk.device)
+
+        from torchsurv.loss import cox
+        from torchsurv.metrics.brier_score import BrierScore
+
+        # FIXME baseline surv should be estimated on the train set!
+        baseline_surv = cox.baseline_survival_function(risk, event, time)
+        
+        surv = cox.survival_function_cox(baseline_surv, risk, time)
+
+        brier_score = BrierScore()
+        _ = brier_score(surv, event, time)
+        value = brier_score.integral()
+        return torch.as_tensor(value, dtype=torch.float32, device=risk.device).squeeze()
+
+
 class SurvivalMILLit(BaseMILLit):
     def __init__(
         self,
@@ -426,19 +456,41 @@ class SurvivalMILLit(BaseMILLit):
         head: nn.Module,
         time_key: str = "time",
         event_key: str = "event",
+        metric_names: list[str] | None = None,
         **kwargs,
     ):
         super().__init__(aggregator=aggregator, head=head, **kwargs)
         self.time_key = time_key
         self.event_key = event_key
 
-        metrics = MetricCollection({"cindex": ConcordanceIndexMetric()})
+        metrics = self.get_metrics(metric_names)
         self.train_metrics = metrics.clone(prefix="train/")
         self.val_metrics = metrics.clone(prefix="val/")
         self.test_metrics = metrics.clone(prefix="test/")
 
         self.save_hyperparameters(ignore=["aggregator", "head"])
 
+    @staticmethod
+    def get_metrics(metric_names: list[str] | None = None) -> MetricCollection:
+        if metric_names is None:
+            return MetricCollection(
+                {
+                    "cindex": ConcordanceIndexMetric(),
+                    "brier": InegratedBrierScoreMetric(),
+                }
+            )
+
+        metrics = {}
+        for name in metric_names:
+            match name:
+                case "cindex" | "concordance_index_metric":
+                    metrics[name] = ConcordanceIndexMetric()
+                case "brier" | "brier_score" | "integrated_brier_score":
+                    metrics[name] = InegratedBrierScoreMetric()
+                case _:
+                    raise ValueError(f"Unknown metric: {name}")
+        return MetricCollection(metrics)
+    
     def get_target(self, batch: dict[str, Any]) -> dict[str, torch.Tensor]:
         time = glom(batch, self.time_key)
         event = glom(batch, self.event_key)
