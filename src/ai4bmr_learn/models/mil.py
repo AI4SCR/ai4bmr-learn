@@ -150,7 +150,11 @@ class TransformerAttentionAggregation(BaseAggregation):
         assert num_heads > 0
 
         self.num_heads = num_heads
-        self.hidden_dim = hidden_dim or (input_dim // num_heads)
+        if hidden_dim:
+            self.hidden_dim = hidden_dim
+        else:
+            assert input_dim % num_heads == 0, f"If no `hidden_dim` is passed, `input_dim` must be divisible by `num_heads`"
+            self.hidden_dim (input_dim // num_heads)
 
         assert self.hidden_dim > 0, "hidden_dim must be positive"
 
