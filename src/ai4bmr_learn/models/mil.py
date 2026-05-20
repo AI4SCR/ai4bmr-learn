@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import torch
@@ -117,3 +118,104 @@ class SimpleAttentionAggregation(BaseAggregation):
         weights = F.softmax(logits, dim=1)
         embedding = torch.einsum("bn,bnd->bd", weights, bag)
         return AggregationOutput(embedding=embedding, weights=weights, logits=logits)
+
+
+class TransformerAttentionAggregation(BaseAggregation):
+    """
+    One-layer transformer-style MIL aggregation.
+
+    Uses learned query vectors (one per head) to attend over instances.
+
+    Input:
+        bag:  [B, N, D]
+        mask: [B, N]
+
+    Output:
+        embedding: [B, D]
+        weights:
+            [B, N] if num_heads == 1
+            [B, H, N] otherwise
+    """
+
+    def __init__(
+        self,
+        input_dim: int,
+        num_heads: int = 1,
+        hidden_dim: int | None = None,
+        dropout: float = 0.0,
+        use_output_projection: bool = True,
+    ):
+        super().__init__(input_dim=input_dim)
+
+        assert num_heads > 0
+
+        self.num_heads = num_heads
+        self.hidden_dim = hidden_dim or (input_dim // num_heads)
+
+        assert self.hidden_dim > 0, "hidden_dim must be positive"
+
+        inner_dim = num_heads * self.hidden_dim
+
+        # Transformer projections
+        self.key_proj = nn.Linear(input_dim, inner_dim)
+        self.value_proj = nn.Linear(input_dim, inner_dim)
+
+        # Learned global query per head
+        self.query = nn.Parameter(torch.randn(num_heads, self.hidden_dim))
+
+        self.dropout = nn.Dropout(dropout)
+
+        if use_output_projection:
+            self.output_proj = nn.Linear(inner_dim, input_dim)
+        else:
+            assert inner_dim == input_dim, "inner_dim must equal input_dim if no output projection"
+            self.output_proj = nn.Identity()
+
+        self.output_dim = input_dim
+
+    def forward(
+        self,
+        bag: torch.Tensor,
+        mask: torch.Tensor,
+    ) -> AggregationOutput:
+
+        mask = self.validate_inputs(bag=bag, mask=mask)
+
+        B, N, D = bag.shape
+        H = self.num_heads
+        Hd = self.hidden_dim
+
+        K = self.key_proj(bag).view(B, N, H, Hd)
+        V = self.value_proj(bag).view(B, N, H, Hd)
+
+        logits = torch.einsum("hd,bnhd->bhn", self.query, K)
+        logits = logits / math.sqrt(Hd)
+
+        logits = logits.masked_fill(
+            ~mask[:, None, :],
+            -torch.finfo(logits.dtype).max,
+        )
+
+        weights = F.softmax(logits, dim=-1)
+        weights = self.dropout(weights)
+
+        pooled = torch.einsum("bhn,bnhd->bhd", weights, V)
+
+        # Concatenate heads
+        pooled = pooled.reshape(B, H * Hd)
+
+        embedding = self.output_proj(pooled)
+
+        # Match API for single-head case
+        if H == 1:
+            weights_out = weights.squeeze(1)  # [B, N]
+            logits_out = logits.squeeze(1)  # [B, N]
+        else:
+            weights_out = weights  # [B, H, N]
+            logits_out = logits  # [B, H, N]
+
+        return AggregationOutput(
+            embedding=embedding,
+            weights=weights_out,
+            logits=logits_out,
+        )
